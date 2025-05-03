@@ -1,0 +1,34 @@
+{
+    "compilerOptions": {
+      /* Basic Options */
+      "target": "ES2022",                  // Modern ECMAScript for Node.js 18+
+      "module": "CommonJS",                // Default for Node.js
+      "outDir": "./dist",                  // Output directory
+      "rootDir": "./src",                  // Source directory
+      "strict": true,                      // Enable all strict checks
+      "esModuleInterop": true,             // Better ES module compatibility
+      "skipLibCheck": true,                // Skip library checks (faster builds)
+      "forceConsistentCasingInFileNames": true, // Avoid case-sensitive bugs
+  
+      /* TypeORM & Decorator Support */
+      "emitDecoratorMetadata": true,       // Required for TypeORM
+      "experimentalDecorators": true,      // Required for TypeORM entities
+  
+      /* Paths (Optional) */
+      "baseUrl": "./src",                  // Base directory for imports
+      "paths": {
+        "@app/*": ["app/*"],               // Example: import from '@app/plugins'
+        "@modules/*": ["modules/*"],
+        "@entity/*": ["modules/user/entity/*"],   // Clean imports like '@modules/user'
+        "@config/*": ["config/*"]        // Clean imports like '@modules/user'
+      },
+  
+      /* Advanced Checks */
+      "noUnusedLocals": true,              // Flag unused variables
+      "noUnusedParameters": true,          // Flag unused function params
+      "noImplicitReturns": true,           // Require explicit returns
+      "noFallthroughCasesInSwitch": true   // Prevent switch case fallthrough
+    },
+    "include": ["src/**/*.ts", "src/config/ormconfig.js"],            // Files to compile
+    "exclude": ["node_modules", "tests"]   // Excluded directories
+  }

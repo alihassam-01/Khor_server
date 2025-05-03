@@ -1,0 +1,10 @@
+// export * from "@modules/user/entity/user.entity";
+// export * from "@modules/user/entity/travel-agency-profile.entity"
+// export * from "@modules/user/entity/customer-profile.entity";
+// export * from "@modules/user/entity/article.entity";
+// export * from "@modules/user/entity/tags.entity";
+// export * from "@modules/user/entity/article-tags.entity";
+// export * from "@modules/user/entity/location.entity";
+// export * from "@modules/user/entity/location-attributes.entities";
+// export * from "@modules/user/entity/location-category.entity";
+// export * from "@modules/user/entity/location-category-mapping.entity"; 

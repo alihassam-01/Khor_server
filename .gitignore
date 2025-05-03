@@ -1,0 +1,25 @@
+# Node modules
+node_modules/
+
+# Dependency lock file
+package-lock.json
+# (optional) yarn.lock or pnpm-lock.yaml if you're not using them
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.*
+
+# Misc
+.DS_Store
