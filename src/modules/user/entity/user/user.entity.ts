@@ -1,7 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToOne } from 'typeorm';
-import { TravelAgencyProfile } from './travel-agency-profile.entity';
+// import { TravelAgencyProfile } from './travel-agency-profile.entity';
 import { CustomerProfile } from './customer-profile.entity';
 import { UserType } from '@entity/ENUM/enum';
+import { Vendor } from '../business';
 
 @Entity()
 export class User {
@@ -23,8 +24,10 @@ export class User {
   @Column({ default: false })
   isVerified: boolean = false;
 
-  @OneToOne(() => TravelAgencyProfile, (profile) => profile.user, { nullable: true })
-  agencyProfile?: TravelAgencyProfile;
+  // @OneToOne(() => TravelAgencyProfile, (profile) => profile.user, { nullable: true })
+  // agencyProfile?: TravelAgencyProfile;
+  @OneToOne(() => Vendor, (vendor) => vendor.user, { nullable: true })
+  vendor?: Vendor;
 
   @OneToOne(() => CustomerProfile, (profile) => profile.user, { nullable: true })
   customerProfile?: CustomerProfile;

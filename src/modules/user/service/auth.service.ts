@@ -1,14 +1,16 @@
-import { Repository } from 'typeorm';
-import { User, CustomerProfile, TravelAgencyProfile } from '@entity/user';
-import * as bcrypt from 'bcrypt';
-import * as jwt from 'jsonwebtoken';
-import { MailService } from './mail.service';
-import { UserType } from '../entity/ENUM/enum';
+import { Repository } from "typeorm";
+import { User, CustomerProfile } from "@entity/user";
+import * as bcrypt from "bcrypt";
+import * as jwt from "jsonwebtoken";
+import { MailService } from "./mail.service";
+import { UserType } from "../entity/ENUM/enum";
+import { Vendor } from "@entity/business";
 
 export class AuthService {
   constructor(
     private userRepository: Repository<User>,
-    private agencyProfileRepository: Repository<TravelAgencyProfile>,
+    // private agencyProfileRepository: Repository<TravelAgencyProfile>,
+    private vendorRepository: Repository<Vendor>,
     private customerProfileRepository: Repository<CustomerProfile>,
     private mailService: MailService
   ) {}
@@ -17,22 +19,27 @@ export class AuthService {
   private async validateRegistration(email: string): Promise<void> {
     const existingUser = await this.userRepository.findOneBy({ email });
     if (existingUser) {
-      throw new Error(JSON.stringify({message: "Email already in use", code: "EMAIL_IN_USE" }));
+      throw new Error(
+        JSON.stringify({
+          message: "Email already in use",
+          code: "EMAIL_IN_USE",
+        })
+      );
     }
   }
 
   // Hash password
   private async hashPassword(password: string): Promise<string> {
-    console.log("hashing pass: ",password)
+    console.log("hashing pass: ", password);
     return bcrypt.hash(password, 10);
   }
-  
+
   // Generate verification token
   private generateVerificationToken(email: string): string {
     if (!process.env.JWT_SECRET) {
-      throw new Error('JWT_SECRET is not configured');
+      throw new Error("JWT_SECRET is not configured");
     }
-    return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '24h' });
+    return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: "24h" });
   }
 
   // Registration logic
@@ -40,12 +47,12 @@ export class AuthService {
     email: string,
     password: string,
     userType: UserType,
-    name: string,
+    name: string
   ): Promise<User> {
     await this.validateRegistration(email);
     const hashedPassword = await this.hashPassword(password);
     const verificationToken = this.generateVerificationToken(email);
-    
+
     // Send verification email
     await this.mailService.sendVerificationEmail(email, verificationToken);
 
@@ -54,21 +61,21 @@ export class AuthService {
       password: hashedPassword,
       userType,
       verificationToken,
-      isVerified: false
+      isVerified: false,
     });
-    
+
     await this.userRepository.save(user);
 
     // Handling user profile based on type
     if (userType === UserType.TRAVEL_AGENCY) {
-      const agencyProfile = this.agencyProfileRepository.create({
-        userId: user.id,
-        companyName: name,
+      const vendor = this.vendorRepository.create({
+        user, // Changed from userId to user
+        companyName: name, // Changed to match Vendor entity
       });
-      await this.agencyProfileRepository.save(agencyProfile);
+      await this.vendorRepository.save(vendor);
     } else {
       const customerProfile = this.customerProfileRepository.create({
-        userId: user.id,
+        user, // Changed from userId to user
         username: name,
       });
       await this.customerProfileRepository.save(customerProfile);
@@ -81,14 +88,18 @@ export class AuthService {
   async verifyEmail(token: string): Promise<boolean> {
     try {
       if (!process.env.JWT_SECRET) {
-        throw new Error('JWT_SECRET is not configured');
+        throw new Error("JWT_SECRET is not configured");
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET) as { email: string };
-      const user = await this.userRepository.findOneBy({ email: decoded.email });
+      const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
+        email: string;
+      };
+      const user = await this.userRepository.findOneBy({
+        email: decoded.email,
+      });
 
       if (!user || user.verificationToken !== token) {
-        throw new Error('Invalid verification token');
+        throw new Error("Invalid verification token");
       }
 
       user.isVerified = true;
@@ -116,33 +127,34 @@ export class AuthService {
   }> {
     const user = await this.userRepository.findOne({
       where: { email },
-      relations: ['agencyProfile', 'customerProfile']
+      relations: ["vendor", "customerProfile"],
     });
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw new Error('Invalid email or password');
+      throw new Error("Invalid email or password");
     }
 
     if (!user.isVerified) {
-      throw new Error('Please verify your email before logging in');
+      throw new Error("Please verify your email before logging in");
     }
 
     if (!process.env.JWT_SECRET) {
-      throw new Error('JWT_SECRET is not configured');
+      throw new Error("JWT_SECRET is not configured");
     }
 
-    const name = user.userType === UserType.TRAVEL_AGENCY
-      ? user.agencyProfile?.companyName ?? 'Unknown Agency'
-      : user.customerProfile?.username;
+    const name =
+      user.userType === UserType.TRAVEL_AGENCY
+        ? user.vendor?.companyName ?? "Unknown Agency"
+        : user.customerProfile?.username;
 
     const token = jwt.sign(
       {
         userId: user.id,
         userType: user.userType,
-        name: name ?? 'Unknown'
+        name: name ?? "Unknown",
       },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: "7d" }
     );
 
     return {
@@ -151,8 +163,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         userType: user.userType,
-        name: name ?? 'Unknown'
-      }
+        name: name ?? "Unknown",
+      },
     };
   }
 }
