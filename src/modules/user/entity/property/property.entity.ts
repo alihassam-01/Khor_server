@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, TableInheritance } from 'typeorm';
 import { Vendor } from '../business/vendor-entity';
-import { PropertyType } from '../ENUM/enum';
+import { BusinessType } from '../business';
 
 @Entity()
 @TableInheritance({ column: { type: "varchar", name: "property_type" } })
@@ -11,8 +11,8 @@ export class Property {
   @ManyToOne(() => Vendor, vendor => vendor.properties, { onDelete: 'CASCADE' })
   vendor!: Vendor;
 
-  @Column({ type: 'enum', enum: PropertyType })
-  property_type!: PropertyType;
+@ManyToOne(() => BusinessType, businessType => businessType.property)
+  businessType!: BusinessType;
 
   @Column({ type: 'text', nullable: true })
   markup_file_location!: string;

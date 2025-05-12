@@ -6,6 +6,7 @@ import authRoutes from "./modules/user/routes/auth.routes";
 import typeormPlugin from "./app/plugins/typeorm";
 import locationRoutes from "./modules/user/routes/location.routes";
 import articleRoutes from "./modules/user/routes/article.routes";
+import businessRoutes from '@modules/user/routes/business.routes';
 
 
 async function startServer() {
@@ -34,6 +35,7 @@ async function startServer() {
     app.register(authRoutes, { prefix: "/api" });
     app.register(locationRoutes, { prefix: "/api" });
     app.register(articleRoutes, { prefix: "/api" });
+    app.register(businessRoutes, {prefix: "/api" });
   } catch (error) {
     console.error("Error registering routes:", error);
     process.exit(1);  

@@ -10,24 +10,31 @@ import {
 } from "typeorm";
 import { Package } from "../package/package.entity";
 import { Property } from "../property/property.entity";
-import { User } from "../user";
+import { User } from "../user/user.entity";
+import { BusinessVerification } from "./business-verification.entity";
 
 @Entity()
 export class Vendor {
-  @PrimaryGeneratedColumn()
-  id!: number;
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
 
   @Column({ length: 100 })
   companyName!: string;
 
-  @Column({ length: 15, unique: true })
+  @Column({ length: 15, unique: true, nullable: true })
   cnic!: string;
 
   @Column({ default: false })
-  verified!: boolean;
+  isVerified!: boolean;
 
   @Column({ type: "text", nullable: true })
   markupFileLocation!: string;
+
+  // @Column({ type: "text", nullable: false })
+  // location!: string;
+
+  @Column({ type: "text", nullable: true })
+  description!: string;
 
   @Column({ default: false })
   isDeleted!: boolean;
@@ -38,6 +45,9 @@ export class Vendor {
   @UpdateDateColumn()
   updatedAt!: Date;
 
+  @Column({ nullable: true })
+  lastVerifiedAt!: Date;
+
   @OneToMany(() => Package, (pkg) => pkg.vendor)
   packages!: Package[];
 
@@ -47,4 +57,7 @@ export class Vendor {
   @OneToOne(() => User, (user) => user.vendor)
   @JoinColumn()
   user!: User;
+
+    @OneToMany(() => BusinessVerification, (verification) => verification.vendor)
+  verifications!: BusinessVerification[];
 }

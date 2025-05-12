@@ -1,8 +1,9 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn } from 'typeorm';
 // import { TravelAgencyProfile } from './travel-agency-profile.entity';
 import { CustomerProfile } from './customer-profile.entity';
 import { UserType } from '@entity/ENUM/enum';
 import { Vendor } from '../business';
+import { Address } from '../address';
 
 @Entity()
 export class User {
@@ -24,8 +25,14 @@ export class User {
   @Column({ default: false })
   isVerified: boolean = false;
 
-  // @OneToOne(() => TravelAgencyProfile, (profile) => profile.user, { nullable: true })
-  // agencyProfile?: TravelAgencyProfile;
+  @Column({ name: 'address_id', nullable: true })
+  addressId?: number;
+
+  // Relationship with explicit JoinColumn
+  @OneToOne(() => Address, { nullable: true })
+  @JoinColumn({ name: 'address_id' })
+  address?: Address;
+
   @OneToOne(() => Vendor, (vendor) => vendor.user, { nullable: true })
   vendor?: Vendor;
 

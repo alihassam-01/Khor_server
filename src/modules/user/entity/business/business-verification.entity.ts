@@ -1,33 +1,29 @@
-import { Entity, PrimaryColumn, Column, ManyToOne } from 'typeorm';
-import { Profile } from '@entity/profile/profile.entity';
+import { Entity, Column, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import { Vendor } from './vendor-entity';
 
-@Entity('business_verification')
+@Entity()
 export class BusinessVerification {
-  @PrimaryColumn('uuid', { default: () => 'gen_random_uuid()' })
+  @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @ManyToOne(() => Profile, profile => profile.verification)
-  profile!: Profile;
+  @ManyToOne(() => Vendor, (vendor) => vendor.verifications)
+  vendor!: Vendor;
 
   @Column()
-  document_type!: string;
+  documentType!: string;
 
   @Column()
-  document_url!: string;
+  documentUrl!: string;
+
+  @Column({ default: "pending" })
+  status!: "pending" | "approved" | "rejected";
 
   @Column({ nullable: true })
-  cnic_number!: string;
+  reviewerNotes!: string;
 
-  @Column({ default: 'pending' })
-  status!: 'pending' | 'approved' | 'rejected';
-
-  @Column({ type: 'timestamp with time zone', default: () => 'NOW()' })
-  submitted_at!: Date;
-
-  @Column({ type: 'timestamp with time zone', nullable: true })
-  reviewed_at!: Date;
+  @CreateDateColumn()
+  submittedAt!: Date;
 
   @Column({ nullable: true })
-  reviewer_notes!: string;
-
+  reviewedAt!: Date;
 }
