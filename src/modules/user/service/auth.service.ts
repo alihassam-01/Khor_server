@@ -30,7 +30,6 @@ export class AuthService {
 
   // Hash password
   private async hashPassword(password: string): Promise<string> {
-    console.log("hashing pass: ", password);
     return bcrypt.hash(password, 10);
   }
 
@@ -68,7 +67,6 @@ export class AuthService {
 
     // Handling user profile based on type
     if (userType === UserType.TRAVEL_AGENCY) {
-      console.log("I am here brother:  ")
       const vendor = this.vendorRepository.create({
         user, // Changed from userId to user
         companyName: name, // Changed to match Vendor entity

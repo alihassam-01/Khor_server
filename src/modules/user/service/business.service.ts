@@ -18,7 +18,6 @@ export class BusinessService {
     const vendor = await this.vendorRepository.findOneByOrFail({
       id: userUUID,
     });
-    console.log("vendor", vendor);
     const properties: Property[] = businessTypeIds.map((businessTypeId) =>
       this.propertyRepository.create({
         vendor: vendor,

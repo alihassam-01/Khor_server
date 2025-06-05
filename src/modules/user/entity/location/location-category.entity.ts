@@ -12,28 +12,28 @@ import { LocationCategoryMapping } from './location-category-mapping.entity';
 
 @Entity('location_categories')
 export class LocationCategory {
-@PrimaryGeneratedColumn({ name: 'category_id' })
-categoryId!: number;
+  @PrimaryGeneratedColumn({ name: 'category_id' })
+  categoryId!: number;
 
-@Column({ type: 'varchar', length: 100, nullable: false })
-name!: string;
+  @Column({ type: 'varchar', length: 100, nullable: false })
+  name!: string;
 
-@Column({ type: 'varchar', length: 100, nullable: false, unique: true })
-slug!: string;
+  @Column({ type: 'varchar', length: 100, nullable: false, unique: true })
+  slug!: string;
 
-@Column({ type: 'text', nullable: true })
-description!: string;
-
-@ManyToOne(() => LocationCategory, (category) => category.categoryId, {
+  @ManyToOne(() => LocationCategory, (category) => category.subcategories, {
     nullable: true,
     onDelete: 'SET NULL',
-})
-@JoinColumn({ name: 'parent_category_id' })
-parentCategory!: LocationCategory;
+  })
+  @JoinColumn({ name: 'parent_category_id' })
+  parentCategory!: LocationCategory;
 
-@OneToMany(() => LocationCategoryMapping, (mapping) => mapping.category)
-categoryMappings!: LocationCategoryMapping[];
+  @OneToMany(() => LocationCategory, (category) => category.parentCategory)
+  subcategories!: LocationCategory[];
 
-@CreateDateColumn({ name: 'created_at', type: 'timestamp' })
-createdAt!: Date;
+  @OneToMany(() => LocationCategoryMapping, (mapping) => mapping.category)
+  categoryMappings!: LocationCategoryMapping[];
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  createdAt!: Date;
 }

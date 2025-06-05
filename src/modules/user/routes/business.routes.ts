@@ -6,7 +6,7 @@ export default async function BusinessRoutes(fastify: FastifyInstance) {
     const businessService = new BusinessService();
     const businessController = new BusinessController(businessService);
 
-    fastify.post("/create/business-type",businessController.createBusinessType.bind(businessController));
-    fastify.post("/create/business",businessController.createBusiness.bind(businessController));
+    fastify.post("/business-type",businessController.createBusinessType.bind(businessController));
+    fastify.post("/business",businessController.createBusiness.bind(businessController));
 
 }
