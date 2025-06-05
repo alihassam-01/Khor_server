@@ -83,6 +83,36 @@ export class LocationController {
     }
   }
 
+  async getCategoryById(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    try {
+      const category = await this.locationService.getCategoryById(Number(req.params.id));
+      if (!category) return reply.code(404).send({ message: "Category not found" });
+      reply.send(category);
+    }
+    catch (error: any) {
+      this.handleError(error, reply);
+    }
+  }
+  async getCategoryBySlug(req: FastifyRequest<{ Params: { slug: string } }>, reply: FastifyReply) {
+    try {
+      const category = await this.locationService.getCategoryBySlug(req.params.slug);
+      if (!category) return reply.code(404).send({ message: "Category not found" });
+      reply.send(category);
+    } catch (error: any) {
+      this.handleError(error, reply);
+    }
+  }
+
+  async getCategoryByName(req: FastifyRequest<{ Params: { categoryname: string } }>, reply: FastifyReply) {
+    try {
+      console.log("getCategoryByName: ", req.params.categoryname, "req.params: ", req.params);
+      const category = await this.locationService.getLocationsByCategoryName(req.params.categoryname);
+      if (!category) return reply.code(404).send({ message: "Category not found" });
+      reply.send(category);
+    }catch (error: any) {
+      this.handleError(error, reply);
+    }
+  }
   // async getCategoryTree(_: FastifyRequest, reply: FastifyReply) {
   //   try {
   //     const tree = await this.locationService.getCategoryTree();
@@ -145,8 +175,8 @@ export class LocationController {
 
   async setLocationCategories(req: FastifyRequest<{ Body: { locationId: number; categories: number[] } }>, reply: FastifyReply) {
     try {
-      const updated = await this.locationService.setLocationCategories(req.body.locationId, req.body.categories);
-      reply.send(updated);
+      await this.locationService.setLocationCategories(req.body.locationId, req.body.categories);
+      reply.send({ message: "Categories set successfully" });
     } catch (error: any) {
       this.handleError(error, reply);
     }

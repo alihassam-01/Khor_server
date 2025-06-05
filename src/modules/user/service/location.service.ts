@@ -31,6 +31,7 @@ export class LocationService {
     location.latitude = locationData.latitude;
     location.longitude = locationData.longitude;
     location.location_order = locationData.location_order || 0;
+
     if (locationData.parent_location_id !== undefined) {
       location.parent = locationData.parent_location_id;
     }
@@ -320,6 +321,34 @@ export class LocationService {
     });
   }
 
+async getLocationsByCategoryName(categoryName: string) {
+  console.log("Fetching locations for category:", categoryName);
+  return this.locationRepository
+    .createQueryBuilder("location")
+    .leftJoin("location.categoryMappings", "mapping")
+    .leftJoin("mapping.category", "category")
+    .where("category.name = :name", { name: categoryName })
+    .getMany();
+}
+
+
+  async getCategoryById(
+    categoryId: number
+  ): Promise<LocationCategory | null> {
+    return await this.categoryRepository.findOne({
+      where: { categoryId },
+      relations: ["parentCategory", "subcategories"],
+    });
+  }
+
+  async getCategoryBySlug(
+    slug: string
+  ): Promise<LocationCategory | null> {
+    return await this.categoryRepository.findOne({
+      where: { slug },
+      relations: ["parentCategory", "subcategories"],
+    });
+  }
   // Utility Methods
   private generateSlug(text: string): string {
     return text
