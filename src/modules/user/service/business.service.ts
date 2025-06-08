@@ -1,11 +1,23 @@
 import { AppDataSource } from "@config/ormconfig";
-import { BusinessType, Vendor } from "../entity/business";
-import { Property } from "../entity/property";
+import { BusinessType, Vendor } from "@entity/business";
+import { Car, Hotel, Property } from "@entity/property";
+import { LocationService } from "./location.service";
+import { UserService } from "./user.service";
+import { User } from "@entity/user";
+// import { Location } from "@entity/location";
 
 export class BusinessService {
   private businessTypeRepository = AppDataSource.getRepository(BusinessType);
   private propertyRepository = AppDataSource.getRepository(Property);
   private vendorRepository = AppDataSource.getRepository(Vendor);
+  private carRepository = AppDataSource.getRepository(Car);
+  private hotelRepository = AppDataSource.getRepository(Hotel);
+  private userRepository = AppDataSource.getRepository(User);
+  // private locationRepository = AppDataSource.getRepository(Location);
+  constructor(
+    private readonly locationService: LocationService,
+    private readonly userService: UserService
+  ) {}
 
   async createBusinessType(name: string): Promise<BusinessType> {
     const newBusinessType = this.businessTypeRepository.create({ name });
@@ -26,5 +38,66 @@ export class BusinessService {
     );
 
     return await this.propertyRepository.save(properties);
+  }
+
+  async businessSetup(
+    userUUID: string,
+    businessTypes: string[],
+    CNIC: string,
+    businessName: string,
+    locationId: number,
+    street_address: string,
+    landmark: string,
+    is_primary: boolean
+  ): Promise<Vendor> {
+    const vendor = await this.vendorRepository.findOneByOrFail({
+      id: userUUID,
+    });
+    vendor.cnic = CNIC;
+    vendor.companyName = businessName;
+    await this.vendorRepository.save(vendor);
+    const address = await this.locationService.createAddress(
+      locationId,
+      street_address,
+      landmark,
+      is_primary
+    );
+    // await this.locationRepository.save(address as unknown as Location);
+    const user = await this.userService.getUserById(userUUID);
+    user.addressId = address.address_id;
+    await this.userRepository.save(user);
+    // get type name from businessId
+    for (const businessType of businessTypes) {
+      // const businessType = await this.businessTypeRepository.findOneByOrFail({
+      //   id: businessTypeId,
+      // });
+      switch (businessType) {
+        case "car_rental":
+          const car = new Car();
+          car.vendor = vendor;
+          car.businessType = await this.businessTypeRepository.findOneByOrFail({ name: businessType });
+          await this.carRepository.save(car);
+          break;
+        case "hotel":
+          const hotel = new Hotel();
+          hotel.vendor = vendor;
+          hotel.businessType = await this.businessTypeRepository.findOneByOrFail({ name: businessType });
+          await this.hotelRepository.save(hotel);
+          break;
+        case "tour_operator":
+          break;
+        default:
+          throw new Error(`Unknown business type: ${businessType}`);
+      }
+    }
+    // const properties: Property[] = businessTypeIds.map((businessTypeId) =>
+    //   this.propertyRepository.create({
+    //     vendor: vendor,
+    //     businessType: { id: businessTypeId } as BusinessType,
+    //   })
+    // );
+
+    // await this.propertyRepository.save(properties);
+    return await this.vendorRepository.save(vendor);
   }
 }

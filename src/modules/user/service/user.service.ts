@@ -8,6 +8,9 @@ export class UserService {
     const user = this.userRepository.create(userData);
     return await this.userRepository.save(user);
   }
+  async getUserById(userId: string) {
+    return await this.userRepository.findOneByOrFail({ id: userId });
+  }
 
   async getUsers() {
     return await this.userRepository.find();

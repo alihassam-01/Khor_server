@@ -6,12 +6,14 @@ import {
   LocationCategory,
 } from "@entity/location";
 import { DataSource } from "typeorm";
+import { Address } from "@entity/address";
 
 export class LocationService {
   private locationRepository: Repository<Location>;
   private attributesRepository: Repository<LocationAttributes>;
   private categoryRepository: Repository<LocationCategory>;
   private categoryMappingRepository: Repository<LocationCategoryMapping>;
+  private addressRepository: Repository<Address>;
 
   constructor(dataSource: DataSource) {
     this.locationRepository = dataSource.getRepository(Location);
@@ -20,6 +22,7 @@ export class LocationService {
     this.categoryMappingRepository = dataSource.getRepository(
       LocationCategoryMapping
     );
+    this.addressRepository = dataSource.getRepository(Address);
   }
 
   // Location CRUD Operations
@@ -321,34 +324,54 @@ export class LocationService {
     });
   }
 
-async getLocationsByCategoryName(categoryName: string) {
-  console.log("Fetching locations for category:", categoryName);
-  return this.locationRepository
-    .createQueryBuilder("location")
-    .leftJoin("location.categoryMappings", "mapping")
-    .leftJoin("mapping.category", "category")
-    .where("category.name = :name", { name: categoryName })
-    .getMany();
-}
+  async getLocationsByCategoryName(categoryName: string) {
+    console.log("Fetching locations for category:", categoryName);
+    return this.locationRepository
+      .createQueryBuilder("location")
+      .leftJoin("location.categoryMappings", "mapping")
+      .leftJoin("mapping.category", "category")
+      .where("category.name = :name", { name: categoryName })
+      .getMany();
+  }
 
-
-  async getCategoryById(
-    categoryId: number
-  ): Promise<LocationCategory | null> {
+  async getLocationChildren(locationId: number): Promise<Location[]> {
+    return await this.locationRepository.find({
+      where: { parent: { location_id: locationId } },
+      order: { location_order: "ASC" },
+    });
+  }
+  async getCategoryById(categoryId: number): Promise<LocationCategory | null> {
     return await this.categoryRepository.findOne({
       where: { categoryId },
       relations: ["parentCategory", "subcategories"],
     });
   }
 
-  async getCategoryBySlug(
-    slug: string
-  ): Promise<LocationCategory | null> {
+  async getCategoryBySlug(slug: string): Promise<LocationCategory | null> {
     return await this.categoryRepository.findOne({
       where: { slug },
       relations: ["parentCategory", "subcategories"],
     });
   }
+
+  async createAddress(
+    locationId: number,
+    street_address: string,
+    landmark: string,
+    is_primary: boolean
+    ): Promise<Address> {
+    const location = await this.getLocationById(locationId);
+    if (!location) {
+        throw new Error("Location not found");
+        }
+    const address = new Address();
+    address.location = location;
+    address.street_address = street_address;
+    address.landmark = landmark;
+    address.is_primary = is_primary;
+    const addressSaved =  await this.addressRepository.save(address);
+    return addressSaved;
+    }
   // Utility Methods
   private generateSlug(text: string): string {
     return text

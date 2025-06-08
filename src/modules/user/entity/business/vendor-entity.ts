@@ -58,6 +58,6 @@ export class Vendor {
   @JoinColumn()
   user!: User;
 
-    @OneToMany(() => BusinessVerification, (verification) => verification.vendor)
+  @OneToMany(() => BusinessVerification, (verification) => verification.vendor)
   verifications!: BusinessVerification[];
 }

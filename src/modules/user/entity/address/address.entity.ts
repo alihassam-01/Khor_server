@@ -1,26 +1,33 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToOne, PrimaryGeneratedColumn } from "typeorm";
-import { Locality } from "./locality.entity";
-import { User } from "../user";
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToOne,
+  PrimaryGeneratedColumn,
+} from "typeorm";
+import { Location } from "@entity/location";
+import { User } from "@entity/user";
 
-@Entity('address')
+@Entity("address")
 export class Address {
   @PrimaryGeneratedColumn()
   address_id!: number;
 
-  @Column('text', { nullable: false })
+  @Column("text", { nullable: false })
   street_address!: string;
 
-  @ManyToOne(() => Locality, locality => locality.addresses)
-  @JoinColumn({ name: 'locality_id' })
-  locality!: Locality;
+  @ManyToOne(() => Location, (location) => location.addresses)
+  @JoinColumn({ name: "location_id" })
+  location!: Location;
 
-  @Column('varchar', { length: 255, nullable: true })
+  @Column("varchar", { length: 255, nullable: true })
   landmark!: string;
 
-  @Column('boolean', { default: false })
+  @Column("boolean", { default: false })
   is_primary!: boolean;
 
   // one to one with user
-  @OneToOne(() => User, user => user.address)
+  @OneToOne(() => User, (user) => user.address)
   user?: User;
 }

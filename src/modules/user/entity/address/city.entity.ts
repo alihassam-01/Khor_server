@@ -1,5 +1,5 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
-import { Locality } from "./locality.entity";
+import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+// import { Locality } from "./locality.entity";
 
 
 @Entity('city')
@@ -22,6 +22,6 @@ export class City {
   @Column('decimal', { precision: 11, scale: 8, nullable: true })
   longitude!: number;
 
-  @OneToMany(() => Locality, locality => locality.city)
-  localities!: Locality[];
+  // @OneToMany(() => Locality, locality => locality.city)
+  // localities!: Locality[];
 }

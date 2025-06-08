@@ -1,15 +1,8 @@
-import { Entity, Column, PrimaryColumn, OneToOne, JoinColumn, CreateDateColumn } from 'typeorm';
+import { ChildEntity, Column } from 'typeorm';
 import { Property } from './property.entity';
 
-@Entity()
-export class Car {
-  @PrimaryColumn()
-  property_id!: number;
-
-  @OneToOne(() => Property, { onDelete: 'CASCADE' })
-  @JoinColumn()
-  property!: Property;
-
+@ChildEntity('car')
+export class Car extends Property {
   @Column()
   car_name!: string;
 
@@ -25,6 +18,6 @@ export class Car {
   @Column({ nullable: true })
   car_type!: string;
 
-  @CreateDateColumn()
-  created_at!: Date;
+  // @CreateDateColumn()
+  // created_at!: Date;
 }
