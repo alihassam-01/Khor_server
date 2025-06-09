@@ -1,6 +1,15 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, TableInheritance } from 'typeorm';
-import { Vendor } from '../business/vendor-entity';
-import { BusinessType } from '../business';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  TableInheritance,
+  OneToMany,
+} from "typeorm";
+import { Vendor, BusinessType } from "@entity/business";
+import { BookingItems } from "@entity/bookings";
 
 @Entity()
 @TableInheritance({ column: { type: "varchar", name: "property_type" } })
@@ -8,13 +17,15 @@ export class Property {
   @PrimaryGeneratedColumn()
   property_id!: number;
 
-  @ManyToOne(() => Vendor, vendor => vendor.properties, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Vendor, (vendor) => vendor.properties, {
+    onDelete: "CASCADE",
+  })
   vendor!: Vendor;
 
-@ManyToOne(() => BusinessType, businessType => businessType.property)
+  @ManyToOne(() => BusinessType, (businessType) => businessType.property)
   businessType!: BusinessType;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: "text", nullable: true })
   markup_file_location!: string;
 
   @Column({ default: false })
@@ -25,4 +36,7 @@ export class Property {
 
   @UpdateDateColumn()
   updated_at!: Date;
+
+  @OneToMany(() => BookingItems, (item) => item.property)
+  bookingItems!: BookingItems[];
 }
