@@ -359,19 +359,56 @@ export class LocationService {
     street_address: string,
     landmark: string,
     is_primary: boolean
-    ): Promise<Address> {
+  ): Promise<Address> {
     const location = await this.getLocationById(locationId);
     if (!location) {
-        throw new Error("Location not found");
-        }
+      throw new Error("Location not found");
+    }
     const address = new Address();
     address.location = location;
     address.street_address = street_address;
     address.landmark = landmark;
     address.is_primary = is_primary;
-    const addressSaved =  await this.addressRepository.save(address);
+    const addressSaved = await this.addressRepository.save(address);
     return addressSaved;
+  }
+
+  async getCityByLocationId(locationId: number): Promise<string | null> {
+    if (!locationId) {
+      throw new Error("Location ID is required");
     }
+
+    let currentLocation = await this.locationRepository.findOne({
+      where: { location_id: locationId },
+      relations: ["parent", "categoryMappings", "categoryMappings.category"],
+    });
+
+    while (currentLocation) {
+      const hasCityCategory = currentLocation.categoryMappings?.some(
+        (mapping) => mapping.category?.name?.toLowerCase() === "city"
+      );
+
+      if (hasCityCategory) {
+        return currentLocation.name;
+      }
+
+      if (currentLocation.parent) {
+        currentLocation = await this.locationRepository.findOne({
+          where: { location_id: currentLocation.parent.location_id },
+          relations: [
+            "parent",
+            "categoryMappings",
+            "categoryMappings.category",
+          ],
+        });
+      } else {
+        currentLocation = null;
+      }
+    }
+
+    return null;
+  }
+
   // Utility Methods
   private generateSlug(text: string): string {
     return text

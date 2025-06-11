@@ -95,5 +95,30 @@ export class BusinessController {
             reply.code(400).send(parsedError);
         }
     }
+    async getBusinessProfile(
+        req: FastifyRequest<{ Params: { userUUID: string } }>,
+        reply: FastifyReply
+    ){
+        try {
+            const { userUUID } = req.params;
+            console.log("Fetching business profile for userUUID from controller :", userUUID, this.businessService);
+            const profile = await this.businessService.getBusinessProfile(userUUID);
+            console.log("Business profile fetched from service:", profile);
+            if (!profile) {
+                return reply.code(404).send({ message: "Business profile not found" });
+            }
 
+            reply.send(profile);
+        } catch (error: any) {
+            let parsedError = { message: 'Error fetching Business Profile', code: '10004' };
+
+            try {
+                parsedError = JSON.parse(error.message);
+            } catch (_) {
+                parsedError.message = error.message;
+            }
+
+            reply.code(400).send(parsedError);
+        }
+    }
 }

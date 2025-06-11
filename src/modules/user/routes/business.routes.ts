@@ -15,5 +15,5 @@ export default async function BusinessRoutes(fastify: FastifyInstance) {
     fastify.post("/business-type",businessController.createBusinessType.bind(businessController));
     fastify.post("/business",businessController.createBusiness.bind(businessController));
     fastify.post("/business/business-setup",businessController.businessSetup.bind(businessController));
-
+    fastify.get("/business/business-profile/:userUUID", businessController.getBusinessProfile.bind(businessController));
 }
