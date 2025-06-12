@@ -150,12 +150,6 @@ export class LocationController {
     reply: FastifyReply
   ) {
     try {
-      console.log(
-        "getCategoryByName: ",
-        req.params.categoryname,
-        "req.params: ",
-        req.params
-      );
       const category = await this.locationService.getLocationsByCategoryName(
         req.params.categoryname
       );

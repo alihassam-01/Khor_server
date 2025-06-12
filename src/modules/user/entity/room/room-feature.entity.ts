@@ -1,13 +1,13 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
-import { RoomType } from "./room-type.entity";
+import { Column, Entity,PrimaryGeneratedColumn } from "typeorm";
+// import { RoomType } from "./room-type.entity";
 
 @Entity()
 export class RoomFeature {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => RoomType, roomType => roomType.features)
-  roomType!: RoomType;
+//   @ManyToOne(() => RoomType, roomType => roomType.features)
+//   roomType!: RoomType;
 
   @Column()
   name!: string; // "Mountain View" or "King Bed"

@@ -325,7 +325,6 @@ export class LocationService {
   }
 
   async getLocationsByCategoryName(categoryName: string) {
-    console.log("Fetching locations for category:", categoryName);
     return this.locationRepository
       .createQueryBuilder("location")
       .leftJoin("location.categoryMappings", "mapping")

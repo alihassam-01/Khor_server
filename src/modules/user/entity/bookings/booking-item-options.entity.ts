@@ -8,7 +8,6 @@ import {
   JoinColumn,
 } from "typeorm";
 import { BookingItems } from "./booking-items.entity";
-import { ServiceOptions } from "@entity/property";
 
 @Entity()
 export class BookingItemOption {
@@ -18,10 +17,6 @@ export class BookingItemOption {
   @ManyToOne(() => BookingItems, item => item.id, { onDelete: "CASCADE" })
   @JoinColumn({ name: "booking_item_id" })
   bookingItem!: BookingItems;
-
-  @ManyToOne(() => ServiceOptions, { eager: true, onDelete: "SET NULL" })
-  @JoinColumn({ name: "option_id" })
-  option!: ServiceOptions;
 
   @Column({ type: "varchar", length: 100 })
   value!: string;
