@@ -18,7 +18,7 @@ export class Hotel extends Property {
    address?: Address;
 
   // @CreateDateColumn()
-  // created_at!: Date;
+  // created_!: Date;
 
   @OneToMany(() => RoomType, room => room.property)
   rooms!: RoomType[];

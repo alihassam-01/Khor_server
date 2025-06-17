@@ -76,16 +76,30 @@ export class HotelService {
       landmark,
       is_primary
     );
-    const hotel = hotelRepo.create({
-      hotel_name: hotelName,
-      addressId: address.address_id,
-      vendor,
-      businessType,
-      ...(markupFileLocation
-        ? { markup_file_location: markupFileLocation }
-        : {}),
-    });
+    // const hotel = hotelRepo.create({
+    //   hotel_name: hotelName,
+    //   addressId: address.address_id,
+    //   vendor,
+    //   businessType,
+    //   ...(markupFileLocation
+    //     ? { markup_file_location: markupFileLocation }
+    //     : {}),
+    // });
+    const hotel = new Hotel();
+    hotel.hotel_name = hotelName;
+    hotel.addressId = address.address_id;
+    hotel.vendor = vendor;
+    hotel.businessType = businessType;
+    if (markupFileLocation) {
+      hotel.markup_file_location = markupFileLocation;
+    }
+    (hotel as any).property_type = "hotel";
+    // console.log("Hotel object before saving:", hotel);
+    const saved = await hotelRepo.save(hotel);
+    console.log(hotel instanceof Hotel); // should be true
 
-    return await hotelRepo.save(hotel);
+    console.log("Saved Hotel:", saved);
+    // return await hotelRepo.save(hotel);
+    return saved;
   }
 }

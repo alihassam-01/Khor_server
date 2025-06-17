@@ -7,9 +7,12 @@ import {
   ManyToOne,
   // OneToMany,
   OneToMany,
+  OneToOne,
 } from "typeorm";
 import { Hotel } from "../property/hotel.entity";
 import { RoomTypeServiceOption } from "./roomType-serviceOption.entity";
+import { RoomInventory } from "./room-inventory.entity";
+// import { Booking } from "../bookings";
 
 // typeid, name, base_price, description, max_capacity, tatal_rooms, service_id,
 
@@ -55,4 +58,12 @@ export class RoomType {
 
   @Column({ default: false })
   is_deleted!: boolean;
+
+  // one to one with room_inventory
+  @OneToOne(() => RoomInventory, (roomInventory) => roomInventory.roomType)
+  roomInventory!: RoomInventory;
+
+  // booking
+  // @OneToOne(() => Booking, booking => booking.roomType)
+  // booking!: Booking;
 }

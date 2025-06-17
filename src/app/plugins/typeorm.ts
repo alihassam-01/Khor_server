@@ -11,6 +11,6 @@ export default fp(async () => {
     console.error("Error during Data Source initialization:", err);
     process.exit(1);
   });
-  // await AppDataSource.synchronize();
+  await AppDataSource.synchronize();
 
 });
