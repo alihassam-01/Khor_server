@@ -39,4 +39,10 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   // Email Verification (GET for link clicks)
   fastify.get("/auth/verify-email", authController.verifyEmail.bind(authController));
+
+  // Resend Verification Email
+  fastify.post(
+    "/auth/resend-verification-email",
+    authController.resendVerificationEmail.bind(authController)
+  );
 }

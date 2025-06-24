@@ -6,7 +6,7 @@ import {
   OneToMany,
 } from "typeorm";
 import { Property } from "@entity/property";
-import { Booking } from "./booking.entity";
+// import { Booking } from "./booking.entity";
 import { BookingItemOption } from "./booking-item-options.entity";
 
 // BookingItems entity represents the items associated with a booking, such as properties booked, their quantities, prices, and dates.
@@ -17,8 +17,8 @@ export class BookingItems {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => Booking, (booking) => booking.items, { onDelete: "CASCADE" })
-  booking!: Booking;
+  // @ManyToOne(() => Booking, (booking) => booking.items, { onDelete: "CASCADE" })
+  // booking!: Booking;
 
   @ManyToOne(() => Property, { onDelete: "CASCADE" })
   property!: Property;

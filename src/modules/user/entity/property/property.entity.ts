@@ -2,41 +2,74 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  ManyToOne,
+  OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
-  TableInheritance,
-  OneToMany,
+  Check,
+  Index,
 } from "typeorm";
-import { Vendor, BusinessType } from "@entity/business";
-import { BookingItems } from "@entity/bookings";
+import { Vendor } from "../business";
+import { RoomType } from "../room";
+import { Vehicle } from "./vehicle.entity";
+import { TourPackage } from "./tour-package.entity";
+import { Deal } from "../bookings/deal.entity";
 
-@Entity()
-@TableInheritance({ column: { type: "varchar", name: "property_type" } })
+@Entity("properties")
+@Check(`"type" IN ('hotel', 'car_rental', 'tour')`)
+@Index("idx_properties_vendor_id", ["vendor"])
+@Index("idx_properties_type", ["type"])
 export class Property {
-  @PrimaryGeneratedColumn()
-  property_id!: number;
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
 
   @ManyToOne(() => Vendor, (vendor) => vendor.properties, {
     onDelete: "CASCADE",
   })
   vendor!: Vendor;
 
-  @ManyToOne(() => BusinessType, (businessType) => businessType.property)
-  businessType!: BusinessType;
+  @OneToMany(() => Deal, (deal) => deal.property)
+  deals!: Deal[];
+
+  @Column({ type: "text" })
+  name!: string;
+
+  @Column({ type: "text" })
+  type!: "hotel" | "car_rental" | "tour";
 
   @Column({ type: "text", nullable: true })
-  markup_file_location!: string;
+  description?: string;
 
-  @Column({ default: false })
-  is_deleted!: boolean;
+  @Column({ type: "text" })
+  location!: string;
 
-  @CreateDateColumn()
+  @Column({ type: "text", nullable: true })
+  address?: string;
+
+  @Column({ type: "numeric", precision: 2, scale: 1, default: 0 })
+  rating!: number;
+
+  @Column("text", { array: true, nullable: true })
+  amenities?: string[];
+
+  @Column("text", { array: true, nullable: true })
+  images?: string[];
+
+  @Column({ type: "boolean", default: true })
+  active!: boolean;
+
+  @CreateDateColumn({ type: "timestamptz" })
   created_at!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: "timestamptz" })
   updated_at!: Date;
 
-  @OneToMany(() => BookingItems, (item) => item.property)
-  bookingItems!: BookingItems[];
+  @OneToMany(() => RoomType, (room) => room.property)
+  roomTypes!: RoomType[];
+
+  @OneToMany(() => Vehicle, (vehicle) => vehicle.property)
+  vehicles!: Vehicle[];
+
+  @OneToMany(() => TourPackage, (tour) => tour.property)
+  tourPackages!: TourPackage[];
 }

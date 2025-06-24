@@ -9,7 +9,7 @@ import {
   JoinColumn,
 } from "typeorm";
 import { LocationAttributes, LocationCategoryMapping } from "@entity/location";
-import { PackageLocation } from "@entity/package";
+// import { PackageLocation } from "@entity/package";
 import { Address } from "@entity/address";
 
 @Entity("location")
@@ -62,8 +62,8 @@ export class Location {
   })
   categoryMappings!: LocationCategoryMapping[];
 
-  @OneToMany(() => PackageLocation, (pl) => pl.location)
-  packages!: PackageLocation[];
+  // @OneToMany(() => PackageLocation, (pl) => pl.location)
+  // packages!: PackageLocation[];
 
   @OneToMany(() => Address, (address) => address.location)
   addresses!: Address[];

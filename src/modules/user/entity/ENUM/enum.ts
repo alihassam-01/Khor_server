@@ -35,7 +35,8 @@ export enum PackageStatus {
   
   export enum UserType {
     CUSTOMER = 'customer',
-    TRAVEL_AGENCY = 'travel_agency'
+    TRAVEL_AGENCY = 'travel_agency',
+    VENDOR = 'vendor',
   }
   
   export enum BusinessType {

@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, OneToOne, JoinColumn } from "typeorm";
+import { Entity, PrimaryColumn, Column, JoinColumn } from "typeorm";
 import { RoomType } from "./room-type.entity";
 
 // room inventory shall handle, room type id, available rooms,
@@ -13,9 +13,9 @@ export class RoomInventory {
    * Foreign key referencing the Room Type table.
    * Represents the unique identifier of the associated room type for this room inventory.
    */
-  @OneToOne(() => RoomType, (roomType) => roomType.roomInventory, {
-    onDelete: "CASCADE",
-  })
+  // @OneToOne(() => RoomType, (roomType) => roomType.roomInventory, {
+  //   onDelete: "CASCADE",
+  // })
   @JoinColumn({ name: "room_type_id" })
   roomType!: RoomType;
 

@@ -1,5 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn } from 'typeorm';
-import { Package } from '@entity/package';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+// import { Package } from '@entity/package';
 import { MealType } from '@entity/ENUM/enum';
 
 @Entity()
@@ -7,8 +7,8 @@ export class Meal {
   @PrimaryGeneratedColumn()
   meal_id!: number;
 
-  @ManyToOne(() => Package, pkg => pkg.meals, { onDelete: 'CASCADE' })
-  package!: Package;
+  // @ManyToOne(() => Package, pkg => pkg.meals, { onDelete: 'CASCADE' })
+  // package!: Package;
 
   @Column()
   meal_name!: string;
