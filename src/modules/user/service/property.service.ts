@@ -9,9 +9,8 @@ export class PropertyService {
    * Create a new property
    */
   async create(data: Partial<Property>) {
-    // const property = this.repo.create(data);
-    console.log("Creating property with data:", data);
-    // return await this.repo.save(property);
+    const property = this.repo.create(data);
+    return await this.repo.save(property);
   }
 
   /**

@@ -6,7 +6,16 @@ export class PropertyController {
   constructor(private readonly propertyService: PropertyService) {}
 
   async createProperty(
-    req: FastifyRequest<{ Body: any }>,
+    req: FastifyRequest<{ Body: {
+      name: string;
+      description: string;
+      address: string;
+      vendorId: string;
+      type: string; // e.g., "hotel", "restaurant", etc.
+      amenities?: string[];
+      images?: string[];
+      isActive?: boolean;
+    } }>,
     reply: FastifyReply
   ) {
     try {

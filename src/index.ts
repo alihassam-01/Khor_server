@@ -2,14 +2,15 @@ import 'tsconfig-paths/register';
 import fastify from "fastify";
 // import { AppDataSource } from "./config/ormconfig";
 // import userRoutes from "./modules/user/user.routes";
-import authRoutes from "./modules/user/routes/auth.routes";
-import typeormPlugin from "./app/plugins/typeorm";
-import locationRoutes from "./modules/user/routes/location.routes";
-import articleRoutes from "./modules/user/routes/article.routes";
-import propertyRoutes from '@modules/user/routes/property.routes';
+import typeormPlugin from './app/plugins/typeorm';
+// import authRoutes from '@modules/user/routes/auth.routes';
+// import locationRoutes from '@modules/user/routes/location.routes';
+// import articleRoutes from '@modules/user/routes/article.routes';
+// import propertyRoutes from '@modules/user/routes/property.routes';
+// // import { roomTypeRoutes } from '@modules/user/routes';
 // import businessRoutes from '@modules/user/routes/business.routes';
 // import hotelRoutes from '@modules/user/routes/hotel.routes';
-
+import routes from '@modules/user/routes';
 
 async function startServer() {
   const app = fastify();
@@ -34,12 +35,16 @@ async function startServer() {
   }
 
   try {
-    app.register(authRoutes, { prefix: "/api" });
-    app.register(locationRoutes, { prefix: "/api" });
-    app.register(articleRoutes, { prefix: "/api" });
-    // app.register(businessRoutes, {prefix: "/api" });
-    // app.register(hotelRoutes, {prefix: "/api" });
-    app.register(propertyRoutes, { prefix: "/api" });
+    // app.register(authRoutes, { prefix: "/api" });
+    // app.register(locationRoutes, { prefix: "/api" });
+    // app.register(articleRoutes, { prefix: "/api" });
+    // // app.register(businessRoutes, {prefix: "/api" });
+    // // app.register(hotelRoutes, {prefix: "/api" });
+    // app.register(propertyRoutes, { prefix: "/api" });
+    // app.register(roomTypeRoutes, { prefix: "/api" });
+    for (const route of routes) {
+      await app.register(route, { prefix: "/api" });
+    }
   } catch (error) {
     console.error("Error registering routes:", error);
     process.exit(1);  
