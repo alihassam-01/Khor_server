@@ -19,6 +19,7 @@ export class TourPackage {
 
   @ManyToOne(() => Property, (property) => property.tourPackages, {
     onDelete: "CASCADE",
+    nullable: false,
   })
   property!: Property;
 

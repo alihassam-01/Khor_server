@@ -9,3 +9,4 @@ export * from './location.service';
 export * from './deal.service';
 export * from './vendor.service';
 export * from './vehicle.service';
+export * from './tourpackage.service';

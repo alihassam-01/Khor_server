@@ -22,6 +22,8 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "cSpell.words": [
-    "roomtype"
+    "ormconfig",
+    "roomtype",
+    "tourpackage"
   ]
 }

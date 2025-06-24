@@ -4,6 +4,7 @@ import locationRoutes from './location.routes';
 import articleRoutes from './article.routes';
 import propertyRoutes from './property.routes';
 import { roomTypeRoutes } from './roomtype.routes';
+import { tourPackageRoutes } from './tourpackage.routes';
 // import businessRoutes from './business.routes';
 // import hotelRoutes from './hotel.routes';
 
@@ -13,6 +14,7 @@ const routes = [
   articleRoutes,
   propertyRoutes,
   roomTypeRoutes,
+  tourPackageRoutes,
   // businessRoutes,
   // hotelRoutes,
 ];
