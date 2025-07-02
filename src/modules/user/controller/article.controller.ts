@@ -1,10 +1,11 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ArticleService } from '../service/article.service';
+import { Article } from '../entity/article';
 
 export class ArticleController {
   constructor(private readonly articleService: ArticleService) {}
 
-  async createArticle(req: FastifyRequest<{ Body: any }>, reply: FastifyReply) {
+  async createArticle(req: FastifyRequest<{ Body: Partial<Article> }>, reply: FastifyReply) {
     try {
       const article = await this.articleService.createArticle(req.body);
       reply.code(201).send(article);

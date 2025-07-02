@@ -64,13 +64,11 @@ export class AuthService {
     });
 
     await this.userRepository.save(user);
-    console.log("User to be saved:", user);
     // Handling user profile based on type
     if (userType === UserType.VENDOR) {
       const vendor = this.vendorRepository.create({
         user, // this links the Vendor to the User entity
       });
-      console.log("Vendor to be saved:", vendor);
       await this.vendorRepository.save(vendor);
     } else {
       const customerProfile = this.customerProfileRepository.create({
@@ -93,18 +91,14 @@ export class AuthService {
       const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
         email: string;
       };
-      console.log("Decoded token:", decoded);
       const user = await this.userRepository.findOneBy({
         email: decoded.email,
       });
-      console.log("User found for verification:", user);
       if (!user || user.verificationToken !== token) {
         throw new Error("Invalid verification token");
       }
-      console.log("User before verification:", user);
       user.isVerified = true;
       user.verificationToken = undefined;
-      console.log("User before saving:", user);
       await this.userRepository.save(user);
 
       return true;
@@ -143,13 +137,13 @@ export class AuthService {
       email: string;
       userType: UserType;
       name: string;
+      vendorId?: string;
     };
   }> {
     const user = await this.userRepository.findOne({
       where: { email },
       relations: ["vendor", "customerProfile"],
     });
-
     if (!user || !(await bcrypt.compare(password, user.password))) {
       throw new Error("Invalid email or password");
     }
@@ -172,6 +166,7 @@ export class AuthService {
         userId: user.id,
         userType: user.userType,
         name: name ?? "Unknown",
+        vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -184,6 +179,7 @@ export class AuthService {
         email: user.email,
         userType: user.userType,
         name: "Unknown",
+        vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
       },
     };
   }

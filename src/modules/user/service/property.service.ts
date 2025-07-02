@@ -1,15 +1,42 @@
 import { AppDataSource } from "@config/ormconfig";
 import { Property } from "../entity/property";
 import { FindOptionsWhere, ILike } from "typeorm";
+import { CreateProperty } from "../dtos/property.dto";
+import { LocationService } from "./location.service";
 
 export class PropertyService {
   private repo = AppDataSource.getRepository(Property);
-
+  private locationService = new LocationService(AppDataSource);
   /**
    * Create a new property
    */
-  async create(data: Partial<Property>) {
-    const property = this.repo.create(data);
+  async create(data: CreateProperty) {
+    // pass the name = data.name, description = data.description, parent_id= data.localityId and data.latitude, longitude to the location entity create location and get locationId
+    const location = await this.locationService.createLocation({
+      name: data.name,
+      description: data.description,
+      parent_location_id: data.localityId,
+      latitude: data.latitude,
+      longitude: data.longitude,
+    });
+    // create a address with, location_id = locationId, street_address = data.streetAddress, landmark = data.landmark, is_primary = false
+    const address = await this.locationService.createAddress({
+      locationId: location.location_id,
+      street_address: data.streetAddress || "",
+      landmark: data.landmark || "",
+      is_primary: false,
+    });
+    console.log("Creating property with address:", address);
+    const property =  this.repo.create({
+      name: data.name,
+      description: data.description,
+      vendor: { id: data.vendorId },
+      type: data.type as "hotel" | "car_rental" | "tour",
+      amenities: data.amenities,
+      images: data.images,
+      active: data.isActive,
+      address
+    });
     return await this.repo.save(property);
   }
 
@@ -68,7 +95,7 @@ export class PropertyService {
     const allowedTypes = ["hotel", "car_rental", "tour"];
     const where: FindOptionsWhere<Property>[] = [
       { name: ILike(`%${term}%`) },
-      { location: ILike(`%${term}%`) },
+      { description: ILike(`%${term}%`) },
       ...(allowedTypes.includes(term) ? [{ type: term as any }] : []),
     ];
     return await this.repo.find({

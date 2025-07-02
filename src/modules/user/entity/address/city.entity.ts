@@ -10,9 +10,6 @@ export class City {
   @Column('varchar', { length: 100, nullable: false })
   name!: string;
 
-  @Column('varchar', { length: 100, nullable: true })
-  province!: string;
-
   @Column('varchar', { length: 100, default: 'Pakistan' })
   country!: string;
 

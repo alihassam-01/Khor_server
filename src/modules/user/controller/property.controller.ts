@@ -1,26 +1,27 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { PropertyService } from "../service/property.service";
 import { Property } from "../entity/property";
+import { Vendor } from "../entity/business";
+import { CreateProperty } from "../dtos/property.dto";
 
 export class PropertyController {
   constructor(private readonly propertyService: PropertyService) {}
 
   async createProperty(
-    req: FastifyRequest<{ Body: {
-      name: string;
-      description: string;
-      address: string;
-      vendorId: string;
-      type: string; // e.g., "hotel", "restaurant", etc.
-      amenities?: string[];
-      images?: string[];
-      isActive?: boolean;
-    } }>,
+    req: FastifyRequest<{
+      Body: CreateProperty;
+    }>,
     reply: FastifyReply
   ) {
     try {
-      const prpertyData = req.body as Partial<Property>;
-      const property = await this.propertyService.create(prpertyData);
+      const allowedTypes = ["hotel", "car_rental", "tour"] as const;
+      const type = allowedTypes.includes(req.body.type as any) ? req.body.type as "hotel" | "car_rental" | "tour" : "";
+      const propertyData = {
+        ...req.body,
+        type,
+        vendor: { id: req.body.vendorId } as Vendor, 
+      };
+      const property = await this.propertyService.create(propertyData);
       reply.send(property);
     } catch (error: any) {
       this.handleError(reply, error, "Error creating property", "10001");
@@ -43,7 +44,9 @@ export class PropertyController {
     try {
       const property = await this.propertyService.findById(req.params.id);
       if (!property) {
-        return reply.code(404).send({ message: "Property not found", code: "10003" });
+        return reply
+          .code(404)
+          .send({ message: "Property not found", code: "10003" });
       }
       reply.send(property);
     } catch (error: any) {
@@ -56,10 +59,17 @@ export class PropertyController {
     reply: FastifyReply
   ) {
     try {
-      const properties = await this.propertyService.findByVendor(req.params.vendorId);
+      const properties = await this.propertyService.findByVendor(
+        req.params.vendorId
+      );
       reply.send(properties);
     } catch (error: any) {
-      this.handleError(reply, error, "Error fetching properties by vendor", "10004");
+      this.handleError(
+        reply,
+        error,
+        "Error fetching properties by vendor",
+        "10004"
+      );
     }
   }
 
@@ -112,7 +122,12 @@ export class PropertyController {
     }
   }
 
-  private handleError(reply: FastifyReply, error: any, defaultMessage: string, code: string) {
+  private handleError(
+    reply: FastifyReply,
+    error: any,
+    defaultMessage: string,
+    code: string
+  ) {
     let parsedError = { message: defaultMessage, code };
     try {
       parsedError = JSON.parse(error.message);

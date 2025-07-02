@@ -353,24 +353,29 @@ export class LocationService {
     });
   }
 
-  async createAddress(
-    locationId: number,
-    street_address: string,
-    landmark: string,
-    is_primary: boolean
-  ): Promise<Address> {
-    const location = await this.getLocationById(locationId);
-    if (!location) {
-      throw new Error("Location not found");
-    }
-    const address = new Address();
-    address.location = location;
-    address.street_address = street_address;
-    address.landmark = landmark;
-    address.is_primary = is_primary;
-    const addressSaved = await this.addressRepository.save(address);
-    return addressSaved;
+ async createAddress({
+  locationId,
+  street_address,
+  landmark,
+  is_primary,
+}: {
+  locationId: number;
+  street_address: string;
+  landmark: string;
+  is_primary: boolean;
+}): Promise<Address> {
+  const location = await this.getLocationById(locationId);
+  if (!location) {
+    throw new Error("Location not found");
   }
+  const address = new Address();
+  address.location = location;
+  address.street_address = street_address;
+  address.landmark = landmark;
+  address.is_primary = is_primary;
+  return await this.addressRepository.save(address);
+}
+
 
   async getCityByLocationId(locationId: number): Promise<string | null> {
     if (!locationId) {

@@ -38,32 +38,40 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Check,
+  Index,
 } from "typeorm";
 import { Property } from "../property";
 import { RoomType } from "../room";
 import { Vehicle } from "../property/vehicle.entity";
 import { TourPackage } from "../property/tour-package.entity";
 
-@Entity({ name: "bookings" })
+@Entity("bookings")
+@Check(`"payment_status" IN ('pending', 'paid', 'refunded')`)
+@Check(`"booking_status" IN ('pending', 'confirmed', 'cancelled', 'completed')`)
+@Check(`"booking_type" IN ('hotel', 'car_rental', 'tour')`)
+@Index("idx_bookings_customer_id", ["customer_id"])
+@Index("idx_bookings_property_id", ["property"])
+@Index("idx_bookings_dates", ["check_in_date", "check_out_date"])
 export class Booking {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "uuid" })
+  @Column("uuid")
   customer_id!: string;
 
-  @ManyToOne(() => Property)
+  @ManyToOne(() => Property, { onDelete: "CASCADE" })
   @JoinColumn({ name: "property_id" })
   property!: Property;
 
-  @Column()
+  @Column({ type: "text" })
   booking_type!: "hotel" | "car_rental" | "tour";
 
   @ManyToOne(() => RoomType, { nullable: true })
   @JoinColumn({ name: "room_type_id" })
   roomType?: RoomType;
 
-  @Column({ nullable: true })
+  @Column({ type: "int", nullable: true, default: 1 })
   rooms_count?: number;
 
   @ManyToOne(() => Vehicle, { nullable: true })
@@ -74,7 +82,7 @@ export class Booking {
   @JoinColumn({ name: "tour_package_id" })
   tourPackage?: TourPackage;
 
-  @Column({ nullable: true })
+  @Column({ type: "int", nullable: true, default: 1 })
   participants_count?: number;
 
   @Column({ type: "date" })
@@ -83,21 +91,21 @@ export class Booking {
   @Column({ type: "date" })
   check_out_date!: string;
 
-  @Column({ type: "decimal", precision: 10, scale: 2 })
+  @Column({ type: "numeric", precision: 10, scale: 2 })
   total_amount!: number;
 
-  @Column({ default: "pending" })
+  @Column({ type: "text", default: "pending" })
   booking_status!: "pending" | "confirmed" | "cancelled" | "completed";
 
-  @Column({ default: "pending" })
+  @Column({ type: "text", default: "pending" })
   payment_status!: "pending" | "paid" | "refunded";
 
-  @Column({ nullable: true })
+  @Column({ type: "text", nullable: true })
   special_requests?: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: "timestamptz" })
   created_at!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: "timestamptz" })
   updated_at!: Date;
 }

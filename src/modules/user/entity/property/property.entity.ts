@@ -8,12 +8,14 @@ import {
   UpdateDateColumn,
   Check,
   Index,
+  JoinColumn,
 } from "typeorm";
 import { Vendor } from "../business";
 import { RoomType } from "../room";
 import { Vehicle } from "./vehicle.entity";
 import { TourPackage } from "./tour-package.entity";
 import { Deal } from "../bookings/deal.entity";
+import { Address } from "../address";
 
 @Entity("properties")
 @Check(`"type" IN ('hotel', 'car_rental', 'tour')`)
@@ -40,11 +42,9 @@ export class Property {
   @Column({ type: "text", nullable: true })
   description?: string;
 
-  @Column({ type: "text" })
-  location!: string;
-
-  @Column({ type: "text", nullable: true })
-  address?: string;
+  @ManyToOne(() => Address)
+  @JoinColumn({ name: "address_id" })
+  address!: Address;
 
   @Column({ type: "numeric", precision: 2, scale: 1, default: 0 })
   rating!: number;

@@ -9,10 +9,10 @@ export class RoomTypeController {
     req: FastifyRequest<{
       Body: {
         name: string;
-        basePrice: number;
-        maxOccupancy: number;
-        totalRooms: number;
-        typeDescription: string;
+        base_price: number;
+        max_occupancy: number;
+        total_rooms: number;
+        description: string;
         propertyId: string;
         images?: string[];
         amenities?: string[];
@@ -25,23 +25,22 @@ export class RoomTypeController {
     try {
       const {
         name,
-        basePrice,
-        maxOccupancy,
-        totalRooms,
-        typeDescription,
+        base_price,
+        max_occupancy,
+        total_rooms,
+        description,
         propertyId,
         images,
         amenities,
         active,
         size_sqm,
       } = req.body;
-
       const roomType = await this.roomTypeService.create({
         name,
-        base_price: basePrice,
-        max_occupancy: maxOccupancy,
-        total_rooms: totalRooms,
-        description: typeDescription,
+        base_price: base_price,
+        max_occupancy: max_occupancy,
+        total_rooms: total_rooms,
+        description: description,
         property: { id: propertyId } as any,
         images,
         amenities,
