@@ -15,9 +15,8 @@ export class PropertyService {
     const location = await this.locationService.createLocation({
       name: data.name,
       description: data.description,
-      parent_location_id: data.localityId,
-      latitude: data.latitude,
-      longitude: data.longitude,
+      parent_location_id: data.localityId as unknown as number,
+      plusCode: data.plusCode,
     });
     // create a address with, location_id = locationId, street_address = data.streetAddress, landmark = data.landmark, is_primary = false
     const address = await this.locationService.createAddress({

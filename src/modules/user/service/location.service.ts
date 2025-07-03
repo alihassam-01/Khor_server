@@ -6,7 +6,8 @@ import {
   LocationCategory,
 } from "@entity/location";
 import { DataSource } from "typeorm";
-import { Address } from "@entity/address";
+import { Address, City } from "@entity/address";
+import { CreateCityDto, CreateLocationDto } from "../dtos/location.dto";
 
 export class LocationService {
   private locationRepository: Repository<Location>;
@@ -14,6 +15,7 @@ export class LocationService {
   private categoryRepository: Repository<LocationCategory>;
   private categoryMappingRepository: Repository<LocationCategoryMapping>;
   private addressRepository: Repository<Address>;
+  private cityRepository: Repository<City>;
 
   constructor(dataSource: DataSource) {
     this.locationRepository = dataSource.getRepository(Location);
@@ -23,30 +25,42 @@ export class LocationService {
       LocationCategoryMapping
     );
     this.addressRepository = dataSource.getRepository(Address);
+    this.cityRepository = dataSource.getRepository(City);
   }
 
   // Location CRUD Operations
-  async createLocation(locationData: any): Promise<Location> {
+  async createLocation(locationData: CreateLocationDto): Promise<Location> {
     const location = new Location();
     location.name = locationData.name;
     location.slug = this.generateSlug(locationData.name);
-    location.description = locationData.description;
-    location.latitude = locationData.latitude;
-    location.longitude = locationData.longitude;
+    location.description = locationData.description ?? "";
+    location.plusCode = locationData.plusCode || "";
     location.location_order = locationData.location_order || 0;
 
-    if (locationData.parent_location_id !== undefined) {
-      location.parent = locationData.parent_location_id;
+    if (locationData.parent_location_id !== undefined && locationData.parent_location_id !== null) {
+      const parentLocation = await this.locationRepository.findOne({
+        where: { location_id: locationData.parent_location_id },
+      });
+      if (parentLocation) {
+        location.parent = parentLocation;
+      }
     }
     const savedLocation = await this.locationRepository.save(location);
     // Add attributes if provided
     if (locationData.attributes) {
+      const attributesObj: Record<string, string> = Array.isArray(locationData.attributes)
+        ? locationData.attributes.reduce((acc, attr) => {
+            if (attr.attributeKey && attr.attributeValue !== undefined) {
+              acc[attr.attributeKey] = attr.attributeValue;
+            }
+            return acc;
+          }, {} as Record<string, string>)
+        : locationData.attributes;
       await this.setLocationAttributes(
         savedLocation.location_id,
-        locationData.attributes
+        attributesObj
       );
     }
-
     // Add categories if provided
     if (locationData.categories) {
       await this.addLocationToCategories(
@@ -54,9 +68,35 @@ export class LocationService {
         locationData.categories
       );
     }
-
+    
     return savedLocation;
   }
+  
+  async createCity(cityData:CreateCityDto ): Promise<City> {
+    const location = await this.createLocation(cityData);
+
+    const city = new City();
+    city.name = cityData.name;
+    city.country = cityData.country ?? "Pakistan";
+    city.location = location;
+    return await this.cityRepository.save(city);
+  }
+
+  async getCityById(cityId: number): Promise<City | null> {
+    return await this.cityRepository.findOne({
+      where: { city_id: cityId },
+      relations: ["location"],
+    });
+  }
+
+  // get all cities
+  async getAllCities(): Promise<City[]> {
+    return await this.cityRepository.find({
+      relations: ["location"],
+    });
+  }
+
+
 
   async getLocationById(locationId: number): Promise<Location | null> {
     return await this.locationRepository.findOne({
@@ -95,10 +135,8 @@ export class LocationService {
     }
     if (locationData.description !== undefined)
       location.description = locationData.description;
-    if (locationData.latitude !== undefined)
-      location.latitude = locationData.latitude;
-    if (locationData.longitude !== undefined)
-      location.longitude = locationData.longitude;
+    if (locationData.plusCode !== undefined)
+      location.plusCode = locationData.plusCode;
     if (locationData.location_order !== undefined)
       location.location_order = locationData.location_order;
     if (locationData.parent_location_id !== undefined) {

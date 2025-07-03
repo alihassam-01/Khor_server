@@ -1,11 +1,12 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { LocationService } from "../service/location.service";
+import { CreateCityDto, CreateLocationDto } from "../dtos/location.dto";
 
 export class LocationController {
   constructor(private readonly locationService: LocationService) {}
 
   async createLocation(
-    req: FastifyRequest<{ Body: any }>,
+    req: FastifyRequest<{ Body: CreateLocationDto }>,
     reply: FastifyReply
   ) {
     try {
@@ -15,7 +16,27 @@ export class LocationController {
       this.handleError(error, reply);
     }
   }
+  
+  async createCity(
+    req: FastifyRequest<{ Body: CreateCityDto }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const city = await this.locationService.createCity(req.body);
+      reply.code(201).send(city);
+    } catch (error: any) {
+      this.handleError(error, reply);
+    }
+  }
 
+  async getAllCities(_: FastifyRequest, reply: FastifyReply) {
+    try {
+      const cities = await this.locationService.getAllCities();
+      reply.send(cities);
+    } catch (error: any) {
+      this.handleError(error, reply);
+    }
+  }
   async getLocationById(
     req: FastifyRequest<{ Params: { id: string } }>,
     reply: FastifyReply

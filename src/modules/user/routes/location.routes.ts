@@ -25,4 +25,14 @@ export default async function locationRoutes(fastify: FastifyInstance) {
   // Mapping routes
   fastify.post("/locations/map-attributes", locationController.setLocationAttributes.bind(locationController));
   fastify.post("/locations/map-categories", locationController.setLocationCategories.bind(locationController));
+
+
+  // city routes
+  fastify.post("/locations/city", locationController.createCity.bind(locationController));
+  fastify.get("/locations/cities", locationController.getAllCities.bind(locationController));
+  // fastify.get("/locations/cities/:id", locationController.getCityById.bind(locationController));
+  // fastify.get("/locations/city/slug/:slug", locationController.getCityBySlug.bind(locationController));
+  // fastify.put("/locations/cities/:id", locationController.updateCity.bind(locationController));
+  // fastify.delete("/locations/cities/:id", locationController.deleteCity.bind(locationController));
+  // fastify.get("/locations/cities/children/:cityId", locationController.getCityChildren.bind(locationController));
 }

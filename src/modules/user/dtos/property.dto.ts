@@ -4,8 +4,7 @@ export interface CreateProperty {
   streetAddress?: string;
   localityId: string;
   landmark?: string;
-  latitude?: number;
-  longitude?: number;
+  plusCode?: string;
   vendorId: string;
   type: string;
   amenities?: string[];

@@ -40,8 +40,8 @@ async function startServer() {
   });
 
   try {
-    await app.listen({ port: 3008 });
-    console.log("Server running on http://localhost:3008");
+    await app.listen({ port: 3008, host: '192.168.18.229' });
+    console.log("Server running on http://192.168.18.229:3008");
   } catch (err) {
     console.error("Error starting server:", err);
     process.exit(1);

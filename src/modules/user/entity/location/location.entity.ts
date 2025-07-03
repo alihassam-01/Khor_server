@@ -20,11 +20,8 @@ export class Location {
   @Column("varchar", { length: 255, nullable: false })
   name!: string;
 
-  @Column("decimal", { precision: 10, scale: 8 })
-  latitude!: number;
-
-  @Column("decimal", { precision: 11, scale: 8 })
-  longitude!: number;
+  @Column("varchar", { length: 20, nullable: true })
+  plusCode!: string;
 
   @Column("int", { default: 0 })
   location_order!: number;

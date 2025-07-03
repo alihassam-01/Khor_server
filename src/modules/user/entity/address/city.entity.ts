@@ -1,6 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
-// import { Locality } from "./locality.entity";
-
+import { Column, Entity, OneToOne, PrimaryGeneratedColumn, JoinColumn } from "typeorm";
+import { Location } from "@entity/location";
 
 @Entity('city')
 export class City {
@@ -13,12 +12,10 @@ export class City {
   @Column('varchar', { length: 100, default: 'Pakistan' })
   country!: string;
 
-  @Column('decimal', { precision: 10, scale: 8, nullable: true })
-  latitude!: number;
+  @Column({ name: 'location_id', nullable: true })
+  location_id!: number;
 
-  @Column('decimal', { precision: 11, scale: 8, nullable: true })
-  longitude!: number;
-
-  // @OneToMany(() => Locality, locality => locality.city)
-  // localities!: Locality[];
+  @OneToOne(() => Location, { nullable: true })
+  @JoinColumn({ name: 'location_id' })
+  location!: Location;
 }
