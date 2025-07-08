@@ -121,6 +121,25 @@ export class PropertyController {
       this.handleError(reply, error, "Error searching properties", "10008");
     }
   }
+  // getPropertiesByLocationId
+  async getPropertiesByLocationId(
+    req: FastifyRequest<{ Params: { locationId: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const properties = await this.propertyService.getPropertiesByLocationId(
+        Number(req.params.locationId)
+      );
+      reply.send(properties);
+    } catch (error: any) {
+      this.handleError(
+        reply,
+        error,
+        "Error fetching properties by location",
+        "10009"
+      );
+    }
+  }
 
   private handleError(
     reply: FastifyReply,

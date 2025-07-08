@@ -1,4 +1,4 @@
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import {
   Location,
   LocationAttributes,
@@ -61,6 +61,7 @@ export class LocationService {
         attributesObj
       );
     }
+
     // Add categories if provided
     if (locationData.categories) {
       await this.addLocationToCategories(
@@ -71,8 +72,8 @@ export class LocationService {
     
     return savedLocation;
   }
-  
-  async createCity(cityData:CreateCityDto ): Promise<City> {
+
+  async createCity(cityData: CreateCityDto): Promise<City> {
     const location = await this.createLocation(cityData);
 
     const city = new City();
@@ -451,6 +452,13 @@ export class LocationService {
     return null;
   }
 
+  // get all addresses by location ID
+  async getAddressesByLocationId(Locations: Location[]): Promise<Address[]> {
+    return await this.addressRepository.find({
+      where: { location: { location_id: In(Locations.map(location => location.location_id)) } },
+      order: { is_primary: "DESC" },
+    });
+  }
   // Utility Methods
   private generateSlug(text: string): string {
     return text

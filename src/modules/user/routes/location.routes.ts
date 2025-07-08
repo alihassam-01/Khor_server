@@ -11,7 +11,7 @@ export default async function locationRoutes(fastify: FastifyInstance) {
   fastify.get("/locations", locationController.getAllLocations.bind(locationController));
   fastify.get("/locations/:id", locationController.getLocationById.bind(locationController));
   fastify.get("/locations/slug/:slug", locationController.getLocationBySlug.bind(locationController));
-  fastify.post("/location", locationController.createLocation.bind(locationController));
+  fastify.post("/locations", locationController.createLocation.bind(locationController));
   fastify.put("/locations/:id", locationController.updateLocation.bind(locationController));
   fastify.delete("/locations/:id", locationController.deleteLocation.bind(locationController));
   fastify.get("/locations/children/:locationId", locationController.getLocationChildren.bind(locationController));

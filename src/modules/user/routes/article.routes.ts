@@ -8,8 +8,8 @@ export default async function articleRoutes(fastify: FastifyInstance) {
 
   fastify.post("/articles", articleController.createArticle.bind(articleController));
   fastify.get("/articles", articleController.listArticles.bind(articleController));
-  fastify.get("/articles/:id", articleController.getArticleById.bind(articleController));
   fastify.get("/articles/slug/:slug", articleController.getArticleBySlug.bind(articleController));
+  fastify.get("/articles/:id", articleController.getArticleById.bind(articleController));
   fastify.put("/articles/:id", articleController.updateArticle.bind(articleController));
   fastify.delete("/articles/:id", articleController.deleteArticle.bind(articleController));
 }

@@ -11,6 +11,7 @@ import {
 import { LocationAttributes, LocationCategoryMapping } from "@entity/location";
 // import { PackageLocation } from "@entity/package";
 import { Address } from "@entity/address";
+import { TourPackage } from "@entity/property";
 
 @Entity("location")
 export class Location {
@@ -59,8 +60,8 @@ export class Location {
   })
   categoryMappings!: LocationCategoryMapping[];
 
-  // @OneToMany(() => PackageLocation, (pl) => pl.location)
-  // packages!: PackageLocation[];
+  @OneToMany(() => TourPackage, (tourPackage) => tourPackage.destination)
+  destinations!: TourPackage[];
 
   @OneToMany(() => Address, (address) => address.location)
   addresses!: Address[];

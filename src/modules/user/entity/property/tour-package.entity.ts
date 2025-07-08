@@ -6,12 +6,14 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-  Check,
+  // Check,
+  JoinColumn,
 } from "typeorm";
-import { Property } from "./property.entity";
+import { Property } from "@entity/property";
+import { Location } from "@entity/location";
 
 @Entity("tour_packages")
-@Check(`"difficulty_level" IN ('easy', 'moderate', 'challenging')`)
+// @Check(`"difficulty_level" IN ('easy', 'moderate', 'challenging')`)
 @Index("idx_tour_packages_property_id", ["property"])
 export class TourPackage {
   @PrimaryGeneratedColumn("uuid")
@@ -48,10 +50,17 @@ export class TourPackage {
   images?: string[];
 
   @Column({ type: "text", nullable: true })
-  difficulty_level?: "easy" | "moderate" | "challenging";
+  category!: "standard" | "premium" | "luxury";
+
+  @Column({ type: "text", nullable: true })
+  type!: "hotel-only" | "car-rental" | "complete-package";
 
   @Column({ type: "boolean", default: true })
   active!: boolean;
+  // destinations: array of location IDs
+  @ManyToOne(() => Location, { nullable: true })
+  @JoinColumn({ name: "destination_id" })
+  destination?: Location;
 
   @CreateDateColumn({ type: "timestamptz" })
   created_at!: Date;

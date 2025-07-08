@@ -1,37 +1,24 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { TourPackageService } from "@modules/user/service";
 import { TourPackage } from "@entity/property";
+import { TourPackageReceiveDTO } from "../dtos/tourpackage.dto";
 
 export class TourPackageController {
   constructor(private readonly tourPackageService: TourPackageService) {}
 
   async create(
     req: FastifyRequest<{
-      Body: {
-        name: string;
-        description?: string;
-        duration_days: number;
-        max_participants: number;
-        price_per_person: number;
-        includes?: string[];
-        itinerary?: any;
-        images?: string[];
-        difficulty_level?: "easy" | "moderate" | "challenging";
-        property_id: string;
-      };
+      Body: TourPackageReceiveDTO;
     }>,
     reply: FastifyReply
   ) {
     try {
-      const {
-      property_id,
-      ...rest
-    } = req.body;
+      const { property_id, ...rest } = req.body;
 
-    const created = await this.tourPackageService.create({
-      ...rest,
-      property: { id: property_id } as TourPackage["property"], 
-    });
+      const created = await this.tourPackageService.create({
+        ...rest,
+        property: { id: property_id } as TourPackage["property"],
+      });
 
       reply.send(created);
     } catch (error: any) {
@@ -65,6 +52,25 @@ export class TourPackageController {
     }
   }
 
+  async findByLocationId(
+    req: FastifyRequest<{ Querystring: { locationId: number[] } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const tours = await this.tourPackageService.findByLocationId(
+        req.query.locationId
+      );
+      reply.send(tours);
+    } catch (error: any) {
+      this.handleError(
+        reply,
+        error,
+        "Error fetching tour packages by location",
+        "30004"
+      );
+    }
+  }
+
   async findByProperty(
     req: FastifyRequest<{ Params: { propertyId: string } }>,
     reply: FastifyReply
@@ -82,18 +88,7 @@ export class TourPackageController {
   async update(
     req: FastifyRequest<{
       Params: { id: string };
-      Body: {
-        name: string;
-        description?: string;
-        duration_days?: number;
-        max_participants?: number;
-        price_per_person?: number;
-        includes?: string[];
-        itinerary?: any; 
-        images?: string[];
-        difficulty_level?: "easy" | "moderate" | "challenging";
-        property: { id: string };
-      };
+      Body: TourPackageReceiveDTO;
     }>,
     reply: FastifyReply
   ) {

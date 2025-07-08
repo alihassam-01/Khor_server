@@ -1,6 +1,6 @@
 import { AppDataSource } from "@config/ormconfig";
 import { Property } from "../entity/property";
-import { FindOptionsWhere, ILike } from "typeorm";
+import { FindOptionsWhere, ILike, In } from "typeorm";
 import { CreateProperty } from "../dtos/property.dto";
 import { LocationService } from "./location.service";
 
@@ -37,6 +37,24 @@ export class PropertyService {
       address
     });
     return await this.repo.save(property);
+  }
+
+  //get property by locationId
+  // go to locations, get all the children location id, then go to address to get all the address id of all the children locations
+  // then go to property and get all the properties with address id in the list of address ids
+  async getPropertiesByLocationId(locationId: number) {
+    const location = await this.locationService.getLocationById(locationId);
+    if (!location) {
+      throw new Error("Location not found");
+    }
+    // get all the children locations of the given location
+    const childrenLocations = await this.locationService.getLocationChildren(locationId);
+    const addresses = await this.locationService.getAddressesByLocationId(childrenLocations);
+    const addressIds = addresses.map(address => address.address_id);
+    return await this.repo.find({
+      where: { address: { address_id: In(addressIds) } },
+      relations: ["vendor", "roomTypes", "vehicles", "tourPackages", "deals"],
+    });
   }
 
   /**

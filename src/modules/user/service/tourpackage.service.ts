@@ -1,6 +1,6 @@
 import { AppDataSource } from "@config/ormconfig";
 import { TourPackage } from "@modules/user/entity/property";
-import { ILike } from "typeorm";
+import { ILike, In } from "typeorm";
 
 export class TourPackageService {
   private repo = AppDataSource.getRepository(TourPackage);
@@ -43,6 +43,19 @@ export class TourPackageService {
   async update(id: string, updates: Partial<TourPackage>) {
     await this.repo.update(id, updates);
     return this.findById(id);
+  }
+
+  //  get by location_id in location_id[]
+  /**
+   * Get tour packages by location ID, the location_id is array of number in tour package entity
+   */
+  async findByLocationId(locationIds: number[]) {
+    return this.repo.find({
+      where: {
+        destination: In(locationIds),
+      },
+      relations: ["property", "destination"],
+    });
   }
 
   /**

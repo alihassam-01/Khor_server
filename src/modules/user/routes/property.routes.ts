@@ -30,6 +30,7 @@ fastify.post("/properties", propertyController.createProperty.bind(propertyContr
 fastify.get("/properties", propertyController.getAllProperties.bind(propertyController));
 fastify.get("/properties/:id", propertyController.getPropertyById.bind(propertyController));
 fastify.get("/properties/vendor/:vendorId", propertyController.getPropertiesByVendor.bind(propertyController));
+fastify.get("/properties/location/:locationId", propertyController.getPropertiesByLocationId.bind(propertyController));
 fastify.put("/properties/:id", propertyController.updateProperty.bind(propertyController));
 fastify.patch("/properties/:id/deactivate", propertyController.deactivateProperty.bind(propertyController));
 fastify.delete("/properties/:id", propertyController.deleteProperty.bind(propertyController));

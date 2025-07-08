@@ -9,6 +9,7 @@ export async function tourPackageRoutes(app: FastifyInstance) {
   app.post("/tour-packages", tourPackageController.create.bind(tourPackageController));
   app.get("/tour-packages", tourPackageController.findAll.bind(tourPackageController));
   app.get("/tour-packages/:id", tourPackageController.findById.bind(tourPackageController));
+  app.get("/tour-packages/location/:locationId", tourPackageController.findByLocationId.bind(tourPackageController));
   app.get("/tour-packages/property/:propertyId", tourPackageController.findByProperty.bind(tourPackageController));
   app.put("/tour-packages/:id", tourPackageController.update.bind(tourPackageController));
   app.patch("/tour-packages/:id/deactivate", tourPackageController.deactivate.bind(tourPackageController));
