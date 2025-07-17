@@ -7,6 +7,7 @@ import {
   OneToMany,
   ManyToOne,
   JoinColumn,
+  ManyToMany,
 } from "typeorm";
 import { LocationAttributes, LocationCategoryMapping } from "@entity/location";
 // import { PackageLocation } from "@entity/package";
@@ -60,8 +61,8 @@ export class Location {
   })
   categoryMappings!: LocationCategoryMapping[];
 
-  @OneToMany(() => TourPackage, (tourPackage) => tourPackage.destination)
-  destinations!: TourPackage[];
+ @ManyToMany(() => TourPackage, (tourPackage) => tourPackage.destinations)
+tourPackages?: TourPackage[];
 
   @OneToMany(() => Address, (address) => address.location)
   addresses!: Address[];

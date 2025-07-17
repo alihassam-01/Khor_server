@@ -53,7 +53,7 @@ export class TourPackageController {
   }
 
   async findByLocationId(
-    req: FastifyRequest<{ Querystring: { locationId: number[] } }>,
+    req: FastifyRequest<{ Querystring: { locationId: number[]} }>,
     reply: FastifyReply
   ) {
     try {
@@ -66,6 +66,26 @@ export class TourPackageController {
         reply,
         error,
         "Error fetching tour packages by location",
+        "30004"
+      );
+    }
+  }
+
+  // find by single location ID params
+  async findBySingleLocationId(
+    req: FastifyRequest<{ Params: { locationId: number } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const tours = await this.tourPackageService.findBySingleLocationId(
+        req.params.locationId
+      );
+      reply.send(tours);
+    } catch (error: any) {
+      this.handleError(
+        reply,
+        error,
+        "Error fetching tour packages by single location",
         "30004"
       );
     }
@@ -93,6 +113,7 @@ export class TourPackageController {
     reply: FastifyReply
   ) {
     try {
+      console.log("Updating tour package:", req.body);
       const updated = await this.tourPackageService.update(
         req.params.id,
         req.body as Partial<TourPackage>

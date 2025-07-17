@@ -7,13 +7,13 @@ import {
   UpdateDateColumn,
   Index,
   // Check,
-  JoinColumn,
+  ManyToMany,
+  JoinTable,
 } from "typeorm";
 import { Property } from "@entity/property";
 import { Location } from "@entity/location";
 
 @Entity("tour_packages")
-// @Check(`"difficulty_level" IN ('easy', 'moderate', 'challenging')`)
 @Index("idx_tour_packages_property_id", ["property"])
 export class TourPackage {
   @PrimaryGeneratedColumn("uuid")
@@ -57,10 +57,12 @@ export class TourPackage {
 
   @Column({ type: "boolean", default: true })
   active!: boolean;
-  // destinations: array of location IDs
-  @ManyToOne(() => Location, { nullable: true })
-  @JoinColumn({ name: "destination_id" })
-  destination?: Location;
+
+  @ManyToMany(() => Location)
+  @JoinTable({
+    name: "tour_package_destinations",
+  })
+  destinations?: Location[];
 
   @CreateDateColumn({ type: "timestamptz" })
   created_at!: Date;

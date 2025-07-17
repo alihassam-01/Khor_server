@@ -3,10 +3,12 @@ import { Property } from "../entity/property";
 import { FindOptionsWhere, ILike, In } from "typeorm";
 import { CreateProperty } from "../dtos/property.dto";
 import { LocationService } from "./location.service";
+import { City } from "@entity/address";
 
 export class PropertyService {
   private repo = AppDataSource.getRepository(Property);
   private locationService = new LocationService(AppDataSource);
+  private cityRepository = AppDataSource.getRepository(City);
   /**
    * Create a new property
    */
@@ -25,8 +27,7 @@ export class PropertyService {
       landmark: data.landmark || "",
       is_primary: false,
     });
-    console.log("Creating property with address:", address);
-    const property =  this.repo.create({
+    const property = this.repo.create({
       name: data.name,
       description: data.description,
       vendor: { id: data.vendorId },
@@ -34,7 +35,7 @@ export class PropertyService {
       amenities: data.amenities,
       images: data.images,
       active: data.isActive,
-      address
+      address,
     });
     return await this.repo.save(property);
   }
@@ -42,19 +43,84 @@ export class PropertyService {
   //get property by locationId
   // go to locations, get all the children location id, then go to address to get all the address id of all the children locations
   // then go to property and get all the properties with address id in the list of address ids
+  // async getPropertiesByLocationId(locationId: number) {
+  //   const location = await this.locationService.getLocationById(locationId);
+  //   if (!location) {
+  //     throw new Error("Location not found");
+  //   }
+  //   // get all the children locations of the given location
+  //   const childrenLocations = await this.locationService.getLocationChildren(locationId);
+  //   const addresses = await this.locationService.getAddressesByLocationId(childrenLocations);
+  //   const addressIds = addresses.map(address => address.address_id);
+  //   return await this.repo.find({
+  //     where: { address: { address_id: In(addressIds) } },
+  //     relations: ["vendor", "roomTypes", "vehicles", "tourPackages", "deals", "address", "address.location"],
+  //   });
+  // }
+
   async getPropertiesByLocationId(locationId: number) {
     const location = await this.locationService.getLocationById(locationId);
-    if (!location) {
-      throw new Error("Location not found");
-    }
-    // get all the children locations of the given location
-    const childrenLocations = await this.locationService.getLocationChildren(locationId);
-    const addresses = await this.locationService.getAddressesByLocationId(childrenLocations);
-    const addressIds = addresses.map(address => address.address_id);
-    return await this.repo.find({
+    if (!location) throw new Error("Location not found");
+
+    const childrenLocations = await this.locationService.getLocationChildren(
+      locationId
+    );
+    const addresses = await this.locationService.getAddressesByLocationId(
+      childrenLocations
+    );
+    const addressIds = addresses.map((address) => address.address_id);
+
+    const properties = await this.repo.find({
       where: { address: { address_id: In(addressIds) } },
-      relations: ["vendor", "roomTypes", "vehicles", "tourPackages", "deals"],
+      relations: [
+        "vendor",
+        "roomTypes",
+        "vehicles",
+        "tourPackages",
+        "deals",
+        "address",
+        "address.location",
+        "address.location.parent",
+      ],
     });
+
+    const enrichedProperties = await Promise.all(
+      properties.map(async (property) => {
+      const location = property.address?.location;
+      const hierarchy = await this.locationService.getLocationHierarchy(location);
+
+      // Find the city in the hierarchy (by checking if it exists in the city table)
+      let city = null;
+      for (const node of hierarchy) {
+        const foundCity = await this.cityRepository.findOne({
+        where: { location_id: node.location_id },
+        });
+        if (foundCity) {
+        city = { ...foundCity, type: "city" };
+        break;
+        }
+      }
+
+      // Find the locality as the first non-city node after city in the hierarchy
+      let locality = null;
+      if (city) {
+        const cityIndex = hierarchy.findIndex(
+        (node) => node.location_id === city.location_id
+        );
+        if (cityIndex !== -1 && hierarchy[cityIndex + 1]) {
+        locality = { ...hierarchy[cityIndex + 1], type: "locality" };
+        }
+      }
+
+      return {
+        ...property,
+        city,
+        locality,
+      };
+      })
+    );
+
+    return enrichedProperties;
   }
 
   /**

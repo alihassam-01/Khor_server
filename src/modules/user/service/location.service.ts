@@ -37,7 +37,10 @@ export class LocationService {
     location.plusCode = locationData.plusCode || "";
     location.location_order = locationData.location_order || 0;
 
-    if (locationData.parent_location_id !== undefined && locationData.parent_location_id !== null) {
+    if (
+      locationData.parent_location_id !== undefined &&
+      locationData.parent_location_id !== null
+    ) {
       const parentLocation = await this.locationRepository.findOne({
         where: { location_id: locationData.parent_location_id },
       });
@@ -48,7 +51,9 @@ export class LocationService {
     const savedLocation = await this.locationRepository.save(location);
     // Add attributes if provided
     if (locationData.attributes) {
-      const attributesObj: Record<string, string> = Array.isArray(locationData.attributes)
+      const attributesObj: Record<string, string> = Array.isArray(
+        locationData.attributes
+      )
         ? locationData.attributes.reduce((acc, attr) => {
             if (attr.attributeKey && attr.attributeValue !== undefined) {
               acc[attr.attributeKey] = attr.attributeValue;
@@ -69,7 +74,7 @@ export class LocationService {
         locationData.categories
       );
     }
-    
+
     return savedLocation;
   }
 
@@ -96,8 +101,6 @@ export class LocationService {
       relations: ["location"],
     });
   }
-
-
 
   async getLocationById(locationId: number): Promise<Location | null> {
     return await this.locationRepository.findOne({
@@ -392,29 +395,28 @@ export class LocationService {
     });
   }
 
- async createAddress({
-  locationId,
-  street_address,
-  landmark,
-  is_primary,
-}: {
-  locationId: number;
-  street_address: string;
-  landmark: string;
-  is_primary: boolean;
-}): Promise<Address> {
-  const location = await this.getLocationById(locationId);
-  if (!location) {
-    throw new Error("Location not found");
+  async createAddress({
+    locationId,
+    street_address,
+    landmark,
+    is_primary,
+  }: {
+    locationId: number;
+    street_address: string;
+    landmark: string;
+    is_primary: boolean;
+  }): Promise<Address> {
+    const location = await this.getLocationById(locationId);
+    if (!location) {
+      throw new Error("Location not found");
+    }
+    const address = new Address();
+    address.location = location;
+    address.street_address = street_address;
+    address.landmark = landmark;
+    address.is_primary = is_primary;
+    return await this.addressRepository.save(address);
   }
-  const address = new Address();
-  address.location = location;
-  address.street_address = street_address;
-  address.landmark = landmark;
-  address.is_primary = is_primary;
-  return await this.addressRepository.save(address);
-}
-
 
   async getCityByLocationId(locationId: number): Promise<string | null> {
     if (!locationId) {
@@ -455,7 +457,11 @@ export class LocationService {
   // get all addresses by location ID
   async getAddressesByLocationId(Locations: Location[]): Promise<Address[]> {
     return await this.addressRepository.find({
-      where: { location: { location_id: In(Locations.map(location => location.location_id)) } },
+      where: {
+        location: {
+          location_id: In(Locations.map((location) => location.location_id)),
+        },
+      },
       order: { is_primary: "DESC" },
     });
   }
@@ -467,5 +473,25 @@ export class LocationService {
       .replace(/\s+/g, "-") // Replace spaces with -
       .replace(/--+/g, "-") // Replace multiple - with single -
       .trim();
+  }
+  async getLocationHierarchy(location: Location): Promise<Location[]> {
+    const hierarchy: Location[] = [];
+    let current: Location | null = location;
+    const visited = new Set<number>();
+
+    while (current) {
+      if (visited.has(current.location_id)) {
+        // Detected a cycle, break to avoid infinite loop
+        break;
+      }
+      visited.add(current.location_id);
+      hierarchy.unshift(current); // insert at the beginning
+      current = await this.locationRepository.findOne({
+        where: { location_id: current.parent?.location_id },
+        relations: ["parent"],
+      });
+    }
+
+    return hierarchy; // [city, locality, ...]
   }
 }

@@ -1,10 +1,11 @@
 import { AppDataSource } from "@config/ormconfig";
 import { TourPackage } from "@modules/user/entity/property";
 import { ILike, In } from "typeorm";
+import { Location } from "@entity/location";
 
 export class TourPackageService {
   private repo = AppDataSource.getRepository(TourPackage);
-
+  private locationRepo = AppDataSource.getRepository(Location);
   /**
    * Create a new tour package
    */
@@ -41,23 +42,67 @@ export class TourPackageService {
    * Update a tour package by ID
    */
   async update(id: string, updates: Partial<TourPackage>) {
-    await this.repo.update(id, updates);
-    return this.findById(id);
+    try {
+      const { destinations, ...rest } = updates;
+
+      // Update scalar fields first
+      await this.repo.update(id, rest);
+
+      // If destinations (array of location IDs) is provided
+      if (destinations && Array.isArray(destinations)) {
+        // Fetch the corresponding Location entities
+        const locationEntities = await this.locationRepo.findBy({
+          location_id: In(destinations),
+        });
+
+        if (locationEntities.length !== destinations.length) {
+          throw new Error("Some destination IDs were not found.");
+        }
+
+        // Load existing tour package with its relations
+        const tour = await this.repo.findOne({
+          where: { id },
+          relations: ["destinations"],
+        });
+
+        if (!tour) throw new Error("Tour package not found");
+
+        // Assign new destinations and save
+        tour.destinations = locationEntities;
+        await this.repo.save(tour);
+      }
+
+      // Return updated tour package
+      return this.findById(id);
+    } catch (error) {
+      console.error("Error updating tour package:", error);
+      throw error;
+    }
   }
 
   //  get by location_id in location_id[]
   /**
-   * Get tour packages by location ID, the location_id is array of number in tour package entity
+   * Get tour packages by location IDs, where locationIds is an array of numbers
    */
   async findByLocationId(locationIds: number[]) {
     return this.repo.find({
       where: {
-        destination: In(locationIds),
+        destinations: In(locationIds),
       },
-      relations: ["property", "destination"],
+      relations: ["property", "destinations"],
     });
   }
-
+  /**
+   * Get tour packages by a single location ID
+   */
+  async findBySingleLocationId(locationId: number) {
+    return this.repo
+      .createQueryBuilder("tourPackage")
+      .leftJoinAndSelect("tourPackage.property", "property")
+      .leftJoinAndSelect("tourPackage.destinations", "destination")
+      .where("destination.location_id = :locationId", { locationId })
+      .getMany();
+  }
   /**
    * Soft delete (set active = false)
    */
