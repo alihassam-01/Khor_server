@@ -1,4 +1,4 @@
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import {
   Location,
   LocationAttributes,
@@ -6,7 +6,8 @@ import {
   LocationCategory,
 } from "@entity/location";
 import { DataSource } from "typeorm";
-import { Address } from "@entity/address";
+import { Address, City } from "@entity/address";
+import { CreateCityDto, CreateLocationDto } from "../dtos/location.dto";
 
 export class LocationService {
   private locationRepository: Repository<Location>;
@@ -14,6 +15,7 @@ export class LocationService {
   private categoryRepository: Repository<LocationCategory>;
   private categoryMappingRepository: Repository<LocationCategoryMapping>;
   private addressRepository: Repository<Address>;
+  private cityRepository: Repository<City>;
 
   constructor(dataSource: DataSource) {
     this.locationRepository = dataSource.getRepository(Location);
@@ -23,27 +25,45 @@ export class LocationService {
       LocationCategoryMapping
     );
     this.addressRepository = dataSource.getRepository(Address);
+    this.cityRepository = dataSource.getRepository(City);
   }
 
   // Location CRUD Operations
-  async createLocation(locationData: any): Promise<Location> {
+  async createLocation(locationData: CreateLocationDto): Promise<Location> {
     const location = new Location();
     location.name = locationData.name;
     location.slug = this.generateSlug(locationData.name);
-    location.description = locationData.description;
-    location.latitude = locationData.latitude;
-    location.longitude = locationData.longitude;
+    location.description = locationData.description ?? "";
+    location.plusCode = locationData.plusCode || "";
     location.location_order = locationData.location_order || 0;
 
-    if (locationData.parent_location_id !== undefined) {
-      location.parent = locationData.parent_location_id;
+    if (
+      locationData.parent_location_id !== undefined &&
+      locationData.parent_location_id !== null
+    ) {
+      const parentLocation = await this.locationRepository.findOne({
+        where: { location_id: locationData.parent_location_id },
+      });
+      if (parentLocation) {
+        location.parent = parentLocation;
+      }
     }
     const savedLocation = await this.locationRepository.save(location);
     // Add attributes if provided
     if (locationData.attributes) {
+      const attributesObj: Record<string, string> = Array.isArray(
+        locationData.attributes
+      )
+        ? locationData.attributes.reduce((acc, attr) => {
+            if (attr.attributeKey && attr.attributeValue !== undefined) {
+              acc[attr.attributeKey] = attr.attributeValue;
+            }
+            return acc;
+          }, {} as Record<string, string>)
+        : locationData.attributes;
       await this.setLocationAttributes(
         savedLocation.location_id,
-        locationData.attributes
+        attributesObj
       );
     }
 
@@ -56,6 +76,30 @@ export class LocationService {
     }
 
     return savedLocation;
+  }
+
+  async createCity(cityData: CreateCityDto): Promise<City> {
+    const location = await this.createLocation(cityData);
+
+    const city = new City();
+    city.name = cityData.name;
+    city.country = cityData.country ?? "Pakistan";
+    city.location = location;
+    return await this.cityRepository.save(city);
+  }
+
+  async getCityById(cityId: number): Promise<City | null> {
+    return await this.cityRepository.findOne({
+      where: { city_id: cityId },
+      relations: ["location"],
+    });
+  }
+
+  // get all cities
+  async getAllCities(): Promise<City[]> {
+    return await this.cityRepository.find({
+      relations: ["location"],
+    });
   }
 
   async getLocationById(locationId: number): Promise<Location | null> {
@@ -95,10 +139,8 @@ export class LocationService {
     }
     if (locationData.description !== undefined)
       location.description = locationData.description;
-    if (locationData.latitude !== undefined)
-      location.latitude = locationData.latitude;
-    if (locationData.longitude !== undefined)
-      location.longitude = locationData.longitude;
+    if (locationData.plusCode !== undefined)
+      location.plusCode = locationData.plusCode;
     if (locationData.location_order !== undefined)
       location.location_order = locationData.location_order;
     if (locationData.parent_location_id !== undefined) {
@@ -353,12 +395,17 @@ export class LocationService {
     });
   }
 
-  async createAddress(
-    locationId: number,
-    street_address: string,
-    landmark: string,
-    is_primary: boolean
-  ): Promise<Address> {
+  async createAddress({
+    locationId,
+    street_address,
+    landmark,
+    is_primary,
+  }: {
+    locationId: number;
+    street_address: string;
+    landmark: string;
+    is_primary: boolean;
+  }): Promise<Address> {
     const location = await this.getLocationById(locationId);
     if (!location) {
       throw new Error("Location not found");
@@ -368,8 +415,7 @@ export class LocationService {
     address.street_address = street_address;
     address.landmark = landmark;
     address.is_primary = is_primary;
-    const addressSaved = await this.addressRepository.save(address);
-    return addressSaved;
+    return await this.addressRepository.save(address);
   }
 
   async getCityByLocationId(locationId: number): Promise<string | null> {
@@ -408,6 +454,17 @@ export class LocationService {
     return null;
   }
 
+  // get all addresses by location ID
+  async getAddressesByLocationId(Locations: Location[]): Promise<Address[]> {
+    return await this.addressRepository.find({
+      where: {
+        location: {
+          location_id: In(Locations.map((location) => location.location_id)),
+        },
+      },
+      order: { is_primary: "DESC" },
+    });
+  }
   // Utility Methods
   private generateSlug(text: string): string {
     return text
@@ -416,5 +473,25 @@ export class LocationService {
       .replace(/\s+/g, "-") // Replace spaces with -
       .replace(/--+/g, "-") // Replace multiple - with single -
       .trim();
+  }
+  async getLocationHierarchy(location: Location): Promise<Location[]> {
+    const hierarchy: Location[] = [];
+    let current: Location | null = location;
+    const visited = new Set<number>();
+
+    while (current) {
+      if (visited.has(current.location_id)) {
+        // Detected a cycle, break to avoid infinite loop
+        break;
+      }
+      visited.add(current.location_id);
+      hierarchy.unshift(current); // insert at the beginning
+      current = await this.locationRepository.findOne({
+        where: { location_id: current.parent?.location_id },
+        relations: ["parent"],
+      });
+    }
+
+    return hierarchy; // [city, locality, ...]
   }
 }

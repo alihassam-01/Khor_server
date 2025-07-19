@@ -2,9 +2,9 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  OneToMany,
+  // OneToMany,
 } from "typeorm";
-import { Property } from "../property";
+// import { Property } from "../property";
 
 @Entity()
 export class BusinessType {
@@ -14,6 +14,6 @@ export class BusinessType {
   @Column({ unique: true })
   name!: string;
 
-  @OneToMany(() => Property, (profile) => profile.businessType)
-  property!: Property[];
+  // @OneToMany(() => Property, (profile) => profile.businessType)
+  // property!: Property[];
 }

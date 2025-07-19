@@ -38,6 +38,21 @@ export class AuthController {
       reply.code(400).send(parsedError);    }
   }
 
+  async resendVerificationEmail(
+    req: FastifyRequest<{
+      Body: {
+        email: string;
+      };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      await this.authService.resendVerificationEmail(req.body.email);
+      reply.send({ message: "Verification email sent successfully" });
+    } catch (error: any) {
+      reply.code(400).send({ error: error.message });
+    }
+  }
   async login(
     req: FastifyRequest<{
       Body: {

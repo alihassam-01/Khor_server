@@ -1,7 +1,7 @@
 // id, name, possible values string[], serviceTypeId(propertyTypeId)
 
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
-import { RoomTypeServiceOption } from "../room/roomType-serviceOption.entity";
+import { Column, Entity,PrimaryGeneratedColumn } from "typeorm";
+// import { RoomTypeServiceOption } from "../room/roomType-serviceOption.entity";
 // import { BookingItemOption } from "../bookings";
 
 @Entity("service_options")
@@ -27,9 +27,9 @@ export class ServiceOptions {
   })
   updatedAt!: Date; // Update timestamp
 
-  @OneToMany(
-    () => RoomTypeServiceOption,
-    (roomTypeServiceOption) => roomTypeServiceOption.serviceOption
-  )
-  roomTypes!: RoomTypeServiceOption[];
+  // @OneToMany(
+  //   () => RoomTypeServiceOption,
+  //   (roomTypeServiceOption) => roomTypeServiceOption.serviceOption
+  // )
+  // roomTypes!: RoomTypeServiceOption[];
 }

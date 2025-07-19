@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { Package } from '@entity/package';
+// import { Package } from '@entity/package';
 import { Property } from '@entity/property';
 import { ReviewStatus } from '@entity/ENUM/enum';
 
@@ -8,8 +8,8 @@ export class Review {
   @PrimaryGeneratedColumn()
   review_id!: number;
 
-  @ManyToOne(() => Package, pkg => pkg.reviews, { onDelete: 'CASCADE' })
-  package!: Package;
+  // @ManyToOne(() => Package, pkg => pkg.reviews, { onDelete: 'CASCADE' })
+  // package!: Package;
 
   @ManyToOne(() => Property, { onDelete: 'SET NULL' })
   property!: Property;

@@ -64,17 +64,15 @@ export class AuthService {
     });
 
     await this.userRepository.save(user);
-
     // Handling user profile based on type
-    if (userType === UserType.TRAVEL_AGENCY) {
+    if (userType === UserType.VENDOR) {
       const vendor = this.vendorRepository.create({
-        user, // Changed from userId to user
-        companyName: name, // Changed to match Vendor entity
+        user, // this links the Vendor to the User entity
       });
       await this.vendorRepository.save(vendor);
     } else {
       const customerProfile = this.customerProfileRepository.create({
-        user, // Changed from userId to user
+        user, // also use relation
         username: name,
       });
       await this.customerProfileRepository.save(customerProfile);
@@ -96,11 +94,9 @@ export class AuthService {
       const user = await this.userRepository.findOneBy({
         email: decoded.email,
       });
-
       if (!user || user.verificationToken !== token) {
         throw new Error("Invalid verification token");
       }
-
       user.isVerified = true;
       user.verificationToken = undefined;
       await this.userRepository.save(user);
@@ -109,6 +105,25 @@ export class AuthService {
     } catch (error: any) {
       throw new Error(`Email verification failed: ${error.message}`);
     }
+  }
+
+  async resendVerificationEmail(email: string): Promise<void> {
+    const user = await this.userRepository.findOneBy({ email });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (user.isVerified) {
+      throw new Error("Email is already verified");
+    }
+
+    const newToken = this.generateVerificationToken(email);
+    user.verificationToken = newToken;
+
+    await this.userRepository.save(user);
+
+    await this.mailService.sendVerificationEmail(email, newToken);
   }
 
   // Login logic
@@ -122,13 +137,13 @@ export class AuthService {
       email: string;
       userType: UserType;
       name: string;
+      vendorId?: string;
     };
   }> {
     const user = await this.userRepository.findOne({
       where: { email },
       relations: ["vendor", "customerProfile"],
     });
-
     if (!user || !(await bcrypt.compare(password, user.password))) {
       throw new Error("Invalid email or password");
     }
@@ -141,16 +156,17 @@ export class AuthService {
       throw new Error("JWT_SECRET is not configured");
     }
 
-    const name =
-      user.userType === UserType.TRAVEL_AGENCY
-        ? user.vendor?.companyName ?? "Unknown Agency"
-        : user.customerProfile?.username;
+    const name = "Unknown"; // Placeholder for name, can be replaced with actual logic
+    // user.userType === UserType.VENDOR
+    //   ? user.vendor?.companyName ?? "Unknown Agency"
+    //   : user.customerProfile?.username;
 
     const token = jwt.sign(
       {
         userId: user.id,
         userType: user.userType,
         name: name ?? "Unknown",
+        vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -162,7 +178,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         userType: user.userType,
-        name: name ?? "Unknown",
+        name: "Unknown",
+        vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
       },
     };
   }
