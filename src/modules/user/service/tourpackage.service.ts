@@ -2,10 +2,12 @@ import { AppDataSource } from "@config/ormconfig";
 import { TourPackage } from "@modules/user/entity/property";
 import { ILike, In } from "typeorm";
 import { Location } from "@entity/location";
+import { LocationHelperService } from "./helper/location-helper.service";
 
 export class TourPackageService {
   private repo = AppDataSource.getRepository(TourPackage);
   private locationRepo = AppDataSource.getRepository(Location);
+  private locationHelper = new LocationHelperService();
   /**
    * Create a new tour package
    */
@@ -18,14 +20,29 @@ export class TourPackageService {
    * Get all tour packages
    */
   async findAll() {
-    return this.repo.find({ relations: ["property"] });
+    return this.repo.find({ relations: ["property", "destinations"] });
   }
 
   /**
    * Get a tour package by ID
    */
-  async findById(id: string) {
-    return this.repo.findOne({ where: { id }, relations: ["property"] });
+    async findById(id: string) {
+    const tour = await this.repo.findOne({ 
+      where: { id }, 
+      relations: ["property", "property.address", "property.address.location", "destinations"] 
+    });
+
+    if (!tour) return null;
+    
+    // Enrich property with location data if it exists
+    if (tour.property) {
+      return {
+        ...tour,
+        property: await this.locationHelper.enrichWithLocationData(tour.property)
+      };
+    }
+    
+    return tour;
   }
 
   /**
