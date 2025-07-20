@@ -27,9 +27,6 @@
 //   // @OneToOne(() => RoomType, roomType => roomType.booking)
 //   // roomType!: RoomType;
 
-//   @OneToOne(() => Transactions, transaction => transaction.booking)
-//   transaction!: Transactions;
-// }
 import {
   Column,
   CreateDateColumn,
@@ -40,11 +37,13 @@ import {
   UpdateDateColumn,
   Check,
   Index,
+  OneToOne,
 } from "typeorm";
 import { Property } from "../property";
 import { RoomType } from "../room";
 import { Vehicle } from "../property/vehicle.entity";
 import { TourPackage } from "../property/tour-package.entity";
+import { Transactions } from "./transactions.entity";
 
 @Entity("bookings")
 @Check(`"payment_status" IN ('pending', 'paid', 'refunded')`)
@@ -71,7 +70,7 @@ export class Booking {
   @JoinColumn({ name: "room_type_id" })
   roomType?: RoomType;
 
-  @Column({ type: "int", nullable: true, default: 1 })
+  @Column({ type: "int", nullable: true })
   rooms_count?: number;
 
   @ManyToOne(() => Vehicle, { nullable: true })
@@ -108,4 +107,7 @@ export class Booking {
 
   @UpdateDateColumn({ type: "timestamptz" })
   updated_at!: Date;
+  @OneToOne(() => Transactions, (transaction) => transaction.booking)
+  transaction!: Transactions;
 }
+// }

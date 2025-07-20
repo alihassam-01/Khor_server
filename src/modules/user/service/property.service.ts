@@ -68,41 +68,6 @@ export class PropertyService {
       ],
     });
 
-    // const enrichedProperties = await Promise.all(
-    //   properties.map(async (property) => {
-    //   const location = property.address?.location;
-    //   const hierarchy = await this.locationService.getLocationHierarchy(location);
-
-    //   // Find the city in the hierarchy (by checking if it exists in the city table)
-    //   let city = null;
-    //   for (const node of hierarchy) {
-    //     const foundCity = await this.cityRepository.findOne({
-    //     where: { location_id: node.location_id },
-    //     });
-    //     if (foundCity) {
-    //     city = { ...foundCity, type: "city" };
-    //     break;
-    //     }
-    //   }
-
-    //   // Find the locality as the first non-city node after city in the hierarchy
-    //   let locality = null;
-    //   if (city) {
-    //     const cityIndex = hierarchy.findIndex(
-    //     (node) => node.location_id === city.location_id
-    //     );
-    //     if (cityIndex !== -1 && hierarchy[cityIndex + 1]) {
-    //     locality = { ...hierarchy[cityIndex + 1], type: "locality" };
-    //     }
-    //   }
-
-    //   return {
-    //     ...property,
-    //     city,
-    //     locality,
-    //   };
-    //   })
-    // );
     const enrichedProperties = await Promise.all(
       properties.map((property) => this.locationHelper.enrichWithLocationData(property))
     );

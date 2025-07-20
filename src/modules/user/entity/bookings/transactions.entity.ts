@@ -8,8 +8,8 @@ export class Transactions {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ type: "int", nullable: false })
-  customer_id!: number;
+  @Column({ type: "uuid", nullable: false })
+  customer_id!: string;
 
   @ManyToOne(() => Booking, { onDelete: "CASCADE" })
   booking!: Booking;

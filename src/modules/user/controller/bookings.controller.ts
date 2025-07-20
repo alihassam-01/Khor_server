@@ -110,6 +110,17 @@ export class BookingController {
       this.handleError(reply, error, "Error updating payment status", "50009");
     }
   }
+  async addTransaction(
+    req: FastifyRequest<{ Params: { id: string }; Body: { amount: number; payment_method: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const transaction = await this.bookingService.addTransaction(req.params.id, req.body);
+      reply.send(transaction);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error adding transaction", "50010");
+    }
+  }
 
   private handleError(reply: FastifyReply, error: any, defaultMessage: string, code: string) {
     let parsed = { message: defaultMessage, code };
