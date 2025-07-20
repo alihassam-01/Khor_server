@@ -13,7 +13,8 @@ export async function bookingRoutes(app: FastifyInstance) {
   app.get("/bookings/property/:propertyId", bookingsController.findByProperty.bind(bookingsController));
   app.put("/bookings/:id", bookingsController.update.bind(bookingsController));
   app.delete("/bookings/:id", bookingsController.delete.bind(bookingsController));
-
   app.patch("/bookings/:id/status", bookingsController.updateStatus.bind(bookingsController));
   app.patch("/bookings/:id/payment-status", bookingsController.updatePaymentStatus.bind(bookingsController));
+
+  app.post("/bookings/:id/transactions", bookingsController.addTransaction.bind(bookingsController));
 }

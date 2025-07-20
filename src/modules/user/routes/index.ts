@@ -10,12 +10,13 @@ import { vehicleRoutes } from './vehicle.routes';
 // import hotelRoutes from './hotel.routes';
 import { articleTagRoutes } from './articleTag.routes';
 import { tagRoutes } from './tag.routes';
-
+import { bookingRoutes } from './bookings.route';
 const routes = [
   authRoutes,
   locationRoutes,
   articleRoutes,
   propertyRoutes,
+  bookingRoutes,
   roomTypeRoutes,
   tourPackageRoutes,
   articleTagRoutes,

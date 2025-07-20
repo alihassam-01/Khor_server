@@ -1,6 +1,7 @@
 import { AppDataSource } from "@config/ormconfig";
-import { Booking } from "@entity/bookings";
-import { Between} from "typeorm";
+import { Booking, Transactions } from "@entity/bookings";
+import { Between } from "typeorm";
+import { Property, TourPackage } from "../entity/property";
 
 export class BookingService {
   private repo = AppDataSource.getRepository(Booking);
@@ -8,11 +9,23 @@ export class BookingService {
   /**
    * Create a new booking
    */
-  async create(data: Partial<Booking>) {
-    const booking = this.repo.create(data);
+  async create(data: any) {
+    const bookingData: any = {
+      ...data,
+      property: data.property || ({ id: data.property_id } as Property),
+      tourPackage:
+        data.tourPackage ||
+        (data.tour_package_id
+          ? ({ id: data.tour_package_id } as TourPackage)
+          : undefined),
+    };
+
+    delete bookingData.property_id;
+    delete bookingData.tour_package_id;
+
+    const booking = this.repo.create(bookingData);
     return this.repo.save(booking);
   }
-
   /**
    * Get all bookings with their related entities
    */
@@ -95,5 +108,29 @@ export class BookingService {
   async updatePaymentStatus(id: string, status: Booking["payment_status"]) {
     await this.repo.update(id, { payment_status: status });
     return this.findById(id);
+  }
+
+  /**
+   * Add a transaction to a booking
+   */
+  async addTransaction(
+    bookingId: string,
+    transactionData: Partial<Transactions>
+  ) {
+    const booking = await this.findById(bookingId);
+    if (!booking) {
+      throw new Error("Booking not found");
+    }
+    const transaction = new Transactions();
+    transaction.booking = booking;
+    transaction.amount = transactionData.amount || 0;
+    transaction.payment_method = transactionData.payment_method || "unknown";
+    transaction.transaction_date = new Date();
+    transaction.status = transactionData.status || "pending";
+    transaction.customer_id = booking.customer_id;
+    if (transaction.status === "paid") {
+      await this.updatePaymentStatus(bookingId, "paid");
+    }
+    return AppDataSource.getRepository(Transactions).save(transaction);
   }
 }
