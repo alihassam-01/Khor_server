@@ -1,6 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne} from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, Index} from "typeorm";
 import { Transactions } from "./transactions.entity";
 @Entity("payments")
+@Index("idx_payments_transaction_id", ["transaction"])
+@Index("idx_payments_status", ["status"])
+@Index("idx_payments_card_brand", ["card_brand"])
+
 export class Payment {
     @PrimaryGeneratedColumn("uuid")
     id!: string;
