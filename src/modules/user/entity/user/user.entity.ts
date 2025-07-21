@@ -1,9 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, OneToMany } from 'typeorm';
 // import { TravelAgencyProfile } from './travel-agency-profile.entity';
 import { CustomerProfile } from './customer-profile.entity';
 import { UserType } from '@entity/ENUM/enum';
 import { Vendor } from '../business';
 import { Address } from '../address';
+import { Booking } from '../bookings';
 
 @Entity()
 export class User {
@@ -38,6 +39,10 @@ export class User {
 
   @OneToOne(() => CustomerProfile, (profile) => profile.user, { nullable: true })
   customerProfile?: CustomerProfile;
+
+  @OneToMany(() => Booking, (booking) => booking.customer)
+  bookings?: Booking[];
+
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt!: Date;
