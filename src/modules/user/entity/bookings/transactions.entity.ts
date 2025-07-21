@@ -1,8 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, Index } from "typeorm";
 import { Booking } from "./booking.entity";
 import { Payment } from "./payment.entity";
 
+
 @Entity()
+@Index("idx_transactions_customer_id", ["customer_id"])
+@Index("idx_transactions_booking_id", ["booking"])
+@Index("idx_transactions_status", ["status"])
+@Index("idx_transactions_transaction_date", ["transaction_date"])
 export class Transactions {
   @PrimaryGeneratedColumn()
   id!: number;
