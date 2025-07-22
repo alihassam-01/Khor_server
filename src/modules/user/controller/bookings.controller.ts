@@ -1,17 +1,35 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { BookingService } from "@modules/user/service";
 import { Booking } from "@entity/bookings";
+import { CreateBookingDto, PaymentDetailsDto } from "../dtos/booking.dto";
 
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}
 
   async create(
-    req: FastifyRequest<{ Body: Partial<Booking> }>,
+    req: FastifyRequest<{ Body: { bookingData: CreateBookingDto, paymentData: PaymentDetailsDto } }>,
     reply: FastifyReply
   ) {
     try {
-      const created = await this.bookingService.create(req.body);
-      reply.send(created);
+      const { paymentData, bookingData } = req.body;
+      const created = await this.bookingService.create(bookingData, paymentData);
+         const response = {
+      status: 'success',
+      data: {
+        booking: {
+          ...created.booking,
+          customer: undefined, // Remove circular references
+          property: undefined,
+          transaction: undefined
+        },
+        transaction: {
+          ...created.transaction,
+          booking: undefined
+        },
+        paymentResult: created.paymentResult
+      }
+    };
+    reply.send(response);
     } catch (error: any) {
       this.handleError(reply, error, "Error creating booking", "50001");
     }
@@ -38,7 +56,18 @@ export class BookingController {
       this.handleError(reply, error, "Error fetching booking", "50003");
     }
   }
-
+ async findByVendorId(
+    req: FastifyRequest<{ Params: { vendorId: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const bookings = await this.bookingService.findByVendorId(req.params.vendorId);
+      if (!bookings) return reply.code(404).send({ message: "Not found", code: "40402" });
+      reply.send(bookings);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error fetching bookings by vendor", "50003");
+    }
+  }
   async findByCustomer(
     req: FastifyRequest<{ Params: { customerId: string } }>,
     reply: FastifyReply
