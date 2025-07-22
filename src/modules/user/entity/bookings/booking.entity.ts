@@ -53,7 +53,7 @@ export class Booking {
 
   @ManyToOne(() => TourPackage, { nullable: true })
   @JoinColumn({ name: "tour_package_id" })
-  tourPackage?: TourPackage;
+  tourPackages?: TourPackage;
 
   @Column({ type: "int", nullable: true, default: 1 })
   participants_count?: number;

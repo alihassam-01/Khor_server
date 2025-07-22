@@ -2,9 +2,10 @@ import { AppDataSource } from "@config/ormconfig";
 import { Booking, Payment, Transactions } from "@entity/bookings";
 import { Property, TourPackage } from "../entity/property";
 import { CreateBookingDto, PaymentDetailsDto } from "../dtos/booking.dto";
-import { Between, DataSource } from "typeorm";
+import { Between, DataSource, In } from "typeorm";
 import { RoomType } from "../entity/room";
 import { User } from "../entity/user";
+import { LocationHelperService } from "./helper/location-helper.service";
 
 export class BookingService {
   private repo = AppDataSource.getRepository(Booking);
@@ -15,7 +16,7 @@ export class BookingService {
   private userRepository = AppDataSource.getRepository(User);
 
   private dataSource: DataSource = AppDataSource;
-
+  private locationHelper = new LocationHelperService();
   async create(bookingData: CreateBookingDto, paymentData: PaymentDetailsDto) {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -27,7 +28,6 @@ export class BookingService {
       // get the user from user usign customer_id
       booking.customer = await this.userRepository.findOneByOrFail({
         id: bookingData.customer_id,
-      
       });
       booking.booking_type = bookingData.booking_type;
       booking.total_amount = bookingData.total_amount;
@@ -57,7 +57,7 @@ export class BookingService {
         bookingData.booking_type === "tour" &&
         bookingData.tour_package_id
       ) {
-        booking.tourPackage = await this.tourPackageRepository.findOneByOrFail({
+        booking.tourPackages = await this.tourPackageRepository.findOneByOrFail({
           id: bookingData.tour_package_id,
         });
       }
@@ -112,10 +112,11 @@ export class BookingService {
           // payment.last4_digits = paymentMethod.card.last4;
           // payment.card_brand = paymentMethod.card.brand;
           payment.payment_processor_id = paymentResult.id;
-          payment.last4_digits = "1234"; 
+          payment.last4_digits = "1234";
           payment.card_brand = "VISA";
           if (paymentResult.status === "succeeded") {
             savedBooking.payment_status = "paid";
+            booking.payment_status = "paid";
           } else {
             // transaction.failure_reason = paymentResult.last_payment_error?.message || "Payment failed";
           }
@@ -182,7 +183,7 @@ export class BookingService {
    */
   async findAll() {
     return this.repo.find({
-      relations: ["property", "roomType", "vehicle", "tourPackage"],
+      relations: ["property", "roomType", "vehicle", "tourPackages"],
     });
   }
 
@@ -192,17 +193,51 @@ export class BookingService {
   async findById(id: string) {
     return this.repo.findOne({
       where: { id },
-      relations: ["property", "roomType", "vehicle", "tourPackage"],
+      relations: ["property", "roomType", "vehicle", "tourPackages"],
     });
   }
 
+  /**
+   * Get bookings by vendor ID
+   */
+  async findByVendorId(vendorId: string) {
+
+    // First get properties with basic relations
+    const properties = await this.propertyRepository.find({
+      where: { vendor: { id: vendorId } },
+      relations: ["vendor", "deals",  "address",
+        "address.location",
+        "address.location.parent"],
+    });
+    // Enrich properties with location data
+    const enrichedProperties = await Promise.all(
+      properties.map((property) =>
+        this.locationHelper.enrichWithLocationData(property)
+      )
+    );
+    // Create a map for quick lookup
+    const propertyMap = new Map(enrichedProperties.map((p) => [p.id, p]));
+
+    const bookings = await this.repo.find({
+      where: { property: { id: In(enrichedProperties.map((p) => p.id)) } },
+      relations: ["property", "roomType", "vehicle", "tourPackages", "tourPackages.destinations"],
+    });
+
+    // Replace each booking's property with the enriched version
+    return bookings.map((booking) => {
+      return {
+        ...booking,
+        property: propertyMap.get(booking.property.id),
+      };
+    });
+  }
   /**
    * Get bookings for a specific customer
    */
   async findByCustomer(customerId: string) {
     return this.repo.find({
       where: { customer: { id: customerId } },
-      relations: ["property", "roomType", "vehicle", "tourPackage"],
+      relations: ["property", "roomType", "vehicle", "tourPackages"],
       order: { created_at: "DESC" },
     });
   }
@@ -213,7 +248,7 @@ export class BookingService {
   async findByProperty(propertyId: string) {
     return this.repo.find({
       where: { property: { id: propertyId } },
-      relations: ["property", "roomType", "vehicle", "tourPackage"],
+      relations: ["property", "roomType", "vehicle", "tourPackages"],
     });
   }
 

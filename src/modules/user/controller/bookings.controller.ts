@@ -56,7 +56,18 @@ export class BookingController {
       this.handleError(reply, error, "Error fetching booking", "50003");
     }
   }
-
+ async findByVendorId(
+    req: FastifyRequest<{ Params: { vendorId: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const bookings = await this.bookingService.findByVendorId(req.params.vendorId);
+      if (!bookings) return reply.code(404).send({ message: "Not found", code: "40402" });
+      reply.send(bookings);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error fetching bookings by vendor", "50003");
+    }
+  }
   async findByCustomer(
     req: FastifyRequest<{ Params: { customerId: string } }>,
     reply: FastifyReply

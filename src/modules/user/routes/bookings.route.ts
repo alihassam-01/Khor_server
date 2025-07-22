@@ -9,6 +9,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   app.post("/bookings", bookingsController.create.bind(bookingsController));
   app.get("/bookings", bookingsController.findAll.bind(bookingsController));
   app.get("/bookings/:id", bookingsController.findById.bind(bookingsController));
+  app.get("/bookings/vendor/:vendorId", bookingsController.findByVendorId.bind(bookingsController));
   app.get("/bookings/customer/:customerId", bookingsController.findByCustomer.bind(bookingsController));
   app.get("/bookings/property/:propertyId", bookingsController.findByProperty.bind(bookingsController));
   app.put("/bookings/:id", bookingsController.update.bind(bookingsController));

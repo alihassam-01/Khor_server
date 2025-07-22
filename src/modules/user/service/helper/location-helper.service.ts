@@ -33,6 +33,7 @@ export class LocationHelperService {
     );
     const city = await this.findCityInHierarchy(hierarchy);
     const locality = this.findLocalityInHierarchy(hierarchy, city);
+
     return {
       ...entity,
       city,
