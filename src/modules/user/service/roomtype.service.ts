@@ -1,10 +1,13 @@
 import { AppDataSource } from "@config/ormconfig";
 import { RoomType } from "../entity/room";
 import { ILike } from "typeorm";
+import { LocationHelperService } from "./helper/location-helper.service";
+import { Property } from "@entity/property";
 
 export class RoomTypeService {
   private repo = AppDataSource.getRepository(RoomType);
-
+  private locationHelper = new LocationHelperService();
+  private propertyRepo = AppDataSource.getRepository(Property);
   /**
    * Create a new room type
    */
@@ -23,8 +26,31 @@ export class RoomTypeService {
   /**
    * Get a room type by ID
    */
-  async findById(id: string) {
-    return this.repo.findOne({ where: { id }, relations: ["property"] });
+  async findById(roomId: string) {
+    console.log("INTO THE ROOM TYPE FETCH: ", roomId)
+
+    const properties = await this.propertyRepo.find({
+      where: {roomTypes: {id: roomId}},
+         relations: ["address",
+        "address.location",
+        "address.location.parent"],
+    });
+
+     const enrichedProperty = await Promise.all(
+      properties.map((property: Property) =>
+        this.locationHelper.enrichWithLocationData(property)
+      )
+    );
+    // Create a map for quick lookup
+    // const propertyMap = new Map(enrichedProperties.map((p) => [p.id, p]));
+
+    const room =  await this.repo.findOne({ where: { id: roomId } });
+    console.log("ROOM : ", {room,
+      property: enrichedProperty});
+    return {
+      room,
+      property: enrichedProperty
+    };
   }
 
   /**
