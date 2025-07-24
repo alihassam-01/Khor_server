@@ -27,7 +27,6 @@ export class RoomTypeService {
    * Get a room type by ID
    */
   async findById(roomId: string) {
-    console.log("INTO THE ROOM TYPE FETCH: ", roomId)
 
     const properties = await this.propertyRepo.find({
       where: {roomTypes: {id: roomId}},
@@ -45,8 +44,7 @@ export class RoomTypeService {
     // const propertyMap = new Map(enrichedProperties.map((p) => [p.id, p]));
 
     const room =  await this.repo.findOne({ where: { id: roomId } });
-    console.log("ROOM : ", {room,
-      property: enrichedProperty});
+
     return {
       room,
       property: enrichedProperty
