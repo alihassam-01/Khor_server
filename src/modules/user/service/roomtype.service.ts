@@ -27,15 +27,11 @@ export class RoomTypeService {
    * Get a room type by ID
    */
   async findById(roomId: string) {
-
     const properties = await this.propertyRepo.find({
-      where: {roomTypes: {id: roomId}},
-         relations: ["address",
-        "address.location",
-        "address.location.parent"],
+      where: { roomTypes: { id: roomId } },
+      relations: ["address", "address.location", "address.location.parent"],
     });
-
-     const enrichedProperty = await Promise.all(
+    const enrichedProperty = await Promise.all(
       properties.map((property: Property) =>
         this.locationHelper.enrichWithLocationData(property)
       )
@@ -43,11 +39,11 @@ export class RoomTypeService {
     // Create a map for quick lookup
     // const propertyMap = new Map(enrichedProperties.map((p) => [p.id, p]));
 
-    const room =  await this.repo.findOne({ where: { id: roomId } });
+    const room = await this.repo.findOne({ where: { id: roomId } });
 
     return {
       room,
-      property: enrichedProperty
+      property: enrichedProperty,
     };
   }
 
