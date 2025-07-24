@@ -17,9 +17,9 @@ export class LocationHelperService {
    * @param entity The entity containing an address with location
    * @returns The enriched entity with city and locality information
    */
-  public async enrichWithLocationData<T extends { address?: { location?: any } }>(
-    entity: T
-  ): Promise<T & { city: any; locality: any }> {
+  public async enrichWithLocationData<
+    T extends { address?: { location?: any } }
+  >(entity: T): Promise<T & { city: any; locality: any }> {
     if (!entity.address?.location) {
       return {
         ...entity,
@@ -38,6 +38,57 @@ export class LocationHelperService {
       ...entity,
       city,
       locality,
+    };
+  }
+
+  public async enrichTourPackageWithCities<T extends { destinations?: any[] }>(
+    tourPackage: T,
+    cityCache: Map<number, any> = new Map()
+  ): Promise<T & { cities: any[] }> {
+    if (!tourPackage.destinations || tourPackage.destinations.length === 0) {
+      return {
+        ...tourPackage,
+        cities: [],
+      };
+    }
+    const hierarchyMap: Record<number, any[]> = {};
+    const cities: any[] = [];
+
+    for (const destination of tourPackage.destinations) {
+      const locationId = destination.location_id;
+
+      // Skip if already cached
+      if (cityCache.has(locationId)) {
+        const cachedCity = cityCache.get(locationId);
+        if (
+          cachedCity &&
+          !cities.some((c) => c.city_id === cachedCity.city_id)
+        ) {
+          cities.push(cachedCity);
+        }
+        continue;
+      }
+
+      // Fetch hierarchy and find city
+      const hierarchy = await this.locationService.getLocationHierarchy(
+        destination
+      );
+      hierarchyMap[locationId] = hierarchy;
+
+      const city = await this.findCityInHierarchy(hierarchy);
+      if (city) {
+        cityCache.set(locationId, city);
+        if (!cities.some((c) => c.city_id === city.city_id)) {
+          cities.push(city);
+        }
+      } else {
+        cityCache.set(locationId, null); // Cache null to avoid retrying
+      }
+    }
+
+    return {
+      ...tourPackage,
+      cities,
     };
   }
 

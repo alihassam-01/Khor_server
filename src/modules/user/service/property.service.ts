@@ -41,7 +41,7 @@ export class PropertyService {
     });
     return await this.repo.save(property);
   }
-  
+
   async getPropertiesByLocationId(locationId: number) {
     const location = await this.locationService.getLocationById(locationId);
     if (!location) throw new Error("Location not found");
@@ -69,7 +69,9 @@ export class PropertyService {
     });
 
     const enrichedProperties = await Promise.all(
-      properties.map((property) => this.locationHelper.enrichWithLocationData(property))
+      properties.map((property) =>
+        this.locationHelper.enrichWithLocationData(property)
+      )
     );
 
     return enrichedProperties;
@@ -107,9 +109,41 @@ export class PropertyService {
    * Get all properties
    */
   async findAll() {
-    return await this.repo.find({
-      relations: ["vendor", "roomTypes", "vehicles", "tourPackages", "deals"],
+    // enrich the properties with location data
+    const properties = await this.repo.find({
+      relations: [
+        "vendor",
+        "roomTypes",
+        "vehicles",
+        "tourPackages",
+        "tourPackages.destinations",
+        "tourPackages.destinations.city",
+        "deals",
+        "address",
+        "address.location",
+        "address.location.parent",
+      ],
     });
+    const cityCache = new Map<number, any>();
+
+    const enrichedProperties = await Promise.all(
+      properties.map(async (property) => {
+        const enriched = await this.locationHelper.enrichWithLocationData(
+          property
+        );
+
+        if (property.tourPackages?.length > 0) {
+          enriched.tourPackages = await Promise.all(
+            property.tourPackages.map((pkg) =>
+              this.locationHelper.enrichTourPackageWithCities(pkg, cityCache)
+            )
+          );
+        }
+
+        return enriched;
+      })
+    );
+    return enrichedProperties;
   }
 
   /**

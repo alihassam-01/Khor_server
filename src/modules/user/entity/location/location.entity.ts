@@ -8,10 +8,11 @@ import {
   ManyToOne,
   JoinColumn,
   ManyToMany,
+  OneToOne,
 } from "typeorm";
 import { LocationAttributes, LocationCategoryMapping } from "@entity/location";
 // import { PackageLocation } from "@entity/package";
-import { Address } from "@entity/address";
+import { Address, City } from "@entity/address";
 import { TourPackage } from "@entity/property";
 
 @Entity("location")
@@ -66,4 +67,7 @@ tourPackages?: TourPackage[];
 
   @OneToMany(() => Address, (address) => address.location)
   addresses!: Address[];
+
+  @OneToOne(() => City, (city) => city.location)
+city!: City;
 }

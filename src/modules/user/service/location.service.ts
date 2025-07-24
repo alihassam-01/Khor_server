@@ -474,24 +474,42 @@ export class LocationService {
       .replace(/--+/g, "-") // Replace multiple - with single -
       .trim();
   }
-  async getLocationHierarchy(location: Location): Promise<Location[]> {
-    const hierarchy: Location[] = [];
-    let current: Location | null = location;
-    const visited = new Set<number>();
+ async getLocationHierarchy(location: Location): Promise<Location[]> {
+  const hierarchy: Location[] = [];
+  const visited = new Set<number>();
 
-    while (current) {
-      if (visited.has(current.location_id)) {
-        // Detected a cycle, break to avoid infinite loop
-        break;
-      }
-      visited.add(current.location_id);
-      hierarchy.unshift(current); // insert at the beginning
-      current = await this.locationRepository.findOne({
-        where: { location_id: current.parent?.location_id },
-        relations: ["parent"],
-      });
+  // Ensure parent relation is loaded
+  if (!location.parent) {
+    const foundLocation = await this.locationRepository.findOne({
+      where: { location_id: location.location_id },
+      relations: ["parent"],
+    });
+    if (!foundLocation) {
+      return hierarchy;
     }
-
-    return hierarchy; // [city, locality, ...]
+    location = foundLocation;
   }
+
+  let current: Location | null = location;
+
+  console.log("Getting hierarchy for location:", current?.location_id);
+
+  while (current) {
+    if (visited.has(current.location_id)) break;
+
+    const old = current.location_id;
+    visited.add(current.location_id);
+    hierarchy.unshift(current); // Add to start
+
+    current = await this.locationRepository.findOne({
+      where: { location_id: current.parent?.location_id },
+      relations: ["parent"],
+    });
+
+    console.log("Next Location in Hierarchy 0020:", current?.location_id, "Old Location ID:", old);
+  }
+
+  return hierarchy;
+}
+
 }
