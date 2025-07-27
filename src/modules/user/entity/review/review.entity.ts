@@ -1,29 +1,46 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-// import { Package } from '@entity/package';
-import { Property } from '@entity/property';
-import { ReviewStatus } from '@entity/ENUM/enum';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from "typeorm";
+import { ReviewStatus } from "@entity/ENUM/enum";
+import { User } from "../user";
 
 @Entity()
 export class Review {
   @PrimaryGeneratedColumn()
   review_id!: number;
 
-  // @ManyToOne(() => Package, pkg => pkg.reviews, { onDelete: 'CASCADE' })
-  // package!: Package;
+  //customer link to user table
+  @ManyToOne(() => User, { nullable: false, onDelete: "CASCADE" })
+  @JoinColumn({ name: "user_id" })
+  user!: User;
 
-  @ManyToOne(() => Property, { onDelete: 'SET NULL' })
-  property!: Property;
+  // Polymorphic Relation
+  @Column({ type: "uuid", nullable: true })
+  target_id!: string | null;
 
-  @Column({ type: 'text', nullable: true })
-  review_tex!: string;
+  @Column({ type: "text", nullable: true })
+  target_type!: "property" | "room_type" | "tour_package" | null;
 
-  @Column({ nullable: true })
+  @Column({ type: "text", nullable: true })
+  review_text!: string;
+
+  @Column({ type: "int", nullable: true })
   rating!: number;
 
-  @Column({ type: 'date', default: () => 'CURRENT_DATE' })
+  @Column({ type: "date", default: () => "CURRENT_DATE" })
   review_date!: string;
 
-  @Column({ type: 'enum', enum: ReviewStatus, default: ReviewStatus.NOT_REVIEWED })
+  @Column({
+    type: "enum",
+    enum: ReviewStatus,
+    default: ReviewStatus.NOT_REVIEWED,
+  })
   review_status!: ReviewStatus;
 
   @Column({ default: 0 })

@@ -5,6 +5,7 @@ import { UserType } from '@entity/ENUM/enum';
 import { Vendor } from '../business';
 import { Address } from '../address';
 import { Booking } from '../bookings';
+import { Review } from '../review/review.entity';
 
 @Entity()
 export class User {
@@ -43,6 +44,8 @@ export class User {
   @OneToMany(() => Booking, (booking) => booking.customer)
   bookings?: Booking[];
 
+  @OneToMany(() => Review, (review) => review.user)
+  reviews?: Review[];
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt!: Date;

@@ -13,3 +13,4 @@ export * from './tourpackage.service';
 export * from './bookings.service';
 export * from './tag.service';
 export * from './articleTag.service';
+export * from './reviews.service';

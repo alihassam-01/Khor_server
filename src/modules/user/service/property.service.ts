@@ -81,10 +81,24 @@ export class PropertyService {
    * Get property by ID
    */
   async findById(id: string) {
-    return await this.repo.findOne({
+    const property = await this.repo.findOne({
       where: { id },
-      relations: ["vendor", "roomTypes", "vehicles", "tourPackages", "deals"],
+      relations: [
+        "vendor",
+        "roomTypes",
+        "vehicles",
+        "tourPackages",
+        "deals",
+        "address",
+        "address.location",
+        "address.location.parent",
+      ],
     });
+    if (!property) return null;
+    const enrichedProperty = await this.locationHelper.enrichWithLocationData(
+      property
+    );
+    return enrichedProperty;
   }
   /**
    * Get property by vendorID

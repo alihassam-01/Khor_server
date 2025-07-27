@@ -11,7 +11,7 @@ async function startServer() {
 
   await app.register(import('@fastify/cors'), {
     origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   });
 
   app.get('/ping', async (_request, reply) => {

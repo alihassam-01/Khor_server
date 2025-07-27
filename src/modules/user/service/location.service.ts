@@ -492,12 +492,9 @@ export class LocationService {
 
   let current: Location | null = location;
 
-  console.log("Getting hierarchy for location:", current?.location_id);
-
   while (current) {
     if (visited.has(current.location_id)) break;
 
-    const old = current.location_id;
     visited.add(current.location_id);
     hierarchy.unshift(current); // Add to start
 
@@ -506,7 +503,6 @@ export class LocationService {
       relations: ["parent"],
     });
 
-    console.log("Next Location in Hierarchy 0020:", current?.location_id, "Old Location ID:", old);
   }
 
   return hierarchy;

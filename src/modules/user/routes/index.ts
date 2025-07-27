@@ -11,6 +11,7 @@ import { vehicleRoutes } from './vehicle.routes';
 import { articleTagRoutes } from './articleTag.routes';
 import { tagRoutes } from './tag.routes';
 import { bookingRoutes } from './bookings.route';
+import { reviewRoutes } from './reviews.routes';
 const routes = [
   authRoutes,
   locationRoutes,
@@ -23,6 +24,7 @@ const routes = [
   tagRoutes,
   vehicleRoutes,
   // businessRoutes,
+  reviewRoutes,
   // hotelRoutes,
 ];
 
