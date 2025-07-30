@@ -160,4 +160,33 @@ export class BookingController {
     }
     reply.code(400).send(parsed);
   }
+
+  //get all booked dates for roomtype
+  async getBookedDatesForRoomType(
+    req: FastifyRequest<{ Params: { roomTypeId: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const bookedDates = await this.bookingService.getBookedDatesForRoomType(req.params.roomTypeId);
+      reply.send(bookedDates);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error fetching booked dates", "50011");
+    }
+  }
+
+  async checkRoomAvailability(
+    req: FastifyRequest<{ Body: { roomTypeId: string; checkInDate: string; checkOutDate: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const isAvailable = await this.bookingService.checkRoomAvailability(
+        req.body.roomTypeId,
+        req.body.checkInDate,
+        req.body.checkOutDate
+      );
+      reply.send({ available: isAvailable });
+    } catch (error: any) {
+      this.handleError(reply, error, "Error checking room availability", "50012");
+    }
+  }
 }

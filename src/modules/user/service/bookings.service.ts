@@ -2,7 +2,7 @@ import { AppDataSource } from "@config/ormconfig";
 import { Booking, Payment, Transactions } from "@entity/bookings";
 import { Property, TourPackage } from "../entity/property";
 import { CreateBookingDto, PaymentDetailsDto } from "../dtos/booking.dto";
-import { Between, DataSource, In } from "typeorm";
+import { Between, DataSource, In, Not } from "typeorm";
 import { RoomType } from "../entity/room";
 import { User } from "../entity/user";
 import { LocationHelperService } from "./helper/location-helper.service";
@@ -29,6 +29,18 @@ export class BookingService {
       booking.customer = await this.userRepository.findOneByOrFail({
         id: bookingData.customer_id,
       });
+
+      // check availability of roomType
+      if (bookingData.booking_type === "hotel") {
+        const isAvailable = await this.checkRoomAvailability(
+          bookingData.room_type_id || "",
+          bookingData.check_in_date,
+          bookingData.check_out_date
+        );
+        if (!isAvailable) {
+          throw new Error("Selected room type is not available for the given dates.");
+        }
+      }
       booking.booking_type = bookingData.booking_type;
       booking.total_amount = bookingData.total_amount;
       booking.check_in_date = bookingData.check_in_date;
@@ -319,4 +331,58 @@ export class BookingService {
     }
     return AppDataSource.getRepository(Transactions).save(transaction);
   }
+
+  // check availability of roomType
+
+  // get the total rooms from roomType and then check if the rooms are available by comparing the booked rooms with the total rooms
+  async checkRoomAvailability(
+    roomTypeId: string,
+    checkInDate: string,
+    checkOutDate: string
+  ) {
+    const roomType = await this.roomTypeRepository.findOneByOrFail({
+      id: roomTypeId,
+    });
+
+    // Get all bookings for this room type within the date range
+    const bookings = await this.repo.find({
+      where: {
+        roomType: { id: roomTypeId },
+        check_in_date: Between(checkInDate, checkOutDate),
+        booking_status: Not(In(["cancelled", "completed"])), // Exclude cancelled and completed bookings
+      },
+    });
+
+    // Calculate total booked rooms
+    const totalBookedRooms = bookings.reduce(
+      (total, booking) => total + (booking.rooms_count || 0),
+      0
+    );
+
+    return (
+      roomType.total_rooms - totalBookedRooms >= (roomType.total_rooms || 1)
+    );
+  }
+
+  /**
+   * Get all booked dates for a room type
+   **/
+  async getBookedDatesForRoomType(roomTypeId: string) {
+    const bookings = await this.repo.find({
+      where: {
+        roomType: { id: roomTypeId },
+        booking_status: Not(In(["cancelled", "completed"])), // Exclude cancelled and completed bookings
+      },
+      select: ["check_in_date", "check_out_date"],
+    });
+
+    const bookedDates: { start: string; end: string }[] = bookings.map(
+      (booking) => ({
+        start: booking.check_in_date,
+        end: booking.check_out_date,
+      })
+    );
+    console.log("Booked Dates:", bookedDates);
+    return bookedDates;
+}
 }

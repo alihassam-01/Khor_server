@@ -18,4 +18,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   app.patch("/bookings/:id/payment-status", bookingsController.updatePaymentStatus.bind(bookingsController));
 
   app.post("/bookings/:id/transactions", bookingsController.addTransaction.bind(bookingsController));
+  // all booked dates by roomType
+  app.get("/bookings/roomtype/:roomTypeId/booked-dates", bookingsController.getBookedDatesForRoomType.bind(bookingsController));
+  app.get("/bookings/roomtype/:roomTypeId/available-dates", bookingsController.checkRoomAvailability.bind(bookingsController));
 }
