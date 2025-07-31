@@ -44,7 +44,12 @@ export class TourPackage {
   includes?: string[];
 
   @Column({ type: "jsonb", nullable: true })
-  itinerary?: object;
+  itinerary?: {
+    day: number;
+    title: string;
+    description: string;
+    activities: string[];
+  }[];
 
   @Column("text", { array: true, nullable: true })
   images?: string[];
@@ -63,6 +68,16 @@ export class TourPackage {
     name: "tour_package_destinations",
   })
   destinations?: Location[];
+
+  @Column({ type: "boolean", default: false })
+  is_flexible_participants!: boolean;
+
+  @Column({ type: "jsonb", nullable: true })
+  schedule?: {
+    type: "anytime" | "weekly" | "monthly";
+    days: string[];
+    dates: number[];
+  };
 
   @CreateDateColumn({ type: "timestamptz" })
   created_at!: Date;

@@ -36,7 +36,6 @@ export class ArticleService {
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-    console.log("Creating article with data:", articleData);
     try {
       // 1. Find or create tags
       const tagNames = articleData.tags || [];
@@ -255,6 +254,16 @@ export class ArticleService {
     const [articles, count] = await query.getManyAndCount();
 
     return { articles, count };
+  }
+
+  // get all articles
+  async getAllArticles(): Promise<Article[]> {
+    const d = await this.articleRepository.find({
+      relations: ["location", "articleTags"],
+      order: { published_at: "DESC" },
+    });
+    console.log("getAllArticles 001: ", d);
+    return d;
   }
 
   private generateSlug(text: string): string {

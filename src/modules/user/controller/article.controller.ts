@@ -67,4 +67,13 @@ export class ArticleController {
       reply.code(500).send({ message: error.message });
     }
   }
+  
+  async getAllArticles(_req: FastifyRequest, reply: FastifyReply) {
+    try {
+      const articles = await this.articleService.getAllArticles();
+      reply.send(articles);
+    } catch (error: any) {
+      reply.code(500).send({ message: error.message });
+    }
+  }
 }
