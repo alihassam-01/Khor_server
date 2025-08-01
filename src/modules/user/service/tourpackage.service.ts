@@ -12,7 +12,22 @@ export class TourPackageService {
    * Create a new tour package
    */
   async create(data: Partial<TourPackage>) {
-    const tour = this.repo.create(data);
+    // Handle destinations if provided as IDs
+    let destinationEntities: Location[] | undefined = undefined;
+
+    if (data.destinations && Array.isArray(data.destinations)) {
+      destinationEntities = await this.locationRepo.find({
+        where: {
+          location_id: In(data.destinations),
+        },
+      });
+    }
+
+    const tour = this.repo.create({
+      ...data,
+      destinations: destinationEntities,
+    });
+
     return this.repo.save(tour);
   }
 
@@ -26,22 +41,29 @@ export class TourPackageService {
   /**
    * Get a tour package by ID
    */
-    async findById(id: string) {
-    const tour = await this.repo.findOne({ 
-      where: { id }, 
-      relations: ["property", "property.address", "property.address.location", "destinations"] 
+  async findById(id: string) {
+    const tour = await this.repo.findOne({
+      where: { id },
+      relations: [
+        "property",
+        "property.address",
+        "property.address.location",
+        "destinations",
+      ],
     });
 
     if (!tour) return null;
-    
+
     // Enrich property with location data if it exists
     if (tour.property) {
       return {
         ...tour,
-        property: await this.locationHelper.enrichWithLocationData(tour.property)
+        property: await this.locationHelper.enrichWithLocationData(
+          tour.property
+        ),
       };
     }
-    
+
     return tour;
   }
 
