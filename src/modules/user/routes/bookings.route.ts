@@ -21,4 +21,5 @@ export async function bookingRoutes(app: FastifyInstance) {
   // all booked dates by roomType
   app.get("/bookings/roomtype/:roomTypeId/booked-dates", bookingsController.getBookedDatesForRoomType.bind(bookingsController));
   app.get("/bookings/roomtype/:roomTypeId/available-dates", bookingsController.checkRoomAvailability.bind(bookingsController));
+  app.get("/bookings/tour/:tourId/available-seats", bookingsController.getAvailableSeatsForTour.bind(bookingsController));
 }

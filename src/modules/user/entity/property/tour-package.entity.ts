@@ -74,7 +74,7 @@ export class TourPackage {
 
   @Column({ type: "jsonb", nullable: true })
   schedule?: {
-    type: "anytime" | "weekly" | "monthly";
+    type: "anytime" | "specific-days" | "specific-dates";
     days: string[];
     dates: number[];
   };

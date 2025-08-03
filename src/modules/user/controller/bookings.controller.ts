@@ -189,4 +189,16 @@ export class BookingController {
       this.handleError(reply, error, "Error checking room availability", "50012");
     }
   }
+
+  async getAvailableSeatsForTour(
+    req: FastifyRequest<{ Params: { tourId: string, checkInDate: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const seatsAvailable = await this.bookingService.getAvailableSeatsForTour(req.params.tourId, req.params.checkInDate);
+      reply.send(seatsAvailable);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error fetching available seats", "50013");
+    }
+  }
 }
