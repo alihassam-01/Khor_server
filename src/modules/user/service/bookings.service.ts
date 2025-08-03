@@ -29,7 +29,6 @@ export class BookingService {
       booking.customer = await this.userRepository.findOneByOrFail({
         id: bookingData.customer_id,
       });
-
       // check availability of roomType
       if (bookingData.booking_type === "hotel") {
         const isAvailable = await this.checkRoomAvailability(
@@ -38,7 +37,46 @@ export class BookingService {
           bookingData.check_out_date
         );
         if (!isAvailable) {
-          throw new Error("Selected room type is not available for the given dates.");
+          throw new Error(
+            "Selected room type is not available for the given dates."
+          );
+        }
+      } else if (bookingData.booking_type === "tour") {
+        // check if the tour.schedule type is anytime or specific-days or specific-dates and check if the booking dates are within the tour package schedule
+        const tourPackage = await this.tourPackageRepository.findOneByOrFail({
+          id: bookingData.tour_package_id,
+        });
+        if (tourPackage.schedule) {
+          const { type, days, dates } = tourPackage.schedule;
+          const checkInDate = new Date(bookingData.check_in_date);
+          if (type === "anytime") {
+            // Anytime is always available
+          } else if (type === "specific-days") {
+            // Check if the booking dates match any of the specified days
+            const bookingDays = [checkInDate.getDay()];
+            // Convert days to numbers (0-6 for Sunday-Saturday)
+            const daysMap: Record<string, number> = {
+              sunday: 0,
+              monday: 1,
+              tuesday: 2,
+              wednesday: 3,
+              thursday: 4,
+              friday: 5,
+              saturday: 6,
+            };
+            if (!days.some((day) => bookingDays.includes(daysMap[day.toLowerCase()]))) {
+              throw new Error(
+                "Selected dates do not match the tour package schedule."
+              );
+            }
+          } else if (type === "specific-dates") {
+            const bookingDates = [checkInDate.getDate()];
+            if (!dates.some((date) => bookingDates.includes(date))) {
+              throw new Error(
+                "Selected dates do not match the tour package schedule."
+              );
+            }
+          }
         }
       }
       booking.booking_type = bookingData.booking_type;
@@ -55,7 +93,6 @@ export class BookingService {
           id: bookingData.property_id,
         });
       }
-
       if (bookingData.booking_type === "hotel" && bookingData.room_type_id) {
         booking.roomType = await this.roomTypeRepository.findOneByOrFail({
           id: bookingData.room_type_id,
@@ -69,9 +106,11 @@ export class BookingService {
         bookingData.booking_type === "tour" &&
         bookingData.tour_package_id
       ) {
-        booking.tourPackages = await this.tourPackageRepository.findOneByOrFail({
-          id: bookingData.tour_package_id,
-        });
+        booking.tourPackages = await this.tourPackageRepository.findOneByOrFail(
+          {
+            id: bookingData.tour_package_id,
+          }
+        );
       }
       const savedBooking = await queryRunner.manager.save(Booking, booking);
       // 2. Process payment
@@ -133,7 +172,6 @@ export class BookingService {
             // transaction.failure_reason = paymentResult.last_payment_error?.message || "Payment failed";
           }
         } catch (error: any) {
-          console.log("check 06");
           transaction.status = "failed";
 
           transaction.failure_reason = error.message;
@@ -213,13 +251,16 @@ export class BookingService {
    * Get bookings by vendor ID
    */
   async findByVendorId(vendorId: string) {
-
     // First get properties with basic relations
     const properties = await this.propertyRepository.find({
       where: { vendor: { id: vendorId } },
-      relations: ["vendor", "deals",  "address",
+      relations: [
+        "vendor",
+        "deals",
+        "address",
         "address.location",
-        "address.location.parent"],
+        "address.location.parent",
+      ],
     });
     // Enrich properties with location data
     const enrichedProperties = await Promise.all(
@@ -232,7 +273,13 @@ export class BookingService {
 
     const bookings = await this.repo.find({
       where: { property: { id: In(enrichedProperties.map((p) => p.id)) } },
-      relations: ["property", "roomType", "vehicle", "tourPackages", "tourPackages.destinations"],
+      relations: [
+        "property",
+        "roomType",
+        "vehicle",
+        "tourPackages",
+        "tourPackages.destinations",
+      ],
     });
 
     // Replace each booking's property with the enriched version
@@ -382,7 +429,36 @@ export class BookingService {
         end: booking.check_out_date,
       })
     );
-    console.log("Booked Dates:", bookedDates);
     return bookedDates;
-}
+  }
+
+  // seats available for tour.
+  async getAvailableSeatsForTour(tourPackageId: string, checkInDate: string) {
+    const tourPackage = await this.tourPackageRepository.findOneByOrFail({
+      id: tourPackageId,
+    });
+    if (
+      !tourPackage.is_flexible_participants ||
+      tourPackage.schedule?.type === "anytime"
+    ) {
+      return tourPackage.max_participants || 0;
+    }
+    // Get all bookings for this tour package on the specified date
+    const bookings = await this.repo.find({
+      where: {
+        tourPackages: { id: tourPackageId },
+        check_in_date: checkInDate,
+        booking_status: Not(In(["cancelled", "completed"])), // Exclude cancelled and completed bookings
+      },
+    });
+    // Calculate total booked seats
+    const totalBookedSeats = bookings.reduce(
+      (total, booking) => total + (booking.participants_count || 0),
+      0
+    );
+    return Math.max(
+      (tourPackage.max_participants || 0) - totalBookedSeats,
+      0
+    );
+  }
 }

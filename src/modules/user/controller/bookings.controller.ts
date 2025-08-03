@@ -191,11 +191,11 @@ export class BookingController {
   }
 
   async getAvailableSeatsForTour(
-    req: FastifyRequest<{ Params: { tourId: string, checkInDate: string } }>,
+    req: FastifyRequest<{ Params: { tourId: string };Querystring: { checkInDate: string }  }>,
     reply: FastifyReply
   ) {
     try {
-      const seatsAvailable = await this.bookingService.getAvailableSeatsForTour(req.params.tourId, req.params.checkInDate);
+      const seatsAvailable = await this.bookingService.getAvailableSeatsForTour(req.params.tourId, req.query.checkInDate);
       reply.send(seatsAvailable);
     } catch (error: any) {
       this.handleError(reply, error, "Error fetching available seats", "50013");
