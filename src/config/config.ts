@@ -26,7 +26,11 @@ export const config = {
     apiKey: process.env.SMTP_API_KEY || "",
     name: process.env.SMTP_NAME || "Khor",
   },
-  web_domain:{
+  web_domain: {
     url: process.env.WEB_DOMAIN,
-  }
+  },
+  server: {
+    port: Number(process.env.PORT) || 3008,
+    host: process.env.SERVER_HOST || "localhost",
+  },
 };

@@ -3,6 +3,7 @@ import fastify from "fastify";
 // import { AppDataSource } from "./config/ormconfig";
 import typeormPlugin from './app/plugins/typeorm';
 import routes from '@modules/user/routes';
+import { config } from '@config/config';
 
 async function startServer() {
   const app = fastify();
@@ -40,8 +41,8 @@ async function startServer() {
   });
 
   try {
-    await app.listen({ port: 3008, host: '192.168.18.229' });
-    console.log("Server running on http://192.168.18.229:3008");
+    await app.listen({ port: config.server.port, host: config.server.host });
+    console.log(`Server running on http://${config.server.host}:${config.server.port}`);
   } catch (err) {
     console.error("Error starting server:", err);
     process.exit(1);
