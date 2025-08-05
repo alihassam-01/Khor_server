@@ -15,7 +15,7 @@ export const config = {
   },
   jwt: {
     secret: process.env.JWT_SECRET || "defaultsecretkey",
-    salt: process.env.salt || "defaultsalt"
+    salt: process.env.SALT || "defaultsalt"
   },
   smtp: {
     server: process.env.SMTP_SERVER || "",
@@ -32,5 +32,11 @@ export const config = {
   server: {
     port: Number(process.env.PORT) || 3008,
     host: process.env.SERVER_HOST || "localhost",
+  },
+  aws: {
+    region: process.env.AWS_REGION || "us-east-1",
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+    bucketName: process.env.AWS_BUCKET_NAME || "",
   },
 };

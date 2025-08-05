@@ -4,10 +4,16 @@ import fastify from "fastify";
 import typeormPlugin from './app/plugins/typeorm';
 import routes from '@modules/user/routes';
 import { config } from '@config/config';
+import fastifyMultipart from "@fastify/multipart";
 
 async function startServer() {
   const app = fastify();
 
+  await app.register(fastifyMultipart, {
+  limits: {
+    fileSize: 5 * 1024 * 1024, 
+  }
+});
   await app.register(import('@fastify/formbody'));
 
   await app.register(import('@fastify/cors'), {
@@ -42,7 +48,7 @@ async function startServer() {
 
   try {
     await app.listen({ port: config.server.port, host: config.server.host });
-    console.log(`Server running on http://${config.server.host}:${config.server.port}`);
+    console.info(`Server running on http://${config.server.host}:${config.server.port}`);
   } catch (err) {
     console.error("Error starting server:", err);
     process.exit(1);

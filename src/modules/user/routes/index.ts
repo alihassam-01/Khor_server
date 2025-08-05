@@ -6,12 +6,11 @@ import propertyRoutes from './property.routes';
 import { roomTypeRoutes } from './roomtype.routes';
 import { tourPackageRoutes } from './tourpackage.routes';
 import { vehicleRoutes } from './vehicle.routes';
-// import businessRoutes from './business.routes';
-// import hotelRoutes from './hotel.routes';
 import { articleTagRoutes } from './articleTag.routes';
 import { tagRoutes } from './tag.routes';
 import { bookingRoutes } from './bookings.route';
 import { reviewRoutes } from './reviews.routes';
+import { s3ClientRoutes } from './s3client.routes';
 const routes = [
   authRoutes,
   locationRoutes,
@@ -23,9 +22,8 @@ const routes = [
   articleTagRoutes,
   tagRoutes,
   vehicleRoutes,
-  // businessRoutes,
+  s3ClientRoutes,
   reviewRoutes,
-  // hotelRoutes,
 ];
 
 export default routes;

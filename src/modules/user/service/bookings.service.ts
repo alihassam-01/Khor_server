@@ -42,7 +42,23 @@ export class BookingService {
           );
         }
       } else if (bookingData.booking_type === "tour") {
-        // check if the tour.schedule type is anytime or specific-days or specific-dates and check if the booking dates are within the tour package schedule
+        if (
+          bookingData.participants_count === undefined ||
+          !bookingData.tour_package_id ||
+          !bookingData.check_in_date
+        ) {
+          throw new Error("Missing required booking data for tour.");
+        }
+        if (
+          bookingData.participants_count >
+          (await this.getAvailableSeatsForTour(
+            bookingData.tour_package_id,
+            bookingData.check_in_date
+          ))
+        ) {
+          throw new Error("Not enough available seats for the selected tour.");
+        }
+
         const tourPackage = await this.tourPackageRepository.findOneByOrFail({
           id: bookingData.tour_package_id,
         });
@@ -64,7 +80,11 @@ export class BookingService {
               friday: 5,
               saturday: 6,
             };
-            if (!days.some((day) => bookingDays.includes(daysMap[day.toLowerCase()]))) {
+            if (
+              !days.some((day) =>
+                bookingDays.includes(daysMap[day.toLowerCase()])
+              )
+            ) {
               throw new Error(
                 "Selected dates do not match the tour package schedule."
               );
@@ -456,9 +476,6 @@ export class BookingService {
       (total, booking) => total + (booking.participants_count || 0),
       0
     );
-    return Math.max(
-      (tourPackage.max_participants || 0) - totalBookedSeats,
-      0
-    );
+    return Math.max((tourPackage.max_participants || 0) - totalBookedSeats, 0);
   }
 }

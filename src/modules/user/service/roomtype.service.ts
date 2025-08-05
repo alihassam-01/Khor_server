@@ -27,6 +27,7 @@ export class RoomTypeService {
    * Get a room type by ID
    */
   async findById(roomId: string) {
+    
     const properties = await this.propertyRepo.find({
       where: { roomTypes: { id: roomId } },
       relations: ["address", "address.location", "address.location.parent"],
