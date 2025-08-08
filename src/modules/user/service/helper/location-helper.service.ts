@@ -91,6 +91,18 @@ export class LocationHelperService {
       cities,
     };
   }
+  // Enrich articles with city and locality based on their location_id
+  public async enrichArticlesWithCities(articles: any[]): Promise<any[]> {
+    return Promise.all(
+      articles.map(async (article) => {
+        if (!article.location_id) {
+          return { ...article, city: null, locality: null };
+        }
+        const { city, locality } = await this.getCityAndLocality(article.location_id);
+        return { ...article, city, locality };
+      })
+    );
+  }
 
   /**
    * Finds the city in a location hierarchy

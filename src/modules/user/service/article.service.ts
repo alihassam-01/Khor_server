@@ -2,6 +2,7 @@ import { AppDataSource } from "../../../config/ormconfig";
 import { Article, Tag, ArticleTag } from "@entity/article";
 import { Location } from "@entity/location";
 import { ArticleDTO } from "../dtos/article.dto";
+import { LocationHelperService } from "./helper/location-helper.service";
 // import { LocationCategory } from "../entity/location-category.entity";
 // import { In } from 'typeorm';
 // import {Media} from '../entity/media.entity';
@@ -10,6 +11,7 @@ export class ArticleService {
   private articleRepository = AppDataSource.getRepository(Article);
   private locationRepository = AppDataSource.getRepository(Location);
   private tagRepository = AppDataSource.getRepository(Tag);
+  private locationHelper = new LocationHelperService();
   // private categoryRepository = AppDataSource.getRepository(LocationCategory);
   // private mediaRepository = AppDataSource.getRepository(Media);
 
@@ -107,17 +109,21 @@ export class ArticleService {
   }
 
   async getArticleById(articleId: number): Promise<Article | null> {
-    return this.articleRepository.findOne({
+    const article = await this.articleRepository.findOne({
       where: { article_id: articleId },
       relations: ["location", "articleTags"],
     });
+    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities([article]);
+    return enrichedArticles[0] || null;
   }
 
   async getArticleBySlug(slug: string): Promise<Article | null> {
-    return this.articleRepository.findOne({
+    const article = await this.articleRepository.findOne({
       where: { slug },
       relations: ["location"],
     });
+    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities([article]);
+    return enrichedArticles[0] || null;
   }
 
   async updateArticle(articleId: number, articleData: any): Promise<ArticleDTO> {
@@ -258,12 +264,13 @@ export class ArticleService {
 
   // get all articles
   async getAllArticles(): Promise<Article[]> {
-    const d = await this.articleRepository.find({
-      relations: ["location", "articleTags"],
+    const articles = await this.articleRepository.find({
+      relations: ["articleTags", "location", "location.categoryMappings"],
       order: { published_at: "DESC" },
     });
-    console.log("getAllArticles 001: ", d);
-    return d;
+    // Enrich articles with location data
+    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(articles);
+    return enrichedArticles;
   }
 
   private generateSlug(text: string): string {
