@@ -22,7 +22,26 @@ export class RoomTypeService {
    * Get all room types
    */
   async findAll() {
-    return this.repo.find({ relations: ["property"] });
+    const roomTypes = await this.repo.find({
+      relations: [
+        "property",
+        "property.address",
+        "property.address.location",
+        "property.address.location.parent",
+      ],
+    });
+
+    // Enrich the property of each room type and attach it back
+    const enrichedRoomTypes = await Promise.all(
+      roomTypes.map(async (roomType: RoomType) => {
+        if (roomType.property) {
+          roomType.property = await this.locationHelper.enrichWithLocationData(roomType.property);
+        }
+        return roomType;
+      })
+    );
+
+    return enrichedRoomTypes;
   }
 
   /**
