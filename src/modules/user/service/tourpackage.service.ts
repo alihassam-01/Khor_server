@@ -3,11 +3,13 @@ import { TourPackage } from "@modules/user/entity/property";
 import { ILike, In } from "typeorm";
 import { Location } from "@entity/location";
 import { LocationHelperService } from "./helper/location-helper.service";
+import { S3ClientService } from "./s3client.service";
 
 export class TourPackageService {
   private repo = AppDataSource.getRepository(TourPackage);
   private locationRepo = AppDataSource.getRepository(Location);
   private locationHelper = new LocationHelperService();
+  private s3ClientService = new S3ClientService();
   /**
    * Create a new tour package
    */
@@ -81,42 +83,41 @@ export class TourPackageService {
    * Update a tour package by ID
    */
   async update(id: string, updates: Partial<TourPackage>) {
-    try {
-      const { destinations, ...rest } = updates;
+    const { destinations, images, ...rest } = updates;
+    // Fetch existing tour package with images and destinations
+    const existingTour = await this.repo.findOne({
+      where: { id },
+      relations: ["destinations"],
+    });
+    if (!existingTour) throw new Error("Tour package not found");
 
-      // Update scalar fields first
-      await this.repo.update(id, rest);
-
-      // If destinations (array of location IDs) is provided
-      if (destinations && Array.isArray(destinations)) {
-        // Fetch the corresponding Location entities
-        const locationEntities = await this.locationRepo.findBy({
-          location_id: In(destinations),
-        });
-
-        if (locationEntities.length !== destinations.length) {
-          throw new Error("Some destination IDs were not found.");
-        }
-
-        // Load existing tour package with its relations
-        const tour = await this.repo.findOne({
-          where: { id },
-          relations: ["destinations"],
-        });
-
-        if (!tour) throw new Error("Tour package not found");
-
-        // Assign new destinations and save
-        tour.destinations = locationEntities;
-        await this.repo.save(tour);
+    // Handle deleted images
+    if (images && existingTour.images) {
+      const deletedImages = existingTour.images.filter(
+        (img) => !images.includes(img)
+      );
+      if (deletedImages.length > 0) {
+        await this.s3ClientService.deleteFileFromS3(deletedImages);
       }
-
-      // Return updated tour package
-      return this.findById(id);
-    } catch (error) {
-      console.error("Error updating tour package:", error);
-      throw error;
     }
+
+    // Prepare update object
+    Object.assign(existingTour, rest);
+    if (images) existingTour.images = images;
+
+    // Handle destinations update if provided
+    if (destinations && Array.isArray(destinations)) {
+      const locationEntities = await this.locationRepo.findBy({
+        location_id: In(destinations),
+      });
+      if (locationEntities.length !== destinations.length) {
+        throw new Error("Some destination IDs were not found.");
+      }
+      existingTour.destinations = locationEntities;
+    }
+
+    await this.repo.save(existingTour);
+    return this.findById(id);
   }
 
   //  get by location_id in location_id[]

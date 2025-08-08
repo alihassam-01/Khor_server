@@ -16,6 +16,7 @@ import { Deal } from "@modules/user/entity/bookings/deal.entity";
 import { TourPackage } from "@modules/user/entity/property/tour-package.entity";
 import { Vehicle } from "@modules/user/entity/property/vehicle.entity";
 import { Availability } from "@modules/user/entity/property/availbility.entity";
+import { S3ImagesEntity } from "@modules/user/entity/images/s3Images.entity";
 export const AppDataSource = new DataSource({
   type: 'postgres',
   host: config.db.host,
@@ -24,7 +25,7 @@ export const AppDataSource = new DataSource({
   password: config.db.password,
   database: config.db.database,
 
-  entities: [User, CustomerProfile, Article, Tag, ArticleTag, Location, LocationAttributes, LocationCategory, LocationCategoryMapping, Media, RoomInventory, RoomType, Property, Vendor, Meal, Review, BusinessType, Address, City, Booking, Transactions, RoomFeature, ServiceOptions, Deal, TourPackage, Vehicle, Availability, Payment], 
+  entities: [User, CustomerProfile, Article, Tag, ArticleTag, Location, LocationAttributes, LocationCategory, LocationCategoryMapping, Media, RoomInventory, RoomType, Property, Vendor, Meal, Review, BusinessType, Address, City, Booking, Transactions, RoomFeature, ServiceOptions, Deal, TourPackage, Vehicle, Availability, Payment, S3ImagesEntity], 
   // entities: [__dirname + '/**/*.entity.{ts,js}'],
   synchronize: true, 
   logging: true,

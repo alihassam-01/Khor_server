@@ -3,11 +3,13 @@ import { RoomType } from "../entity/room";
 import { ILike } from "typeorm";
 import { LocationHelperService } from "./helper/location-helper.service";
 import { Property } from "@entity/property";
+import { S3ClientService } from "./s3client.service";
 
 export class RoomTypeService {
   private repo = AppDataSource.getRepository(RoomType);
   private locationHelper = new LocationHelperService();
   private propertyRepo = AppDataSource.getRepository(Property);
+  private s3ClientService = new S3ClientService();
   /**
    * Create a new room type
    */
@@ -27,7 +29,6 @@ export class RoomTypeService {
    * Get a room type by ID
    */
   async findById(roomId: string) {
-    
     const properties = await this.propertyRepo.find({
       where: { roomTypes: { id: roomId } },
       relations: ["address", "address.location", "address.location.parent"],
@@ -62,6 +63,17 @@ export class RoomTypeService {
    * Update a room type by ID
    */
   async update(id: string, updates: Partial<RoomType>) {
+    const { images } = updates;
+    const existingRoom = await this.repo.findOne({
+      where: { id },
+      relations: ["property"],
+    });
+    const deletedImages = existingRoom?.images?.filter(
+      (img) => !images?.includes(img)
+    );
+    if (deletedImages && deletedImages.length > 0) {
+      await this.s3ClientService.deleteFileFromS3(deletedImages);
+    }
     await this.repo.update(id, updates);
     return this.findById(id);
   }
