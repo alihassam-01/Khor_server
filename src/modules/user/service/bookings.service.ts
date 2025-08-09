@@ -225,30 +225,6 @@ export class BookingService {
   }
 
   /**
-   * Create a new booking
-   */
-  // async create(data: any) {
-  //   const bookingData: any = {
-  //     ...data,
-  //     property: data.property || ({ id: data.property_id } as Property),
-  //     tourPackage:
-  //       data.tourPackage ||
-  //       (data.tour_package_id
-  //         ? ({ id: data.tour_package_id } as TourPackage)
-  //         : undefined),
-  //   };
-
-  //   delete bookingData.property_id;
-  //   delete bookingData.tour_package_id;
-
-  //   // create a booking intent with status 'pending'
-  //   bookingData.booking_status = "pending";
-  //   bookingData.payment_status = "pending";
-
-  //   const booking = this.repo.create(bookingData);
-  //   return this.repo.save(booking);
-  // }
-  /**
    * Get all bookings with their related entities
    */
   async findAll() {
@@ -477,5 +453,21 @@ export class BookingService {
       0
     );
     return Math.max((tourPackage.max_participants || 0) - totalBookedSeats, 0);
+  }
+
+  /**
+   * Confirm booking by ID
+   */
+  async confirmBooking(id: string) {
+    await this.repo.update(id, { booking_status: "confirmed" });
+    return this.findById(id);
+  }
+
+  /**
+   * Cancel booking by ID
+   */
+  async cancelBooking(id: string) {
+    await this.repo.update(id, { booking_status: "cancelled" });
+    return this.findById(id);
   }
 }

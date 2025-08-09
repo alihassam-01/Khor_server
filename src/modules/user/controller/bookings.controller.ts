@@ -201,4 +201,31 @@ export class BookingController {
       this.handleError(reply, error, "Error fetching available seats", "50013");
     }
   }
+
+  // confirm booking
+  async confirmBooking(
+    req: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const booking = await this.bookingService.confirmBooking(req.params.id);
+      reply.send(booking);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error confirming booking", "50014");
+    }
+  }
+
+  // cancel booking
+  async cancelBooking(
+    req: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const booking = await this.bookingService.cancelBooking(req.params.id);
+      reply.send(booking);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error cancelling booking", "50015");
+    }
+  }
+
 }

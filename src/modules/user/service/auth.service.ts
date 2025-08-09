@@ -5,6 +5,7 @@ import * as jwt from "jsonwebtoken";
 import { MailService } from "./mail.service";
 import { UserType } from "../entity/ENUM/enum";
 import { Vendor } from "@entity/business";
+import { config } from "@config/config";
 
 export class AuthService {
   constructor(
@@ -132,13 +133,14 @@ export class AuthService {
     password: string
   ): Promise<{
     token: string;
-    user: {
-      id: string;
-      email: string;
-      userType: UserType;
-      name: string;
-      vendorId?: string;
-    };
+    // expiresIn: string;
+    // user: {
+    //   id: string;
+    //   email: string;
+    //   userType: UserType;
+    //   name: string;
+    //   vendorId?: string;
+    // };
   }> {
     const user = await this.userRepository.findOne({
       where: { email },
@@ -152,7 +154,7 @@ export class AuthService {
       throw new Error("Please verify your email before logging in");
     }
 
-    if (!process.env.JWT_SECRET) {
+    if (!config.jwt.secret) {
       throw new Error("JWT_SECRET is not configured");
     }
 
@@ -166,21 +168,24 @@ export class AuthService {
         userId: user.id,
         userType: user.userType,
         name: name ?? "Unknown",
-        vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
+        vendorId:
+          user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
       },
-      process.env.JWT_SECRET,
+      config.jwt.secret as string,
       { expiresIn: "7d" }
     );
 
     return {
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        userType: user.userType,
-        name: "Unknown",
-        vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
-      },
+      // expiresIn: "7d",
+      // user: {
+      //   id: user.id,
+      //   email: user.email,
+      //   userType: user.userType,
+      //   name: "Unknown",
+      //   vendorId:
+      //     user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
+      // },
     };
   }
 }

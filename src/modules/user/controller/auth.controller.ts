@@ -64,7 +64,8 @@ export class AuthController {
   ) {
     try {
       const result = await this.authService.login(req.body.email, req.body.password);
-      reply.send({ token: result.token, user: result.user });
+      // reply.send({ token: result.token, user: result.user });
+      reply.send(result);
     } catch (error: any) {
       reply.code(401).send({ error: error.message });
     }

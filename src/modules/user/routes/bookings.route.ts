@@ -22,4 +22,9 @@ export async function bookingRoutes(app: FastifyInstance) {
   app.get("/bookings/roomtype/:roomTypeId/booked-dates", bookingsController.getBookedDatesForRoomType.bind(bookingsController));
   app.get("/bookings/roomtype/:roomTypeId/available-dates", bookingsController.checkRoomAvailability.bind(bookingsController));
   app.get("/bookings/tour/:tourId/available-seats", bookingsController.getAvailableSeatsForTour.bind(bookingsController));
+
+  // confirm booking
+  app.post("/bookings/:id/confirm", bookingsController.confirmBooking.bind(bookingsController));
+  // cancel booking
+  app.post("/bookings/:id/cancel", bookingsController.cancelBooking.bind(bookingsController));
 }
