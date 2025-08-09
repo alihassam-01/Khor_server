@@ -199,8 +199,11 @@ export class PropertyService {
    * Soft delete (set active = false)
    */
   async deactivate(id: string) {
-    await this.repo.update(id, { active: false });
-    return { success: true };
+    const property = await this.repo.findOne({ where: { id } });
+    if (!property) throw new Error("Property not found");
+    const newActiveState = !property.active;
+    await this.repo.update(id, { active: newActiveState });
+    return { success: true, active: newActiveState };
   }
 
   /**

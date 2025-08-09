@@ -147,8 +147,11 @@ export class TourPackageService {
    * Soft delete (set active = false)
    */
   async deactivate(id: string) {
-    await this.repo.update(id, { active: false });
-    return { success: true };
+    const tour = await this.repo.findOne({ where: { id } });
+    if (!tour) throw new Error("Tour package not found");
+    tour.active = !tour.active;
+    await this.repo.save(tour);
+    return { success: true, active: tour.active };
   }
 
   /**

@@ -49,8 +49,11 @@ export class VehicleService {
    * Soft delete: deactivate vehicle
    */
   async deactivate(id: string) {
-    await this.repo.update(id, { active: false });
-    return { success: true };
+    const vehicle = await this.repo.findOne({ where: { id } });
+    if (!vehicle) return { success: false, message: "Vehicle not found" };
+    const newState = !vehicle.active;
+    await this.repo.update(id, { active: newState });
+    return { success: true, active: newState };
   }
 
   /**

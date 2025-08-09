@@ -31,7 +31,6 @@ export class RoomTypeService {
       ],
     });
 
-    // Enrich the property of each room type and attach it back
     const enrichedRoomTypes = await Promise.all(
       roomTypes.map(async (roomType: RoomType) => {
         if (roomType.property) {
@@ -101,7 +100,10 @@ export class RoomTypeService {
    * Soft delete (set active = false)
    */
   async deactivate(id: string) {
-    await this.repo.update(id, { active: false });
+    const room = await this.repo.findOne({ where: { id } });
+    if (room) {
+      await this.repo.update(id, { active: !room.active });
+    }
     return { success: true };
   }
 
