@@ -275,7 +275,20 @@ export class BookingService {
         "vehicle",
         "tourPackages",
         "tourPackages.destinations",
+        "customer.vendor",
+        "customer.customerProfile",
       ],
+    });
+
+    // Remove customer details except vendor and customerProfile
+    bookings.forEach((booking) => {
+      if (booking.customer) {
+        booking.customer = {
+          email: booking.customer.email,
+          vendor: booking.customer.vendor,
+          customerProfile: booking.customer.customerProfile,
+        } as any;
+      }
     });
 
     // Replace each booking's property with the enriched version

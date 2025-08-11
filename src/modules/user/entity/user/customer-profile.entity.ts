@@ -14,9 +14,9 @@ export class CustomerProfile {
   username!: string; // For customers
 
   @Column({ nullable: true })
-  profilePicture?: string; // URL to the profile picture
+  profile_picture?: string;
 
   @Column({ nullable: true })
-  phoneNumber?: string;
+  phone_number?: string;
   
 }

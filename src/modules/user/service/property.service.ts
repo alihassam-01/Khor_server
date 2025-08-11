@@ -187,13 +187,90 @@ export class PropertyService {
     });
   }
 
-  /**
-   * Update a property by ID
-   */
-  async update(id: string, updates: Partial<Property>) {
-    await this.repo.update(id, updates);
-    return this.findById(id);
+// async create(data: CreateProperty) {
+//   const property = await this._preparePropertyData(data);
+//   return await this.repo.save(property);
+// }
+
+async update(id: string, updates: Partial<CreateProperty>) {
+  const existingProperty = await this.repo.findOne({
+    where: { id },
+    relations: ["address", "address.location", "vendor"],
+  });
+
+  if (!existingProperty) {
+    throw new Error("Property not found");
   }
+
+  const property = await this._preparePropertyData(updates, existingProperty);
+  return await this.repo.save(property);
+}
+
+/**
+ * Shared helper to prepare property entity for create or update
+ */
+private async _preparePropertyData(
+  data: Partial<CreateProperty>,
+  existingProperty?: Property
+): Promise<Property> {
+  let locationId: number;
+  let addressId: number;
+
+  if (existingProperty) {
+    // Update location
+    await this.locationService.updateLocation(existingProperty.address.location.location_id, {
+      name: data.name ?? existingProperty.name,
+      description: data.description ?? existingProperty.description,
+      parent_location_id: data.localityId
+        ? (data.localityId as unknown as number)
+        : existingProperty.address.location.parent.location_id,
+      plusCode: data.plusCode ?? existingProperty.address.location.plusCode,
+    });
+    locationId = existingProperty.address.location.location_id;
+
+    // Update address
+    await this.locationService.updateAddress(existingProperty.address.address_id, {
+      location: existingProperty.address.location,
+      street_address: data.streetAddress ?? existingProperty.address.street_address,
+      landmark: data.landmark ?? existingProperty.address.landmark,
+      is_primary: existingProperty.address.is_primary,
+    });
+    addressId = existingProperty.address.address_id;
+  } else {
+    // Create location
+    const location = await this.locationService.createLocation({
+      name: data.name!,
+      description: data.description!,
+      parent_location_id: data.localityId as unknown as number,
+      plusCode: data.plusCode,
+    });
+    locationId = location.location_id;
+
+    // Create address
+    const address = await this.locationService.createAddress({
+      locationId,
+      street_address: data.streetAddress || "",
+      landmark: data.landmark || "",
+      is_primary: false,
+    });
+    addressId = address.address_id;
+  }
+
+  // Create or update property object
+  const property = this.repo.create({
+    ...(existingProperty ?? {}),
+    name: data.name ?? existingProperty?.name,
+    description: data.description ?? existingProperty?.description,
+    vendor: { id: data.vendorId ?? existingProperty?.vendor?.id },
+    type: (data.type as "hotel" | "car_rental" | "tour") ?? existingProperty?.type,
+    amenities: data.amenities ?? existingProperty?.amenities,
+    images: data.images ?? existingProperty?.images,
+    active: data.isActive ?? existingProperty?.active,
+    address: { address_id: addressId },
+  });
+
+  return property;
+}
 
   /**
    * Soft delete (set active = false)

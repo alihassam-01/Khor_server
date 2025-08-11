@@ -66,16 +66,29 @@ export class AuthService {
 
     await this.userRepository.save(user);
     // Handling user profile based on type
+    const profileIMAGES = [
+      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png",
+      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/lion.png",
+      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/cat.png",
+      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/chick.png",
+      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/penguin.png",
+      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/bear.png",
+    ]
     if (userType === UserType.VENDOR) {
       const vendor = this.vendorRepository.create({
-        user, // this links the Vendor to the User entity
+        user, 
+        username: name,
       });
+      vendor.profile_picture = profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
       await this.vendorRepository.save(vendor);
     } else {
       const customerProfile = this.customerProfileRepository.create({
-        user, // also use relation
         username: name,
       });
+      // @ts-ignore
+      customerProfile.user = user;
+      // @ts-ignore
+      customerProfile.profile_picture = profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
       await this.customerProfileRepository.save(customerProfile);
     }
 

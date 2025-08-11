@@ -429,6 +429,24 @@ export class LocationService {
     return await this.addressRepository.save(address);
   }
 
+  // update address
+  async updateAddress(
+    id: number,
+    updates: Partial<Address>
+  ): Promise<Address | null> {
+    const address = await this.addressRepository.findOne({
+      where: { address_id: id },
+      relations: ["location"],
+    });
+
+    if (!address) {
+      throw new Error("Address not found");
+    }
+
+    Object.assign(address, updates);
+    return await this.addressRepository.save(address);
+  }
+
   async getCityByLocationId(locationId: number): Promise<string | null> {
     if (!locationId) {
       throw new Error("Location ID is required");

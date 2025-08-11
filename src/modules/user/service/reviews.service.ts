@@ -60,7 +60,7 @@ export class ReviewService {
   async getReviewsForTarget(targetId: string, targetType: ReviewTargetType) {
     const [reviews, count] = await this.reviewRepo.findAndCount({
       where: { target_id: targetId, target_type: targetType },
-      relations: ["user.customerProfile"],
+      relations: ["user.customerProfile", "user.vendor"],
       order: { review_date: "DESC" },
     });
 
@@ -75,11 +75,11 @@ export class ReviewService {
       not_helpful_count: r.not_helpful_count,
       target_id: r.target_id,
       target_type: r.target_type,
+      profile_picture: r.user?.customerProfile?.profile_picture || r.user?.vendor?.profile_picture || "",
       user: {
         username:
           r.user?.customerProfile?.username ||
           `User-${r.user.id.slice(0, 6)}...`,
-        // id: r.user.id
       },
     }));
 
