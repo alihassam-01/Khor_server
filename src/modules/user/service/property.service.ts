@@ -55,7 +55,7 @@ export class PropertyService {
     const addressIds = addresses.map((address) => address.address_id);
 
     const properties = await this.repo.find({
-      where: { address: { address_id: In(addressIds) } },
+      where: { address: { address_id: In(addressIds) }, active: true },
       relations: [
         "vendor",
         "roomTypes",
@@ -82,7 +82,7 @@ export class PropertyService {
    */
   async findById(id: string) {
     const property = await this.repo.findOne({
-      where: { id },
+      where: { id , active: true},
       relations: [
         "vendor",
         "roomTypes",
@@ -105,7 +105,7 @@ export class PropertyService {
    */
   async findByVendorId(vendorId: string) {
     return await this.repo.findOne({
-      where: { vendor: { id: vendorId } },
+      where: { vendor: { id: vendorId }, active: true },
       relations: ["vendor", "roomTypes", "vehicles", "tourPackages", "deals"],
     });
   }
@@ -137,6 +137,7 @@ export class PropertyService {
         "address.location",
         "address.location.parent",
       ],
+      where: { active: true },
     });
     const cityCache = new Map<number, any>();
 
@@ -164,10 +165,26 @@ export class PropertyService {
    * Find properties by vendor ID
    */
   async findByVendor(vendorId: string) {
-    return await this.repo.find({
+    const properties = await this.repo.find({
       where: { vendor: { id: vendorId } },
-      relations: ["vendor", "roomTypes", "vehicles", "tourPackages", "deals"],
+      relations: [
+        "vendor",
+        "roomTypes",
+        "vehicles",
+        "tourPackages",
+        "deals",
+        "address",
+        "address.location",
+        "address.location.parent",
+      ],
     });
+    if (!properties) return null;
+    const enrichedProperties = await Promise.all(
+      properties.map((property) =>
+        this.locationHelper.enrichWithLocationData(property)
+      )
+    );
+    return enrichedProperties;
   }
 
   /**
@@ -187,90 +204,101 @@ export class PropertyService {
     });
   }
 
-// async create(data: CreateProperty) {
-//   const property = await this._preparePropertyData(data);
-//   return await this.repo.save(property);
-// }
+  // async create(data: CreateProperty) {
+  //   const property = await this._preparePropertyData(data);
+  //   return await this.repo.save(property);
+  // }
 
-async update(id: string, updates: Partial<CreateProperty>) {
-  const existingProperty = await this.repo.findOne({
-    where: { id },
-    relations: ["address", "address.location", "vendor"],
-  });
+  async update(id: string, updates: Partial<CreateProperty>) {
+    console.log("Updating property:", id);
+    const existingProperty = await this.repo.findOne({
+      where: { id },
+      relations: ["address", "address.location", "vendor"],
+    });
+    console.log("Existing property found:", existingProperty);
+    if (!existingProperty) {
+      throw new Error("Property not found");
+    }
 
-  if (!existingProperty) {
-    throw new Error("Property not found");
+    const property = await this._preparePropertyData(updates, existingProperty);
+    console.log("Prepared property data:", property);
+    return await this.repo.save(property);
   }
 
-  const property = await this._preparePropertyData(updates, existingProperty);
-  return await this.repo.save(property);
-}
+  /**
+   * Shared helper to prepare property entity for create or update
+   */
+  private async _preparePropertyData(
+    data: Partial<CreateProperty>,
+    existingProperty?: Property
+  ): Promise<Property> {
+    let locationId: number;
+    let addressId: number;
 
-/**
- * Shared helper to prepare property entity for create or update
- */
-private async _preparePropertyData(
-  data: Partial<CreateProperty>,
-  existingProperty?: Property
-): Promise<Property> {
-  let locationId: number;
-  let addressId: number;
+    if (existingProperty) {
+      // Update location
+      await this.locationService.updateLocation(
+        existingProperty.address.location.location_id,
+        {
+          name: data.name ?? existingProperty.name,
+          description: data.description ?? existingProperty.description,
+          parent_location_id: data.localityId
+            ? (data.localityId as unknown as number)
+            : existingProperty.address.location.parent.location_id,
+          plusCode: data.plusCode ?? existingProperty.address.location.plusCode,
+        }
+      );
+      locationId = existingProperty.address.location.location_id;
 
-  if (existingProperty) {
-    // Update location
-    await this.locationService.updateLocation(existingProperty.address.location.location_id, {
-      name: data.name ?? existingProperty.name,
-      description: data.description ?? existingProperty.description,
-      parent_location_id: data.localityId
-        ? (data.localityId as unknown as number)
-        : existingProperty.address.location.parent.location_id,
-      plusCode: data.plusCode ?? existingProperty.address.location.plusCode,
-    });
-    locationId = existingProperty.address.location.location_id;
+      // Update address
+      await this.locationService.updateAddress(
+        existingProperty.address.address_id,
+        {
+          location: existingProperty.address.location,
+          street_address:
+            data.streetAddress ?? existingProperty.address.street_address,
+          landmark: data.landmark ?? existingProperty.address.landmark,
+          is_primary: existingProperty.address.is_primary,
+        }
+      );
+      addressId = existingProperty.address.address_id;
+    } else {
+      // Create location
+      const location = await this.locationService.createLocation({
+        name: data.name!,
+        description: data.description!,
+        parent_location_id: data.localityId as unknown as number,
+        plusCode: data.plusCode,
+      });
+      locationId = location.location_id;
 
-    // Update address
-    await this.locationService.updateAddress(existingProperty.address.address_id, {
-      location: existingProperty.address.location,
-      street_address: data.streetAddress ?? existingProperty.address.street_address,
-      landmark: data.landmark ?? existingProperty.address.landmark,
-      is_primary: existingProperty.address.is_primary,
-    });
-    addressId = existingProperty.address.address_id;
-  } else {
-    // Create location
-    const location = await this.locationService.createLocation({
-      name: data.name!,
-      description: data.description!,
-      parent_location_id: data.localityId as unknown as number,
-      plusCode: data.plusCode,
-    });
-    locationId = location.location_id;
+      // Create address
+      const address = await this.locationService.createAddress({
+        locationId,
+        street_address: data.streetAddress || "",
+        landmark: data.landmark || "",
+        is_primary: false,
+      });
+      addressId = address.address_id;
+    }
 
-    // Create address
-    const address = await this.locationService.createAddress({
-      locationId,
-      street_address: data.streetAddress || "",
-      landmark: data.landmark || "",
-      is_primary: false,
+    // Create or update property object
+    const property = this.repo.create({
+      ...(existingProperty ?? {}),
+      name: data.name ?? existingProperty?.name,
+      description: data.description ?? existingProperty?.description,
+      vendor: { id: data.vendorId ?? existingProperty?.vendor?.id },
+      type:
+        (data.type as "hotel" | "car_rental" | "tour") ??
+        existingProperty?.type,
+      amenities: data.amenities ?? existingProperty?.amenities,
+      images: data.images ?? existingProperty?.images,
+      active: data.isActive ?? existingProperty?.active,
+      address: { address_id: addressId },
     });
-    addressId = address.address_id;
+
+    return property;
   }
-
-  // Create or update property object
-  const property = this.repo.create({
-    ...(existingProperty ?? {}),
-    name: data.name ?? existingProperty?.name,
-    description: data.description ?? existingProperty?.description,
-    vendor: { id: data.vendorId ?? existingProperty?.vendor?.id },
-    type: (data.type as "hotel" | "car_rental" | "tour") ?? existingProperty?.type,
-    amenities: data.amenities ?? existingProperty?.amenities,
-    images: data.images ?? existingProperty?.images,
-    active: data.isActive ?? existingProperty?.active,
-    address: { address_id: addressId },
-  });
-
-  return property;
-}
 
   /**
    * Soft delete (set active = false)
