@@ -30,8 +30,8 @@ export class Article {
   @Column("text")
   excerpt!: string;
 
-  @Column("text")
-  image_url!: string;
+  @Column("text", { array: true, default: () => "ARRAY[]::text[]" })
+  image_urls!: string[];
 
   @Column("text")
   content!: string;

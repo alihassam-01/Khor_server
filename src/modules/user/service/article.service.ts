@@ -17,23 +17,23 @@ export class ArticleService {
 
   private toArticleDTO(article: Article): ArticleDTO {
     return {
-        article_id: article.article_id,
-        title: article.title,
-        slug: article.slug,
-        excerpt: article.excerpt,
-        content: article.content,
-        published_at: article.published_at,
-        seo_title: article.seo_title || "",
-        seo_keywords: article.seo_keywords || "",
-        seo_description: article.seo_description || "",
-        image_url: article.image_url || "",
-        location: {
-            location_id: article.location?.location_id || 0,
-            name: article.location?.name || "",
-        },
-        tags: article.articleTags?.map(tag => tag.tag.name) || [],
+      article_id: article.article_id,
+      title: article.title,
+      slug: article.slug,
+      excerpt: article.excerpt,
+      content: article.content,
+      published_at: article.published_at,
+      seo_title: article.seo_title || "",
+      seo_keywords: article.seo_keywords || "",
+      seo_description: article.seo_description || "",
+      image_urls: article.image_urls || "",
+      location: {
+        location_id: article.location?.location_id || 0,
+        name: article.location?.name || "",
+      },
+      tags: article.articleTags?.map((tag) => tag.tag.name) || [],
     };
-}
+  }
   async createArticle(articleData: any): Promise<ArticleDTO> {
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
@@ -82,7 +82,7 @@ export class ArticleService {
       article.seo_keywords = articleData.seo_keywords || "";
       article.seo_description = articleData.seo_description;
       article.location = location;
-      article.image_url = articleData.image_url || ""; // Default to empty string if no image URL provided
+      article.image_urls = articleData.image_urls || ""; // Default to empty string if no image URL provided
       const articleTags: ArticleTag[] = tags.map((tag) => {
         const articleTag = new ArticleTag();
         articleTag.article = article;
@@ -111,22 +111,39 @@ export class ArticleService {
   async getArticleById(articleId: number): Promise<Article | null> {
     const article = await this.articleRepository.findOne({
       where: { article_id: articleId },
-      relations: ["location", "articleTags"],
+      relations: [
+        "location",
+        "articleTags",
+        "location.attributes",
+        "location.categoryMappings",
+      ],
     });
-    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities([article]);
+    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
+      [article]
+    );
     return enrichedArticles[0] || null;
   }
 
   async getArticleBySlug(slug: string): Promise<Article | null> {
     const article = await this.articleRepository.findOne({
       where: { slug },
-      relations: ["location"],
+      relations: [
+        "location",
+        "articleTags",
+        "location.attributes",
+        "location.categoryMappings",
+      ],
     });
-    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities([article]);
+    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
+      [article]
+    );
     return enrichedArticles[0] || null;
   }
 
-  async updateArticle(articleId: number, articleData: any): Promise<ArticleDTO> {
+  async updateArticle(
+    articleId: number,
+    articleData: any
+  ): Promise<ArticleDTO> {
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -265,11 +282,18 @@ export class ArticleService {
   // get all articles
   async getAllArticles(): Promise<Article[]> {
     const articles = await this.articleRepository.find({
-      relations: ["articleTags", "location", "location.categoryMappings"],
+      relations: [
+        "articleTags",
+        "location",
+        "location.categoryMappings",
+        "location.attributes",
+      ],
       order: { published_at: "DESC" },
     });
     // Enrich articles with location data
-    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(articles);
+    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
+      articles
+    );
     return enrichedArticles;
   }
 

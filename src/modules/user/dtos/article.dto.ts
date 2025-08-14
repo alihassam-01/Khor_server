@@ -8,7 +8,7 @@ export interface ArticleDTO {
     seo_title?: string;
     seo_keywords?: string;
     seo_description?: string;
-    image_url?: string;
+    image_urls?: string[];
     location: {
         location_id: number;
         name: string;
