@@ -5,12 +5,14 @@ import { CreateProperty } from "../dtos/property.dto";
 import { LocationService } from "./location.service";
 // import { City } from "@entity/address";
 import { LocationHelperService } from "./helper/location-helper.service";
+import { ListingPriceService } from "./listingPrice.service";
 
 export class PropertyService {
   private repo = AppDataSource.getRepository(Property);
   private locationService = new LocationService(AppDataSource);
   // private cityRepository = AppDataSource.getRepository(City);
   private locationHelper = new LocationHelperService();
+  private listingPriceService = new ListingPriceService();
   /**
    * Create a new property
    */
@@ -82,7 +84,7 @@ export class PropertyService {
    */
   async findById(id: string) {
     const property = await this.repo.findOne({
-      where: { id , active: true},
+      where: { id, active: true },
       relations: [
         "vendor",
         "roomTypes",
@@ -179,6 +181,72 @@ export class PropertyService {
       ],
     });
     if (!properties) return null;
+    for (const property of properties) {
+      // const listingPrices = await this.listingPriceService.findById(property.id);
+      // if (Array.isArray(listingPrices)) {
+      property.roomTypes.forEach(async (roomType) => {
+        const roomTypeIds = property.roomTypes.map((rt) => rt.id);
+        const listingPrices = await this.listingPriceService.findByIdAndType(
+          roomTypeIds,
+          "room"
+        );
+        let listingPrice;
+        if (Array.isArray(listingPrices)) {
+          listingPrice = listingPrices.find(
+            (lp: any) => lp.entity_id === roomType.id
+          );
+        } else if (listingPrices && listingPrices.entity_id === roomType.id) {
+          listingPrice = listingPrices;
+        }
+        if (listingPrice) {
+          roomType.base_price = listingPrice.base_price;
+        }
+      });
+      // Fetch listing prices for tourPackages and vehicles
+      const tourPackageIds = property.tourPackages.map((tp) => tp.id);
+      const tourPackageListingPrices =
+        await this.listingPriceService.findByIdAndType(
+          tourPackageIds,
+          "tourPackage"
+        );
+      property.tourPackages.forEach((tourPackage) => {
+        let listingPrice;
+        if (Array.isArray(tourPackageListingPrices)) {
+          listingPrice = tourPackageListingPrices.find(
+            (lp: any) => lp.entity_id === tourPackage.id
+          );
+        } else if (
+          tourPackageListingPrices &&
+          tourPackageListingPrices.entity_id === tourPackage.id
+        ) {
+          listingPrice = tourPackageListingPrices;
+        }
+        if (listingPrice) {
+          tourPackage.price_per_person = listingPrice.base_price;
+        }
+      });
+
+      const vehicleIds = property.vehicles.map((v) => v.id);
+      const vehicleListingPrices =
+        await this.listingPriceService.findByIdAndType(vehicleIds, "vehicle");
+      property.vehicles.forEach((vehicle) => {
+        let listingPrice;
+        if (Array.isArray(vehicleListingPrices)) {
+          listingPrice = vehicleListingPrices.find(
+            (lp: any) => lp.entity_id === vehicle.id
+          );
+        } else if (
+          vehicleListingPrices &&
+          vehicleListingPrices.entity_id === vehicle.id
+        ) {
+          listingPrice = vehicleListingPrices;
+        }
+        if (listingPrice) {
+          vehicle.daily_rate = listingPrice.base_price;
+        }
+      });
+      // }
+    }
     const enrichedProperties = await Promise.all(
       properties.map((property) =>
         this.locationHelper.enrichWithLocationData(property)

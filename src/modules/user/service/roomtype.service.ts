@@ -1,21 +1,36 @@
 import { AppDataSource } from "@config/ormconfig";
 import { RoomType } from "../entity/room";
-import { ILike } from "typeorm";
+import { ILike, In } from "typeorm";
 import { LocationHelperService } from "./helper/location-helper.service";
 import { Property } from "@entity/property";
 import { S3ClientService } from "./s3client.service";
+import { ListingPriceService } from "./listingPrice.service";
+import { ListingPrice } from "../entity/payout";
 
 export class RoomTypeService {
   private repo = AppDataSource.getRepository(RoomType);
   private locationHelper = new LocationHelperService();
   private propertyRepo = AppDataSource.getRepository(Property);
   private s3ClientService = new S3ClientService();
+  private listingPriceService = new ListingPriceService();
+
   /**
    * Create a new room type
    */
   async create(data: Partial<RoomType>) {
+    //  go to listingPrice add the details for the room type: base_price, listing_price and profit
     const roomType = this.repo.create(data);
-    return this.repo.save(roomType);
+    // First, save the roomType to get its id
+    const savedRoomType = await this.repo.save(roomType);
+    const { base_price } = data;
+    const listing = await this.listingPriceService.create({
+      base_price,
+      entity_type: "room",
+      entity_id: savedRoomType.id,
+      property: savedRoomType.property,
+    });
+    savedRoomType.base_price = listing.selling_price;
+    return this.repo.save(savedRoomType);
   }
 
   /**
@@ -34,13 +49,54 @@ export class RoomTypeService {
     const enrichedRoomTypes = await Promise.all(
       roomTypes.map(async (roomType: RoomType) => {
         if (roomType.property) {
-          roomType.property = await this.locationHelper.enrichWithLocationData(roomType.property);
+          roomType.property = await this.locationHelper.enrichWithLocationData(
+            roomType.property
+          );
         }
         return roomType;
       })
     );
 
     return enrichedRoomTypes;
+  }
+  /**
+   * Get all room types for vendor with listing prices
+   */
+  async findAllForVendor() {
+    return this.getRoomTypesWithListingPrices();
+  }
+
+  /**
+   * Get room type by ID for vendor with listing price
+   */
+  async findByIdForVendor(roomId: string) {
+    const result = await this.getRoomTypesWithListingPrices([roomId]);
+    return result.length > 0 ? result[0] : null;
+  }
+
+  /**
+   * Get room types by property ID for vendor with listing prices
+   */
+  async findByPropertyForVendor(propertyId: string) {
+    const roomTypes = await this.repo.find({
+      where: { property: { id: propertyId } },
+      relations: ["property"],
+    });
+    return this.getRoomTypesWithListingPrices(roomTypes.map((rt) => rt.id));
+  }
+
+  /**
+   * Search room types for vendor with listing prices
+   */
+  async searchForVendor(term: string) {
+    const roomTypes = await this.repo.find({
+      where: [
+        { name: ILike(`%${term}%`) },
+        { description: ILike(`%${term}%`) },
+      ],
+      relations: ["property"],
+    });
+    return this.getRoomTypesWithListingPrices(roomTypes.map((rt) => rt.id));
   }
 
   /**
@@ -92,6 +148,19 @@ export class RoomTypeService {
     if (deletedImages && deletedImages.length > 0) {
       await this.s3ClientService.deleteFileFromS3(deletedImages);
     }
+    const listingRoom = await this.listingPriceService.findByIdAndType(
+      id,
+      "room"
+    );
+    if (listingRoom && updates.base_price != listingRoom?.base_price) {
+      const savedListing = await this.listingPriceService.update(
+        listingRoom.id,
+        {
+          base_price: updates.base_price,
+        }
+      );
+      updates.base_price = savedListing?.selling_price;
+    }
     await this.repo.update(id, updates);
     return this.findById(id);
   }
@@ -126,5 +195,56 @@ export class RoomTypeService {
       ],
       relations: ["property"],
     });
+  }
+
+  /**
+   * Helper method to enrich room types with listing prices
+   */
+  private async getRoomTypesWithListingPrices(roomIds?: string[]) {
+    const where = roomIds ? { id: In(roomIds) } : {};
+
+    const roomTypes = await this.repo.find({
+      where,
+      relations: [
+        "property",
+        "property.address",
+        "property.address.location",
+        "property.address.location.parent",
+      ],
+    });
+
+    const result = await this.listingPriceService.findByIdAndType(
+      roomTypes.map((roomType) => roomType.id),
+      "room"
+    );
+    const listingPrices: Partial<ListingPrice>[] = Array.isArray(result)
+      ? result
+      : [];
+
+    const listedRooms = roomTypes.map((roomType) => {
+      const listing = listingPrices.find(
+        (lp) => lp.entity_id === roomType.id && lp.entity_type === "room"
+      );
+      if (listing) {
+        roomType.base_price = listing.base_price || 0;
+        // You can add other listing price fields if needed
+        // roomType.listing_price = listing.listing_price;
+        // roomType.profit = listing.profit;
+      }
+      return roomType;
+    });
+
+    const enrichedRoomTypes = await Promise.all(
+      listedRooms.map(async (roomType: RoomType) => {
+        if (roomType.property) {
+          roomType.property = await this.locationHelper.enrichWithLocationData(
+            roomType.property
+          );
+        }
+        return roomType;
+      })
+    );
+
+    return enrichedRoomTypes;
   }
 }

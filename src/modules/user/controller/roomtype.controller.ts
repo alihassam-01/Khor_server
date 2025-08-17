@@ -61,6 +61,14 @@ export class RoomTypeController {
       this.handleError(reply, error, "Error fetching room types", "20002");
     }
   }
+  async getAllRoomTypesForVendor(_req: FastifyRequest, reply: FastifyReply) {
+    try {
+      const rooms = await this.roomTypeService.findAllForVendor();
+      reply.send(rooms);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error fetching room types", "20002");
+    }
+  }
 
   async getRoomTypeById(
     req: FastifyRequest<{ Params: { id: string } }>,
@@ -78,6 +86,22 @@ export class RoomTypeController {
       this.handleError(reply, error, "Error fetching room type", "20003");
     }
   }
+  async getRoomTypeByIdForVendor(
+    req: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const room = await this.roomTypeService.findByIdForVendor(req.params.id);
+      if (!room) {
+        return reply
+          .code(404)
+          .send({ message: "Room type not found", code: "20003" });
+      }
+      reply.send(room);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error fetching room type", "20003");
+    }
+  }
 
   async getRoomTypesByProperty(
     req: FastifyRequest<{ Params: { propertyId: string } }>,
@@ -85,6 +109,24 @@ export class RoomTypeController {
   ) {
     try {
       const rooms = await this.roomTypeService.findByProperty(
+        req.params.propertyId
+      );
+      reply.send(rooms);
+    } catch (error: any) {
+      this.handleError(
+        reply,
+        error,
+        "Error fetching room types by property",
+        "20004"
+      );
+    }
+  }
+  async getRoomTypesByPropertyForVendor(
+    req: FastifyRequest<{ Params: { propertyId: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const rooms = await this.roomTypeService.findByPropertyForVendor(
         req.params.propertyId
       );
       reply.send(rooms);
@@ -143,6 +185,19 @@ export class RoomTypeController {
   ) {
     try {
       const results = await this.roomTypeService.search(req.query.term);
+      reply.send(results);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error searching room types", "20008");
+    }
+  }
+  async searchRoomTypesForVendor(
+    req: FastifyRequest<{ Querystring: { term: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const results = await this.roomTypeService.searchForVendor(
+        req.query.term
+      );
       reply.send(results);
     } catch (error: any) {
       this.handleError(reply, error, "Error searching room types", "20008");

@@ -9,8 +9,22 @@ export class UserController {
     reply.code(201).send(user);
   }
 
-  async getUsers( reply: FastifyReply) {
+  async getUsers(_req: FastifyRequest, reply: FastifyReply) {  
     const users = await this.userService.getUsers();
     reply.send(users);
+  }
+
+  async getUserById(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const user = await this.userService.getUserById(req.params.id);
+    reply.send(user);
+  }
+  async getCustomers(_req: FastifyRequest, reply: FastifyReply) {
+    const customers = await this.userService.getCustomers();
+    reply.send(customers);
+  }
+
+  async getVendors(_req: FastifyRequest, reply: FastifyReply) {
+    const vendors = await this.userService.getVendors();
+    reply.send(vendors);
   }
 }

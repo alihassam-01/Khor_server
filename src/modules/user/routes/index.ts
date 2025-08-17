@@ -11,6 +11,7 @@ import { tagRoutes } from './tag.routes';
 import { bookingRoutes } from './bookings.route';
 import { reviewRoutes } from './reviews.routes';
 import { s3ClientRoutes } from './s3client.routes';
+import userRoutes from './user.routes'
 const routes = [
   authRoutes,
   locationRoutes,
@@ -24,6 +25,7 @@ const routes = [
   vehicleRoutes,
   s3ClientRoutes,
   reviewRoutes,
+  userRoutes,
 ];
 
 export default routes;
