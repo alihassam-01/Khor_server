@@ -1,6 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, Index } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, Index, OneToOne } from "typeorm";
 import { Booking } from "./booking.entity";
 import { Payment } from "./payment.entity";
+import { Payout } from "../payout";
 
 
 @Entity()
@@ -35,6 +36,9 @@ export class Transactions {
 
   @Column({ type: "varchar", length: 50, nullable: true })
   failure_code?: string; 
+
+  @OneToOne(() => Payout, (payout) => payout.transaction, { cascade: true })
+  payout!: Payout;
 
   @OneToMany(() => Payment, (payment) => payment.transaction, { cascade: true })
   payments!: Payment[];

@@ -8,6 +8,7 @@ import {
 } from "typeorm";
 import { Property } from "../property";
 import { User } from "../user";
+import { Payout } from "../payout";
 
 @Entity("vendors")
 export class Vendor {
@@ -26,4 +27,7 @@ export class Vendor {
   @OneToOne(() => User, (user) => user.vendor)
   @JoinColumn({ name: "user_id" })
   user!: User;
+
+  @OneToMany(() => Payout, (payout) => payout.vendor)
+  payouts!: Payout[];
 }

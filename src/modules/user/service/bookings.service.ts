@@ -6,6 +6,9 @@ import { Between, DataSource, In, Not } from "typeorm";
 import { RoomType } from "../entity/room";
 import { User } from "../entity/user";
 import { LocationHelperService } from "./helper/location-helper.service";
+import { PayoutService } from "./payout.service";
+import { Vendor } from "../entity/business";
+import { ListingPriceService } from "./listingPrice.service";
 
 export class BookingService {
   private repo = AppDataSource.getRepository(Booking);
@@ -14,6 +17,8 @@ export class BookingService {
   // private vehicleRepository = AppDataSource.getRepository("Vehicle");
   private tourPackageRepository = AppDataSource.getRepository(TourPackage);
   private userRepository = AppDataSource.getRepository(User);
+  private payoutService = new PayoutService();
+  private listingService = new ListingPriceService();
 
   private dataSource: DataSource = AppDataSource;
   private locationHelper = new LocationHelperService();
@@ -102,11 +107,40 @@ export class BookingService {
       booking.booking_type = bookingData.booking_type;
       booking.total_amount = bookingData.total_amount;
       booking.check_in_date = bookingData.check_in_date;
-      booking.check_out_date = bookingData.check_out_date;
       booking.special_requests = bookingData.special_requests;
       booking.participants_count = bookingData.participants_count;
       booking.booking_status = "pending";
       booking.payment_status = "pending";
+      booking.check_out_date = bookingData.check_out_date;
+
+      // data for the payout entity
+      const bookingDays = this.getBookingDays(
+        new Date(booking.check_in_date),
+        new Date(booking.check_out_date)
+      );
+      console.log("days: ", bookingDays);
+      const listingType: "vehicle" | "room" | "tour" =
+        bookingData.booking_type === "car_rental"
+          ? "vehicle"
+          : bookingData.booking_type === "hotel"
+          ? "room"
+          : "tour";
+      // get the roomType, vehicle or, tour_packag_id instead of the property.id
+      let listingId: string | undefined;
+      if (listingType === "room" && bookingData.room_type_id) {
+        listingId = bookingData.room_type_id;
+      } else if (listingType === "tour" && bookingData.tour_package_id) {
+        listingId = bookingData.tour_package_id;
+      } else if (listingType === "vehicle" && bookingData.vehicle_id) {
+        listingId = bookingData.vehicle_id;
+      } else {
+        listingId = booking.property.id;
+      }
+      const listedPayout = await this.listingService.findByIdAndType(
+        listingId,
+        listingType
+      );
+      const payoutAmount = bookingDays * Number(listedPayout?.base_price);
       // Set relationships based on booking type
       if (bookingData.property_id) {
         booking.property = await this.propertyRepository.findOneByOrFail({
@@ -209,6 +243,18 @@ export class BookingService {
       await queryRunner.manager.save(payment);
       // Update booking with transaction
       savedBooking.transaction = savedTransaction;
+      const bookingWithRelations = await queryRunner.manager.findOne(Booking, {
+        where: { id: savedBooking.id },
+        relations: ["property", "property.vendor"],
+      });
+      if (savedTransaction.status === "succeeded") {
+        await this.payoutService.create({
+          manager: queryRunner.manager,
+          amount: payoutAmount,
+          vendor: { id: bookingWithRelations?.property.vendor.id } as Vendor,
+          transaction: { id: savedTransaction.id } as Transactions,
+        });
+      }
       await queryRunner.manager.save(savedBooking);
       await queryRunner.commitTransaction();
       return {
@@ -382,8 +428,14 @@ export class BookingService {
     transaction.transaction_date = new Date();
     transaction.status = transactionData.status || "pending";
     transaction.customer_id = booking.customer.id;
-    if (transaction.status === "paid") {
+    if (transaction.status === "succeeded") {
       await this.updatePaymentStatus(bookingId, "paid");
+      // add payout
+      await this.payoutService.create({
+        amount: transaction.amount,
+        vendor: booking.property.vendor,
+        transaction,
+      });
     }
     return AppDataSource.getRepository(Transactions).save(transaction);
   }
@@ -482,5 +534,12 @@ export class BookingService {
   async cancelBooking(id: string) {
     await this.repo.update(id, { booking_status: "cancelled" });
     return this.findById(id);
+  }
+
+  private getBookingDays(checkInDate: Date, checkOutDate: Date): number {
+    const start = new Date(checkInDate);
+    const end = new Date(checkOutDate);
+    const timeDiff = end.getTime() - start.getTime();
+    return Math.ceil(timeDiff / (1000 * 3600 * 24));
   }
 }
