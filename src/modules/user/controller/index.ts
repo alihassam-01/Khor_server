@@ -15,3 +15,4 @@ export * from './tag.controller';
 export * from './articleTag.controller';
 export * from './reviews.controller';
 export * from './s3client.controller';
+export * from './payouts.controller';

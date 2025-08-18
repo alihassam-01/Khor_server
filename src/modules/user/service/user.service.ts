@@ -21,13 +21,22 @@ export class UserService {
   }
 
   async getUsers() {
-    const users = await this.userRepository.find();
+    const users = await this.userRepository.find({
+      relations: {
+        customerProfile: true,
+        vendor: true,
+      },
+    });
+    // get the customer_profile and vendor
+
     return users.map((user) => ({
       isActive: user.isActive,
       isVerified: user.isVerified,
       email: user.email,
       userType: user.userType,
       createdAt: user.createdAt,
+      profile:
+        user.userType === "customer" ? user.customerProfile : user.vendor,
     }));
   }
 

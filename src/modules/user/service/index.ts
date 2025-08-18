@@ -15,3 +15,4 @@ export * from './tag.service';
 export * from './articleTag.service';
 export * from './reviews.service';
 export * from './s3client.service';
+export * from './payout.service';

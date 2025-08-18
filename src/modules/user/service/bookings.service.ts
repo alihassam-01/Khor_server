@@ -275,7 +275,13 @@ export class BookingService {
    */
   async findAll() {
     return this.repo.find({
-      relations: ["property", "roomType", "vehicle", "tourPackages"],
+      relations: [
+        "property",
+        "roomType",
+        "vehicle",
+        "tourPackages",
+        "transaction",
+      ],
     });
   }
 
@@ -285,7 +291,13 @@ export class BookingService {
   async findById(id: string) {
     return this.repo.findOne({
       where: { id },
-      relations: ["property", "roomType", "vehicle", "tourPackages"],
+      relations: [
+        "property",
+        "roomType",
+        "vehicle",
+        "tourPackages",
+        "transaction",
+      ],
     });
   }
 
@@ -323,6 +335,7 @@ export class BookingService {
         "tourPackages.destinations",
         "customer.vendor",
         "customer.customerProfile",
+        "transaction",
       ],
     });
 
@@ -351,7 +364,13 @@ export class BookingService {
   async findByCustomer(customerId: string) {
     return this.repo.find({
       where: { customer: { id: customerId } },
-      relations: ["property", "roomType", "vehicle", "tourPackages"],
+      relations: [
+        "property",
+        "roomType",
+        "vehicle",
+        "tourPackages",
+        "transaction",
+      ],
       order: { created_at: "DESC" },
     });
   }
@@ -362,7 +381,13 @@ export class BookingService {
   async findByProperty(propertyId: string) {
     return this.repo.find({
       where: { property: { id: propertyId } },
-      relations: ["property", "roomType", "vehicle", "tourPackages"],
+      relations: [
+        "property",
+        "roomType",
+        "vehicle",
+        "tourPackages",
+        "transaction",
+      ],
     });
   }
 
@@ -390,7 +415,7 @@ export class BookingService {
       where: {
         check_in_date: Between(start, end),
       },
-      relations: ["property"],
+      relations: ["property", "transaction"],
     });
   }
 
