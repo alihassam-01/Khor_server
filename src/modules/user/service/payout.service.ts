@@ -23,6 +23,12 @@ export class PayoutService {
     return this.repo.findOneBy({ payout_id: id });
   }
 
+  //update status
+  async updateStatus(id: string, status: "pending" | "completed" | "failed"): Promise<Payout | null> {
+    await this.repo.update({ payout_id: id }, { status });
+    return this.findOne(id);
+  }
+
   async update(id: string, data: Partial<Payout>): Promise<Payout | null> {
     await this.repo.update({ payout_id: id }, data);
     return this.findOne(id);

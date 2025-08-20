@@ -7,29 +7,34 @@ export class BookingController {
   constructor(private readonly bookingService: BookingService) {}
 
   async create(
-    req: FastifyRequest<{ Body: { bookingData: CreateBookingDto, paymentData: PaymentDetailsDto } }>,
+    req: FastifyRequest<{
+      Body: { bookingData: CreateBookingDto; paymentData: PaymentDetailsDto };
+    }>,
     reply: FastifyReply
   ) {
     try {
       const { paymentData, bookingData } = req.body;
-      const created = await this.bookingService.create(bookingData, paymentData);
-         const response = {
-      status: 'success',
-      data: {
-        booking: {
-          ...created.booking,
-          customer: undefined, // Remove circular references
-          property: undefined,
-          transaction: undefined
+      const created = await this.bookingService.create(
+        bookingData,
+        paymentData
+      );
+      const response = {
+        status: "success",
+        data: {
+          booking: {
+            ...created.booking,
+            customer: undefined, // Remove circular references
+            property: undefined,
+            transaction: undefined,
+          },
+          transaction: {
+            ...created.transaction,
+            booking: undefined,
+          },
+          paymentResult: created.paymentResult,
         },
-        transaction: {
-          ...created.transaction,
-          booking: undefined
-        },
-        paymentResult: created.paymentResult
-      }
-    };
-    reply.send(response);
+      };
+      reply.send(response);
     } catch (error: any) {
       this.handleError(reply, error, "Error creating booking", "50001");
     }
@@ -50,22 +55,31 @@ export class BookingController {
   ) {
     try {
       const booking = await this.bookingService.findById(req.params.id);
-      if (!booking) return reply.code(404).send({ message: "Not found", code: "40401" });
+      if (!booking)
+        return reply.code(404).send({ message: "Not found", code: "40401" });
       reply.send(booking);
     } catch (error: any) {
       this.handleError(reply, error, "Error fetching booking", "50003");
     }
   }
- async findByVendorId(
+  async findByVendorId(
     req: FastifyRequest<{ Params: { vendorId: string } }>,
     reply: FastifyReply
   ) {
     try {
-      const bookings = await this.bookingService.findByVendorId(req.params.vendorId);
-      if (!bookings) return reply.code(404).send({ message: "Not found", code: "40402" });
+      const bookings = await this.bookingService.findByVendorId(
+        req.params.vendorId
+      );
+      if (!bookings)
+        return reply.code(404).send({ message: "Not found", code: "40402" });
       reply.send(bookings);
     } catch (error: any) {
-      this.handleError(reply, error, "Error fetching bookings by vendor", "50003");
+      this.handleError(
+        reply,
+        error,
+        "Error fetching bookings by vendor",
+        "50003"
+      );
     }
   }
   async findByCustomer(
@@ -73,7 +87,9 @@ export class BookingController {
     reply: FastifyReply
   ) {
     try {
-      const bookings = await this.bookingService.findByCustomer(req.params.customerId);
+      const bookings = await this.bookingService.findByCustomer(
+        req.params.customerId
+      );
       reply.send(bookings);
     } catch (error: any) {
       this.handleError(reply, error, "Error fetching bookings", "50004");
@@ -85,7 +101,9 @@ export class BookingController {
     reply: FastifyReply
   ) {
     try {
-      const bookings = await this.bookingService.findByProperty(req.params.propertyId);
+      const bookings = await this.bookingService.findByProperty(
+        req.params.propertyId
+      );
       reply.send(bookings);
     } catch (error: any) {
       this.handleError(reply, error, "Error fetching bookings", "50005");
@@ -117,11 +135,17 @@ export class BookingController {
   }
 
   async updateStatus(
-    req: FastifyRequest<{ Params: { id: string }; Body: { booking_status: Booking["booking_status"] } }>,
+    req: FastifyRequest<{
+      Params: { id: string };
+      Body: { booking_status: Booking["booking_status"] };
+    }>,
     reply: FastifyReply
   ) {
     try {
-      const result = await this.bookingService.updateStatus(req.params.id, req.body.booking_status);
+      const result = await this.bookingService.updateStatus(
+        req.params.id,
+        req.body.booking_status
+      );
       reply.send(result);
     } catch (error: any) {
       this.handleError(reply, error, "Error updating booking status", "50008");
@@ -129,29 +153,46 @@ export class BookingController {
   }
 
   async updatePaymentStatus(
-    req: FastifyRequest<{ Params: { id: string }; Body: { payment_status: Booking["payment_status"] } }>,
+    req: FastifyRequest<{
+      Params: { id: string };
+      Body: { payment_status: Booking["payment_status"] };
+    }>,
     reply: FastifyReply
   ) {
     try {
-      const result = await this.bookingService.updatePaymentStatus(req.params.id, req.body.payment_status);
+      const result = await this.bookingService.updatePaymentStatus(
+        req.params.id,
+        req.body.payment_status
+      );
       reply.send(result);
     } catch (error: any) {
       this.handleError(reply, error, "Error updating payment status", "50009");
     }
   }
   async addTransaction(
-    req: FastifyRequest<{ Params: { id: string }; Body: { amount: number; payment_method: string } }>,
+    req: FastifyRequest<{
+      Params: { id: string };
+      Body: { amount: number; payment_method: string };
+    }>,
     reply: FastifyReply
   ) {
     try {
-      const transaction = await this.bookingService.addTransaction(req.params.id, req.body);
+      const transaction = await this.bookingService.addTransaction(
+        req.params.id,
+        req.body
+      );
       reply.send(transaction);
     } catch (error: any) {
       this.handleError(reply, error, "Error adding transaction", "50010");
     }
   }
 
-  private handleError(reply: FastifyReply, error: any, defaultMessage: string, code: string) {
+  private handleError(
+    reply: FastifyReply,
+    error: any,
+    defaultMessage: string,
+    code: string
+  ) {
     let parsed = { message: defaultMessage, code };
     try {
       parsed = JSON.parse(error.message);
@@ -167,7 +208,9 @@ export class BookingController {
     reply: FastifyReply
   ) {
     try {
-      const bookedDates = await this.bookingService.getBookedDatesForRoomType(req.params.roomTypeId);
+      const bookedDates = await this.bookingService.getBookedDatesForRoomType(
+        req.params.roomTypeId
+      );
       reply.send(bookedDates);
     } catch (error: any) {
       this.handleError(reply, error, "Error fetching booked dates", "50011");
@@ -175,7 +218,9 @@ export class BookingController {
   }
 
   async checkRoomAvailability(
-    req: FastifyRequest<{ Body: { roomTypeId: string; checkInDate: string; checkOutDate: string } }>,
+    req: FastifyRequest<{
+      Body: { roomTypeId: string; checkInDate: string; checkOutDate: string };
+    }>,
     reply: FastifyReply
   ) {
     try {
@@ -186,16 +231,27 @@ export class BookingController {
       );
       reply.send({ available: isAvailable });
     } catch (error: any) {
-      this.handleError(reply, error, "Error checking room availability", "50012");
+      this.handleError(
+        reply,
+        error,
+        "Error checking room availability",
+        "50012"
+      );
     }
   }
 
   async getAvailableSeatsForTour(
-    req: FastifyRequest<{ Params: { tourId: string };Querystring: { checkInDate: string }  }>,
+    req: FastifyRequest<{
+      Params: { tourId: string };
+      Querystring: { checkInDate: string };
+    }>,
     reply: FastifyReply
   ) {
     try {
-      const seatsAvailable = await this.bookingService.getAvailableSeatsForTour(req.params.tourId, req.query.checkInDate);
+      const seatsAvailable = await this.bookingService.getAvailableSeatsForTour(
+        req.params.tourId,
+        req.query.checkInDate
+      );
       reply.send(seatsAvailable);
     } catch (error: any) {
       this.handleError(reply, error, "Error fetching available seats", "50013");
@@ -228,4 +284,19 @@ export class BookingController {
     }
   }
 
+  // refund booking
+  async refundBooking(
+    req: FastifyRequest<{ Params: { id: string }; Body: { reason: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const booking = await this.bookingService.refundBooking(
+        req.params.id,
+        req.body.reason
+      );
+      reply.send(booking);
+    } catch (error: any) {
+      this.handleError(reply, error, "Error refunding booking", "50016");
+    }
+  }
 }

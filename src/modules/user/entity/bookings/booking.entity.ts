@@ -16,6 +16,7 @@ import { Vehicle } from "../property/vehicle.entity";
 import { TourPackage } from "../property/tour-package.entity";
 import { Transactions } from "./transactions.entity";
 import { User } from "../user";
+import { Refund } from "./refund.entity";
 
 @Entity("bookings")
 @Check(`"payment_status" IN ('pending', 'paid', 'refunded')`)
@@ -83,5 +84,9 @@ export class Booking {
   updated_at!: Date;
   @OneToOne(() => Transactions, (transaction) => transaction.booking)
   transaction!: Transactions;
+
+  @OneToOne(() => Refund, (refund) => refund.booking)
+  refund!: Refund;
+
 }
 // }

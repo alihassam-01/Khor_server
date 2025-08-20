@@ -38,7 +38,8 @@ async findByIdAndType(id: string[] | string, type: string) {
     }
     const result = await this.repo.findOne({ where });
     if (!result) {
-        throw new Error(`ListingPrice not found for id: ${Array.isArray(id) ? id.join(", ") : id} and type: ${type}`);
+        // throw new Error(`ListingPrice not found for id: ${Array.isArray(id) ? id.join(", ") : id} and type: ${type}`);
+        console.error(`ListingPrice not found for id: ${Array.isArray(id) ? id.join(", ") : id} and type: ${type}`);
     }
     return result;
 }

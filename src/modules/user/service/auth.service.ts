@@ -187,7 +187,7 @@ export class AuthService {
       config.jwt.secret as string,
       { expiresIn: "7d" }
     );
-
+    console.log("Generated JWT:", token, user.userType === UserType.VENDOR, user.vendor);
     return {
       token,
       // expiresIn: "7d",

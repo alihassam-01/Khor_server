@@ -20,7 +20,7 @@ import { Vendor, BusinessType } from "@modules/user/entity/business";
 import { Meal } from "@modules/user/entity/meal/meal.entity";
 import { Review } from "@modules/user/entity/review/review.entity";
 import { Address, City } from "@modules/user/entity/address";
-import { Booking, Transactions, Payment } from "@modules/user/entity/bookings";
+import { Booking, Transactions, Payment, Refund } from "@modules/user/entity/bookings";
 import { Deal } from "@modules/user/entity/bookings/deal.entity";
 import { TourPackage } from "@modules/user/entity/property/tour-package.entity";
 import { Vehicle } from "@modules/user/entity/property/vehicle.entity";
@@ -67,6 +67,7 @@ export const AppDataSource = new DataSource({
     S3ImagesEntity,
     ListingPrice,
     Payout,
+    Refund,
   ],
   // entities: [__dirname + '/**/*.entity.{ts,js}'],
   synchronize: true,

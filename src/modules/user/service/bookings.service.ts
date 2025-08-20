@@ -1,5 +1,5 @@
 import { AppDataSource } from "@config/ormconfig";
-import { Booking, Payment, Transactions } from "@entity/bookings";
+import { Booking, Payment, Refund, Transactions } from "@entity/bookings";
 import { Property, TourPackage } from "../entity/property";
 import { CreateBookingDto, PaymentDetailsDto } from "../dtos/booking.dto";
 import { Between, DataSource, In, Not } from "typeorm";
@@ -557,7 +557,40 @@ export class BookingService {
    * Cancel booking by ID
    */
   async cancelBooking(id: string) {
+    const booking = await this.findById(id);
+    if (!booking) {
+      throw new Error("Booking not found");
+    }
+    if (new Date(booking.check_in_date) <= new Date()) {
+      throw new Error("Cannot cancel booking after check-in date");
+    }
     await this.repo.update(id, { booking_status: "cancelled" });
+    return this.findById(id);
+  }
+
+  async refundBooking(id: string, reason: string) {
+    const booking = await this.findById(id);
+    if (!booking) {
+      throw new Error("Booking not found");
+    }
+    const checkIn = new Date(booking.check_in_date);
+    const cancel = new Date();
+    const hoursDiff = (checkIn.getTime() - cancel.getTime()) / (1000 * 60 * 60);
+    const refundRepo = AppDataSource.getRepository(Refund);
+    // Create refund entry
+    const refund = refundRepo.create({
+      booking_id: booking.id,
+      reason: reason,
+      created_at: new Date(),
+      refund_amount: booking.total_amount,
+    });
+    if (hoursDiff > 48) {
+      await this.repo.update(id, { booking_status: "cancelled" });
+    } else {
+      refund.reason = "Less than 48 hours before check-in: " + reason;
+      refund.refund_status = "Denied";
+    }
+    await refundRepo.save(refund);
     return this.findById(id);
   }
 
