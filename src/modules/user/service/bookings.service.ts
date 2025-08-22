@@ -9,6 +9,7 @@ import { LocationHelperService } from "./helper/location-helper.service";
 import { PayoutService } from "./payout.service";
 import { Vendor } from "../entity/business";
 import { ListingPriceService } from "./listingPrice.service";
+import { ListingPrice, Payout } from "../entity/payout";
 
 export class BookingService {
   private repo = AppDataSource.getRepository(Booking);
@@ -118,28 +119,7 @@ export class BookingService {
         new Date(booking.check_in_date),
         new Date(booking.check_out_date)
       );
-      console.log("days: ", bookingDays);
-      const listingType: "vehicle" | "room" | "tour" =
-        bookingData.booking_type === "car_rental"
-          ? "vehicle"
-          : bookingData.booking_type === "hotel"
-          ? "room"
-          : "tour";
-      // get the roomType, vehicle or, tour_packag_id instead of the property.id
-      let listingId: string | undefined;
-      if (listingType === "room" && bookingData.room_type_id) {
-        listingId = bookingData.room_type_id;
-      } else if (listingType === "tour" && bookingData.tour_package_id) {
-        listingId = bookingData.tour_package_id;
-      } else if (listingType === "vehicle" && bookingData.vehicle_id) {
-        listingId = bookingData.vehicle_id;
-      } else {
-        listingId = booking.property.id;
-      }
-      const listedPayout = await this.listingService.findByIdAndType(
-        listingId,
-        listingType
-      );
+      const listedPayout = await this.getListedPayout(booking);
       const payoutAmount = bookingDays * Number(listedPayout?.base_price);
       // Set relationships based on booking type
       if (bookingData.property_id) {
@@ -569,29 +549,56 @@ export class BookingService {
   }
 
   async refundBooking(id: string, reason: string) {
-    const booking = await this.findById(id);
-    if (!booking) {
-      throw new Error("Booking not found");
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const booking = await this.findById(id);
+      if (!booking) {
+        throw new Error("Booking not found");
+      }
+      const refundRepo = queryRunner.manager.getRepository(Refund);
+      const { refund: refundAmount, vendorRefund: vendorPayout } =
+        await this.getRefundAmount(booking);
+
+      // Update payout
+      const payoutRepo = queryRunner.manager.getRepository(Payout);
+      await payoutRepo.update(
+        { transaction: { id: booking.transaction.id } },
+        { amount: vendorPayout }
+      );
+      // Create refund entry
+      const refund = refundRepo.create({
+        booking_id: booking.id,
+        reason: reason,
+        created_at: new Date(),
+        refund_amount: refundAmount,
+      });
+
+      if (refundAmount == booking.total_amount) {
+        await queryRunner.manager.update(Booking, id, {
+          booking_status: "refunded",
+        });
+      } else if (refundAmount < booking.total_amount && refundAmount > 0) {
+        await queryRunner.manager.update(Booking, id, {
+          booking_status: "partial_refund",
+        });
+        refund.reason = "Partial Refund: " + reason;
+        refund.refund_status = "partial";
+      } else {
+        refund.reason = "Date Not eligible for refund: " + reason;
+        refund.refund_status = "denied";
+      }
+
+      await refundRepo.save(refund);
+      await queryRunner.commitTransaction();
+      return this.findById(id);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-    const checkIn = new Date(booking.check_in_date);
-    const cancel = new Date();
-    const hoursDiff = (checkIn.getTime() - cancel.getTime()) / (1000 * 60 * 60);
-    const refundRepo = AppDataSource.getRepository(Refund);
-    // Create refund entry
-    const refund = refundRepo.create({
-      booking_id: booking.id,
-      reason: reason,
-      created_at: new Date(),
-      refund_amount: booking.total_amount,
-    });
-    if (hoursDiff > 48) {
-      await this.repo.update(id, { booking_status: "cancelled" });
-    } else {
-      refund.reason = "Less than 48 hours before check-in: " + reason;
-      refund.refund_status = "Denied";
-    }
-    await refundRepo.save(refund);
-    return this.findById(id);
   }
 
   private getBookingDays(checkInDate: Date, checkOutDate: Date): number {
@@ -599,5 +606,82 @@ export class BookingService {
     const end = new Date(checkOutDate);
     const timeDiff = end.getTime() - start.getTime();
     return Math.ceil(timeDiff / (1000 * 3600 * 24));
+  }
+
+  private async getRefundAmount(
+    booking: Booking
+  ): Promise<{ refund: number; vendorRefund: number }> {
+    const listedPayout = await this.getListedPayout(booking);
+    const commissionRate = listedPayout?.commission_rate || 0;
+    const checkIn = new Date(booking.check_in_date);
+    const checkOut = new Date(booking.check_out_date);
+    const cancel = new Date();
+
+    const bookingDays = this.getBookingDays(checkIn, checkOut); // total days booked
+    const perDay = booking.total_amount / bookingDays;
+    const vendorPerDay = perDay * (1 - commissionRate);
+
+    let refund = 0;
+    let vendorRefund = 0;
+    let firstUpcomingHandled = false;
+
+    for (let i = 0; i < bookingDays; i++) {
+      const dayStart = new Date(checkIn);
+      dayStart.setDate(checkIn.getDate() + i); // start of each booked day
+
+      // If this day has already started → no refund, vendor gets full payout
+      if (cancel >= dayStart) {
+        vendorRefund += vendorPerDay;
+        continue;
+      }
+
+      const hoursDiff =
+        (dayStart.getTime() - cancel.getTime()) / (1000 * 60 * 60);
+
+      if (hoursDiff >= 48) {
+        // full refund for this day
+        refund += perDay;
+        // vendor gets nothing
+      } else if (hoursDiff >= 12) {
+        if (!firstUpcomingHandled) {
+          // First upcoming day → 75% refund, vendor gets 25%
+          refund += perDay * 0.75;
+          vendorRefund += vendorPerDay * 0.25;
+          firstUpcomingHandled = true;
+        } else {
+          // Later days in this window → full refund
+          refund += perDay;
+        }
+      } else {
+        // <12 hours → no refund
+        vendorRefund += vendorPerDay;
+      }
+    }
+
+    return { refund, vendorRefund };
+  }
+
+  private async getListedPayout(
+    booking: Booking
+  ): Promise<ListingPrice | null> {
+    const listingType: "vehicle" | "room" | "tour" =
+      booking.booking_type === "car_rental"
+        ? "vehicle"
+        : booking.booking_type === "hotel"
+        ? "room"
+        : "tour";
+
+    let listingId: string | undefined;
+    if (listingType === "room" && booking.roomType) {
+      listingId = booking.roomType.id;
+    } else if (listingType === "tour" && booking.tourPackages) {
+      listingId = booking.tourPackages.id;
+    } else if (listingType === "vehicle" && booking.vehicle) {
+      listingId = booking.vehicle.id;
+    } else {
+      listingId = booking.property.id;
+    }
+
+    return this.listingService.findByIdAndType(listingId, listingType);
   }
 }

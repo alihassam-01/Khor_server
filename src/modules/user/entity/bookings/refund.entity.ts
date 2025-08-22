@@ -6,11 +6,11 @@ export class Refund {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-@OneToOne(() => Booking, { onDelete: "CASCADE" })
-@Column()
-booking_id!: string;
+  @OneToOne(() => Booking, { onDelete: "CASCADE" })
+  @Column()
+  booking_id!: string;
 
-booking!: Booking;
+  booking!: Booking;
 
   @Column({ type: "decimal", precision: 10, scale: 2 })
   refund_amount!: number;
@@ -21,7 +21,7 @@ booking!: Booking;
   @Column()
   created_at!: Date;
 
-  @Column({default: "pending"})
+  @Column({ default: "pending" })
   refund_status!: string;
 
   @Column({ nullable: true })

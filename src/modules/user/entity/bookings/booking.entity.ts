@@ -20,7 +20,7 @@ import { Refund } from "./refund.entity";
 
 @Entity("bookings")
 @Check(`"payment_status" IN ('pending', 'paid', 'refunded')`)
-@Check(`"booking_status" IN ('pending', 'confirmed', 'cancelled', 'completed')`)
+@Check(`"booking_status" IN ('pending', 'confirmed', 'cancelled', 'completed', 'refunded', 'partial_refund')`)
 @Check(`"booking_type" IN ('hotel', 'car_rental', 'tour')`)
 @Index("idx_bookings_customer", ["customer"])
 @Index("idx_bookings_property_id", ["property"])
@@ -69,7 +69,7 @@ export class Booking {
   total_amount!: number;
 
   @Column({ type: "text", default: "pending" })
-  booking_status!: "pending" | "confirmed" | "cancelled" | "completed";
+  booking_status!: "pending" | "confirmed" | "cancelled" | "completed" | "refunded" | "partial_refund";
 
   @Column({ type: "text", default: "pending" })
   payment_status!: "pending" | "paid" | "refunded";
