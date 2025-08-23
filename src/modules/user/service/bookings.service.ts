@@ -612,15 +612,14 @@ export class BookingService {
     booking: Booking
   ): Promise<{ refund: number; vendorRefund: number }> {
     const listedPayout = await this.getListedPayout(booking);
-    const commissionRate = listedPayout?.commission_rate || 0;
+    const commissionRate = Number(listedPayout?.commission_rate) || 0;
     const checkIn = new Date(booking.check_in_date);
     const checkOut = new Date(booking.check_out_date);
     const cancel = new Date();
 
     const bookingDays = this.getBookingDays(checkIn, checkOut); // total days booked
     const perDay = booking.total_amount / bookingDays;
-    const vendorPerDay = perDay * (1 - commissionRate);
-
+    const vendorPerDay = perDay / (1 + commissionRate);
     let refund = 0;
     let vendorRefund = 0;
     let firstUpcomingHandled = false;
