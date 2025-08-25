@@ -607,7 +607,7 @@ export class BookingService {
       );
       // Create refund entry
       const refund = refundRepo.create({
-        booking_id: booking.id,
+        booking: booking,
         reason: reason,
         created_at: new Date(),
         refund_amount: refundAmount,
@@ -617,15 +617,17 @@ export class BookingService {
         await queryRunner.manager.update(Booking, id, {
           booking_status: "refunded",
         });
+        refund.refund_type = "full";
       } else if (refundAmount < booking.total_amount && refundAmount > 0) {
         await queryRunner.manager.update(Booking, id, {
           booking_status: "partial_refund",
         });
         refund.reason = "Partial Refund: " + reason;
-        refund.refund_status = "partial";
+        refund.refund_type = "partial";
       } else {
         refund.reason = "Date Not eligible for refund: " + reason;
         refund.refund_status = "denied";
+        refund.refund_type = "partial";
       }
 
       await refundRepo.save(refund);

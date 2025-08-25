@@ -16,7 +16,9 @@ export class PayoutService {
   }
 
   async findAll(): Promise<Payout[]> {
-    return this.repo.find();
+    return this.repo.find({
+      relations: ["vendor", "transaction"]
+    });
   }
 
   async findOne(id: string): Promise<Payout | null> {

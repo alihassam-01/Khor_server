@@ -1,4 +1,4 @@
-import { Column, Entity, OneToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from "typeorm";
 import { Booking } from "./booking.entity";
 
 @Entity()
@@ -7,9 +7,7 @@ export class Refund {
   id!: string;
 
   @OneToOne(() => Booking, { onDelete: "CASCADE" })
-  @Column()
-  booking_id!: string;
-
+  @JoinColumn({ name: "booking_id" })
   booking!: Booking;
 
   @Column({ type: "decimal", precision: 10, scale: 2 })
@@ -21,8 +19,11 @@ export class Refund {
   @Column()
   created_at!: Date;
 
-  @Column({ default: "pending" })
+  @Column({ default: "pending", enum: ["pending", "processed", "failed", "denied"] })
   refund_status!: string;
+
+  @Column({ enum: ["full", "partial"], nullable: true})
+  refund_type!: string;
 
   @Column({ nullable: true })
   processed_at!: Date;

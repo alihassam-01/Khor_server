@@ -13,6 +13,7 @@ import { reviewRoutes } from "./reviews.routes";
 import { s3ClientRoutes } from "./s3client.routes";
 import userRoutes from "./user.routes";
 import PayoutRoutes from "./payout.routes";
+import RefundRoutes from "./refund.routes";
 
 const routes = [
   authRoutes,
@@ -29,6 +30,7 @@ const routes = [
   reviewRoutes,
   userRoutes,
   PayoutRoutes,
+  RefundRoutes,
 ];
 
 export default routes;
