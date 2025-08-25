@@ -254,17 +254,46 @@ export class BookingService {
    * Get all bookings with their related entities
    */
   async findAll() {
-    return this.repo.find({
+    const bookings = await this.repo.find({
       relations: [
         "property",
+        "property.address",
+        "property.address.location",
+        "property.address.location.parent",
         "roomType",
         "vehicle",
         "tourPackages",
         "transaction",
+        "customer.vendor",
+        "customer.customerProfile",
       ],
     });
+    // in the bookings.customer only pass the name, userId and email
+    bookings.forEach((booking) => {
+      if (booking.customer) {
+        booking.customer = {
+          email: booking.customer.email,
+          userId: booking.customer.id,
+          username:
+            booking.customer.userType === "vendor"
+              ? booking.customer.vendor?.username
+              : booking.customer.customerProfile?.username,
+          profile_picture:
+            booking.customer.userType === "vendor"
+              ? booking.customer.vendor?.profile_picture
+              : booking.customer.customerProfile?.profile_picture,
+        } as any;
+      }
+    });
+    // remove the customer.vendor and customer.customerProfile
+    bookings.forEach((booking) => {
+      if (booking.customer) {
+        delete booking.customer.vendor;
+        delete booking.customer.customerProfile;
+      }
+    });
+    return bookings;
   }
-
   /**
    * Get booking by ID
    */
@@ -552,10 +581,19 @@ export class BookingService {
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+
     try {
       const booking = await this.findById(id);
       if (!booking) {
         throw new Error("Booking not found");
+      }
+      if (
+        booking.booking_status === "partial_refund" ||
+        booking.booking_status === "refunded" ||
+        booking.booking_status === "cancelled"
+      ) {
+        console.error("Booking already refunded or cancelled");
+        return null;
       }
       const refundRepo = queryRunner.manager.getRepository(Refund);
       const { refund: refundAmount, vendorRefund: vendorPayout } =
