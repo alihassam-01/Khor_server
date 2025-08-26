@@ -32,17 +32,23 @@ export class ListingPrice {
   @Column({ type: "numeric", precision: 10, scale: 2 })
   base_price!: number; // What you pay the vendor
 
-@Column({ type: "numeric", precision: 10, scale: 2 })
-selling_price!: number; // What customer pays
-@BeforeInsert()
-@BeforeUpdate()
-setSellingPrice() {
+  @Column({ type: "numeric", precision: 10, scale: 2 })
+  selling_price!: number; // What customer pays
+  @BeforeInsert()
+  @BeforeUpdate()
+  setSellingPrice() {
     const commission = this.commission_rate ?? 0.08;
     this.selling_price = Number(this.base_price) * (1 + Number(commission));
-}
+  }
 
-@Column({ type: "numeric", precision: 5, scale: 2, nullable: true, default: 0.08 })
-commission_rate?: number; // Your commission percentage, default 8%
+  @Column({
+    type: "numeric",
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    default: 0.08,
+  })
+  commission_rate?: number; // Your commission percentage, default 8%
 
   @CreateDateColumn({ type: "timestamptz" })
   created_at!: Date;

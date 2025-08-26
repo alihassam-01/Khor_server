@@ -17,3 +17,4 @@ export * from './reviews.controller';
 export * from './s3client.controller';
 export * from './payouts.controller';
 export * from './refund.controller';
+export * from './listingprice.controller';

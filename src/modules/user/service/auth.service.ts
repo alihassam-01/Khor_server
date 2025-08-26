@@ -49,23 +49,6 @@ export class AuthService {
     userType: UserType,
     name: string
   ): Promise<User> {
-    await this.validateRegistration(email);
-    const hashedPassword = await this.hashPassword(password);
-    const verificationToken = this.generateVerificationToken(email);
-
-    // Send verification email
-    await this.mailService.sendVerificationEmail(email, verificationToken);
-
-    const user = this.userRepository.create({
-      email,
-      password: hashedPassword,
-      userType,
-      verificationToken,
-      isVerified: false,
-    });
-
-    await this.userRepository.save(user);
-    // Handling user profile based on type
     const profileIMAGES = [
       "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png",
       "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/lion.png",
@@ -73,26 +56,44 @@ export class AuthService {
       "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/chick.png",
       "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/penguin.png",
       "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/bear.png",
-    ]
-    if (userType === UserType.VENDOR) {
-      const vendor = this.vendorRepository.create({
-        user, 
-        username: name,
-      });
-      vendor.profile_picture = profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
-      await this.vendorRepository.save(vendor);
-    } else {
-      const customerProfile = this.customerProfileRepository.create({
-        username: name,
-      });
-      // @ts-ignore
-      customerProfile.user = user;
-      // @ts-ignore
-      customerProfile.profile_picture = profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
-      await this.customerProfileRepository.save(customerProfile);
-    }
+    ];
 
-    return user;
+    return await this.userRepository.manager.transaction(async (transactionalEntityManager) => {
+      await this.validateRegistration(email);
+      const hashedPassword = await this.hashPassword(password);
+      const verificationToken = this.generateVerificationToken(email);
+
+      // Send verification email
+      await this.mailService.sendVerificationEmail(email, verificationToken);
+
+      const user = this.userRepository.create({
+        email,
+        password: hashedPassword,
+        userType,
+        verificationToken,
+        isVerified: false,
+      });
+
+      await transactionalEntityManager.save(User, user);
+
+      if (userType === UserType.VENDOR) {
+        const vendor = this.vendorRepository.create({
+          user,
+          username: name,
+        });
+        vendor.profile_picture = profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
+        await transactionalEntityManager.save(Vendor, vendor);
+      } else {
+        const customerProfile = this.customerProfileRepository.create({
+          username: name,
+          user,
+          profile_picture: profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)],
+        });
+        await transactionalEntityManager.save(CustomerProfile, customerProfile);
+      }
+
+      return user;
+    });
   }
 
   // Email verification logic
@@ -146,14 +147,6 @@ export class AuthService {
     password: string
   ): Promise<{
     token: string;
-    // expiresIn: string;
-    // user: {
-    //   id: string;
-    //   email: string;
-    //   userType: UserType;
-    //   name: string;
-    //   vendorId?: string;
-    // };
   }> {
     const user = await this.userRepository.findOne({
       where: { email },
@@ -171,10 +164,10 @@ export class AuthService {
       throw new Error("JWT_SECRET is not configured");
     }
 
-    const name = "Unknown"; // Placeholder for name, can be replaced with actual logic
-    // user.userType === UserType.VENDOR
-    //   ? user.vendor?.companyName ?? "Unknown Agency"
-    //   : user.customerProfile?.username;
+    const name =
+    user.userType === UserType.VENDOR
+      ? user.vendor?.username ?? "Unknown"
+      : user.customerProfile?.username;
 
     const token = jwt.sign(
       {
@@ -187,18 +180,8 @@ export class AuthService {
       config.jwt.secret as string,
       { expiresIn: "7d" }
     );
-    console.log("Generated JWT:", token, user.userType === UserType.VENDOR, user.vendor);
     return {
       token,
-      // expiresIn: "7d",
-      // user: {
-      //   id: user.id,
-      //   email: user.email,
-      //   userType: user.userType,
-      //   name: "Unknown",
-      //   vendorId:
-      //     user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
-      // },
     };
   }
 }

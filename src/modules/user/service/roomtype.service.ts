@@ -27,7 +27,7 @@ export class RoomTypeService {
       base_price,
       entity_type: "room",
       entity_id: savedRoomType.id,
-      property: savedRoomType.property,
+      property: {id: savedRoomType.property.id} as Property,
     });
     savedRoomType.base_price = listing.selling_price;
     return this.repo.save(savedRoomType);

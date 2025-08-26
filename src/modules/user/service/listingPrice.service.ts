@@ -17,7 +17,9 @@ export class ListingPriceService {
    * Get all listings
    */
   async findAll() {
-    return this.repo.find();
+    return this.repo.find({
+      relations:['property']
+    });
   }
 
   /**
