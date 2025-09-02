@@ -7,7 +7,9 @@ import { config } from '@config/config';
 import fastifyMultipart from "@fastify/multipart";
 
 async function startServer() {
-  const app = fastify();
+  const app = fastify({
+    pluginTimeout: 120000
+  });
 
   await app.register(fastifyMultipart, {
   limits: {
@@ -27,7 +29,7 @@ async function startServer() {
 
   try {
     
-    await app.register(typeormPlugin);
+    await app.register(typeormPlugin, { timeout: 120000 });
   } catch (error) {
     console.error("Error connecting to database:", error);
     process.exit(1); 
