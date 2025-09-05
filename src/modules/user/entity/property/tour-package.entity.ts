@@ -10,8 +10,8 @@ import {
   ManyToMany,
   JoinTable,
 } from "typeorm";
-import { Property } from "@entity/property";
-import { Location } from "@entity/location";
+import { Property } from "../property";
+import { Location } from "../location";
 
 @Entity("tour_packages")
 @Index("idx_tour_packages_property_id", ["property"])

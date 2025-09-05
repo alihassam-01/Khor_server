@@ -10,10 +10,10 @@ import {
   ManyToMany,
   OneToOne,
 } from "typeorm";
-import { LocationAttributes, LocationCategoryMapping } from "@entity/location";
-// import { PackageLocation } from "@entity/package";
-import { Address, City } from "@entity/address";
-import { TourPackage } from "@entity/property";
+import { LocationAttributes, LocationCategoryMapping } from "../location";
+// import { PackageLocation } from "../package";
+import { Address, City } from "../address";
+import { TourPackage } from "../property";
 
 @Entity("location")
 export class Location {

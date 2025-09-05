@@ -3,11 +3,11 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { config } from "@config/config";
+import { config } from "../../../config/config";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
-import { S3ImagesEntity } from "@entity/images/s3Images.entity";
-import { AppDataSource } from "@config/ormconfig";
+import { S3ImagesEntity } from "../entity/images/s3Images.entity";
+import { AppDataSource } from "../../../config/ormconfig";
 import { In } from "typeorm";
 
 export class S3ClientService {

@@ -7,7 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from "typeorm";
-import { ReviewStatus } from "@entity/ENUM/enum";
+import { ReviewStatus } from "../ENUM/enum";
 import { User } from "../user";
 
 @Entity()

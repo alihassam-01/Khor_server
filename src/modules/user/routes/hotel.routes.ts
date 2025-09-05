@@ -2,7 +2,7 @@
 // import { HotelController } from "../controller/hotel.controller";
 // import { HotelService } from "../service/hotel.service";
 // import { LocationService } from "../service/location.service";
-// import { AppDataSource } from "@config/ormconfig";
+// import { AppDataSource } from "../../../config/ormconfig";
 
 // export default async function hotelRoutes(fastify: FastifyInstance){
 //         const locationService = new LocationService(AppDataSource);

@@ -1,4 +1,4 @@
-import { EmailConfig } from '@config/emailConfig/emailConfig.js';
+import { EmailConfig } from '../../../../config/emailConfig/emailConfig.js';
 import { sendSMTP } from './provider/smtpProvider.js';
 import { sendSES } from './provider/sesProvider.js';
 

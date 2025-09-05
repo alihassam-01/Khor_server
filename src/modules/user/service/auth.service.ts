@@ -1,11 +1,11 @@
 import { Repository } from "typeorm";
-import { User, CustomerProfile } from "@entity/user";
+import { User, CustomerProfile } from "../entity/user";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
 import { MailService } from "./mail.service";
 import { UserType } from "../entity/ENUM/enum";
-import { Vendor } from "@entity/business";
-import { config } from "@config/config";
+import { Vendor } from "../entity/business";
+import { config } from "../../../config/config";
 
 export class AuthService {
   constructor(

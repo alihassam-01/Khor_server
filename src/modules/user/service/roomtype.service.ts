@@ -1,8 +1,8 @@
-import { AppDataSource } from "@config/ormconfig";
+import { AppDataSource } from "../../../config/ormconfig";
 import { RoomType } from "../entity/room";
 import { ILike, In } from "typeorm";
 import { LocationHelperService } from "./helper/location-helper.service";
-import { Property } from "@entity/property";
+import { Property } from "../entity/property";
 import { S3ClientService } from "./s3client.service";
 import { ListingPriceService } from "./listingPrice.service";
 import { ListingPrice } from "../entity/payout";

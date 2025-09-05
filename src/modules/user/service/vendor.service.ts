@@ -1,7 +1,7 @@
 // import { Repository } from "typeorm";
 // import { User } from "@entity/user";
 
-import { AppDataSource } from "@config/ormconfig";
+import { AppDataSource } from "../../../config/ormconfig";
 import { Vendor } from "../entity/business";
 
 // export class VendorService {

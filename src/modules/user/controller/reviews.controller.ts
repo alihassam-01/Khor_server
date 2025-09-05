@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { ReviewService } from "@modules/user/service";
-import { ReviewStatus } from "@entity/ENUM/enum";
+import { ReviewService } from "../../user/service";
+import { ReviewStatus } from "../entity/ENUM/enum";
+import { CreateReviewDTO } from "../dtos/reviews.dto";
 
 const reviewService = new ReviewService();
 
@@ -8,13 +9,7 @@ export const ReviewController = {
   // Create a new review
   async createReview(
     request: FastifyRequest<{
-      Body: {
-        targetId: string;
-        targetType: "property" | "room_type" | "tour_package";
-        reviewText: string;
-        rating: number;
-        userId: string;
-      };
+      Body: CreateReviewDTO;
     }>,
     reply: FastifyReply
   ) {
@@ -123,8 +118,7 @@ export const ReviewController = {
     reply: FastifyReply
   ) {
     try {
-
-      const queryTargetIds = req.body.targetIds ;
+      const queryTargetIds = req.body.targetIds;
       const reviews = await reviewService.getReviewsByTargetIds(
         queryTargetIds || []
       );

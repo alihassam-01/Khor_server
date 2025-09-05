@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
-import { BookingController } from "@modules/user/controller";
-import { BookingService } from "@modules/user/service/";
-import { authenticate } from "middlewares/authenticate";
+import { BookingController } from "../../user/controller";
+import { BookingService } from "../../user/service/";
+import { authenticate } from "../../../middlewares/authenticate";
 
 export async function bookingRoutes(app: FastifyInstance) {
   const service = new BookingService();
@@ -17,8 +17,9 @@ export async function bookingRoutes(app: FastifyInstance) {
     "/bookings/vendor/:vendorId",
     bookingsController.findByVendorId.bind(bookingsController)
   );
-  app.get(
+  app.get<{ Params: { customerId: string } }>(
     "/bookings/customer/:customerId",
+    { preHandler: [authenticate] },
     bookingsController.findByCustomer.bind(bookingsController)
   );
   app.get(

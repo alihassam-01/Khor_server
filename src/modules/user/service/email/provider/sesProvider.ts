@@ -1,5 +1,5 @@
 import AWS from 'aws-sdk';
-import { EmailConfig } from '@config/emailConfig/emailConfig';
+import { EmailConfig } from '../../../../../config/emailConfig/emailConfig';
 
 export async function sendSES({ to, subject, html }: { to: string; subject: string; html: string }) {
   AWS?.config.update({

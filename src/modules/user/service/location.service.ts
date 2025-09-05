@@ -4,9 +4,9 @@ import {
   LocationAttributes,
   LocationCategoryMapping,
   LocationCategory,
-} from "@entity/location";
+} from "../entity/location";
 import { DataSource } from "typeorm";
-import { Address, City } from "@entity/address";
+import { Address, City } from "../entity/address";
 import { CreateCityDto, CreateLocationDto } from "../dtos/location.dto";
 
 export class LocationService {

@@ -1,4 +1,4 @@
-import { AppDataSource } from "@config/ormconfig";
+import { AppDataSource } from "../../../config/ormconfig";
 import { Refund } from "../entity/bookings";
 
 export class RefundService {

@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { BookingService } from "@modules/user/service";
-import { Booking } from "@entity/bookings";
+import { BookingService } from "../../user/service";
+import { Booking } from "../entity/bookings";
 import { CreateBookingDto, PaymentDetailsDto } from "../dtos/booking.dto";
 
 export class BookingController {

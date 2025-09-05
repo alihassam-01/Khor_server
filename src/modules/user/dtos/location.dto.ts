@@ -1,4 +1,4 @@
-import { LocationAttributes } from "@entity/location";
+import { LocationAttributes } from "../entity/location";
 
 export interface CreateLocationDto {
   name: string;

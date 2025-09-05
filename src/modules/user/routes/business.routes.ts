@@ -3,7 +3,7 @@
 // import { BusinessController } from "../controller/business.controller";
 // import { LocationService } from "../service/location.service";
 // import { UserService } from "../service/user.service";
-// import { AppDataSource } from "@config/ormconfig";
+// import { AppDataSource } from "../../../config/ormconfig";
 
 // export default async function BusinessRoutes(fastify: FastifyInstance) {
 //       const locationService = new LocationService(AppDataSource);

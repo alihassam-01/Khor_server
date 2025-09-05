@@ -1,4 +1,4 @@
-import { AppDataSource } from "@config/ormconfig";
+import { AppDataSource } from "../../../config/ormconfig";
 import { Payout } from "../entity/payout";
 import { EntityManager } from "typeorm";
 

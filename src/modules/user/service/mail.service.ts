@@ -1,5 +1,5 @@
 import * as SibApiV3Sdk from '@getbrevo/brevo';
-import {config} from "@config/config"
+import {config} from "../../../config/config"
 export class MailService {
   private readonly apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 

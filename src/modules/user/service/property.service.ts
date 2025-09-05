@@ -1,4 +1,4 @@
-import { AppDataSource } from "@config/ormconfig";
+import { AppDataSource } from "../../../config/ormconfig";
 import { Property } from "../entity/property";
 import { FindOptionsWhere, ILike, In } from "typeorm";
 import { CreateProperty } from "../dtos/property.dto";

@@ -1,5 +1,5 @@
-import { AppDataSource } from "@config/ormconfig";
-import { Booking, Payment, Refund, Transactions } from "@entity/bookings";
+import { AppDataSource } from "../../../config/ormconfig";
+import { Booking, Payment, Refund, Transactions } from "../entity/bookings";
 import { Property, TourPackage } from "../entity/property";
 import { CreateBookingDto, PaymentDetailsDto } from "../dtos/booking.dto";
 import { Between, DataSource, In, Not } from "typeorm";

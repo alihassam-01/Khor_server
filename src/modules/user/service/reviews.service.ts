@@ -1,8 +1,8 @@
-import { AppDataSource } from "@config/ormconfig";
-import { Review } from "@entity/review/review.entity";
-import { Booking } from "@entity/bookings";
-import { User } from "@entity/user";
-import { ReviewStatus } from "@entity/ENUM/enum";
+import { AppDataSource } from "../../../config/ormconfig";
+import { Review } from "../entity/review/review.entity";
+import { Booking } from "../entity/bookings";
+import { User } from "../entity/user";
+import { ReviewStatus } from "../entity/ENUM/enum";
 import { In } from "typeorm";
 import { CreateReviewDTO, ReviewTargetType } from "../dtos/reviews.dto";
 

@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 // import { Package } from '@entity/package';
-import { MealType } from '@entity/ENUM/enum';
+import { MealType } from '../ENUM/enum';
 
 @Entity()
 export class Meal {

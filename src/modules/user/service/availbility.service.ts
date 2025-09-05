@@ -1,4 +1,4 @@
-import { AppDataSource } from "@config/ormconfig";
+import { AppDataSource } from "../../../config/ormconfig";
 import { Availability } from "../entity/property/availbility.entity";
 
 export class AvailabilityService {

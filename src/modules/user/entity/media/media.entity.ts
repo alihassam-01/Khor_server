@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column } from "typeorm";
-import { RelatedType } from "@entity/ENUM/enum";
+import { RelatedType } from "../ENUM/enum";
 
 @Entity("media")
 export class Media {

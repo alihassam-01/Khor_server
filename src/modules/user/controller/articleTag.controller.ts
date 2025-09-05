@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { ArticleTagService } from "@modules/user/service";
+import { ArticleTagService } from "../../user/service";
 
 export class ArticleTagController {
   constructor(private readonly service: ArticleTagService) {}

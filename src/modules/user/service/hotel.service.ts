@@ -1,4 +1,4 @@
-// import { AppDataSource } from "@config/ormconfig";
+// import { AppDataSource } from "../../../config/ormconfig";
 // import { Hotel, ServiceOptions } from "@entity/property";
 // import { BusinessType, Vendor } from "@entity/business";
 // import { RoomType } from "../entity/room";

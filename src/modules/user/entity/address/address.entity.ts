@@ -7,8 +7,8 @@ import {
   OneToOne,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { Location } from "@entity/location";
-import { User } from "@entity/user";
+import { Location } from "../location";
+import { User } from "../user";
 import { Property } from "../property";
 // import { Hotel } from "../property";
 

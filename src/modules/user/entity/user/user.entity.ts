@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, OneToMany } from 'typeorm';
 // import { TravelAgencyProfile } from './travel-agency-profile.entity';
 import { CustomerProfile } from './customer-profile.entity';
-import { UserType } from '@entity/ENUM/enum';
+import { UserType } from '../ENUM/enum';
 import { Vendor } from '../business';
 import { Address } from '../address';
 import { Booking } from '../bookings';

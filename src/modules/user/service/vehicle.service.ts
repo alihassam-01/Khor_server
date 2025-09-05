@@ -1,4 +1,4 @@
-import { AppDataSource } from "@config/ormconfig";
+import { AppDataSource } from "../../../config/ormconfig";
 import { Vehicle } from "../entity/property/vehicle.entity";
 import { ILike } from "typeorm";
 

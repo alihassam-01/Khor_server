@@ -1,6 +1,6 @@
 import { AppDataSource } from "../../../config/ormconfig";
-import { Article, Tag, ArticleTag } from "@entity/article";
-import { Location } from "@entity/location";
+import { Article, Tag, ArticleTag } from "../entity/article";
+import { Location } from "../entity/location";
 import { ArticleDTO } from "../dtos/article.dto";
 import { LocationHelperService } from "./helper/location-helper.service";
 // import { LocationCategory } from "../entity/location-category.entity";

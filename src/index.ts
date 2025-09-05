@@ -2,8 +2,8 @@ import 'tsconfig-paths/register';
 import fastify from "fastify";
 // import { AppDataSource } from "./config/ormconfig";
 import typeormPlugin from './app/plugins/typeorm';
-import routes from '@modules/user/routes';
-import { config } from '@config/config';
+import routes from './modules/user/routes';
+import { config } from './config/config';
 import fastifyMultipart from "@fastify/multipart";
 
 async function startServer() {

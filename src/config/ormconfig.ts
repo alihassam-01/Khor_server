@@ -1,37 +1,83 @@
+import { join } from "path";
 import { DataSource } from "typeorm";
-import { User, CustomerProfile } from "@entity/user";
 import { config } from "./config";
-import { Article, ArticleTag, Tag } from "@entity/article";
-import {
-  LocationAttributes,
-  LocationCategory,
-  LocationCategoryMapping,
-  Location,
-} from "@entity/location";
-import { Media } from "@entity/media/media.entity";
-// import { Package, PackageDiscount, Duration, PackageLocation, Discount  } from "@modules/user/entity/package";
-import {
-  RoomInventory,
-  RoomType,
-  RoomFeature,
-} from "@modules/user/entity/room";
-import { Property, ServiceOptions } from "@modules/user/entity/property";
-import { Vendor, BusinessType } from "@modules/user/entity/business";
-import { Meal } from "@modules/user/entity/meal/meal.entity";
-import { Review } from "@modules/user/entity/review/review.entity";
-import { Address, City } from "@modules/user/entity/address";
-import {
-  Booking,
-  Transactions,
-  Payment,
-  Refund,
-} from "@modules/user/entity/bookings";
-import { Deal } from "@modules/user/entity/bookings/deal.entity";
-import { TourPackage } from "@modules/user/entity/property/tour-package.entity";
-import { Vehicle } from "@modules/user/entity/property/vehicle.entity";
-import { Availability } from "@modules/user/entity/property/availbility.entity";
-import { S3ImagesEntity } from "@modules/user/entity/images/s3Images.entity";
-import { ListingPrice, Payout } from "@modules/user/entity/payout";
+
+// import { User, CustomerProfile } from "../../src/modules/user/entity/user";
+// import {
+//   Article,
+//   ArticleTag,
+//   Tag,
+// } from "../../src/modules/user/entity/article";
+// import {
+//   LocationAttributes,
+//   LocationCategory,
+//   LocationCategoryMapping,
+//   Location,
+// } from "../../src/modules/user/entity/location";
+// import { Media } from "../../src/modules/user/entity/media/media.entity";
+
+// // Convert all @modules aliases to relative paths
+// import {
+//   RoomInventory,
+//   RoomType,
+//   RoomFeature,
+// } from "../../src/modules/user/entity/room";
+// import {
+//   Property,
+//   ServiceOptions,
+// } from "../../src/modules/user/entity/property";
+// import { Vendor, BusinessType } from "../../src/modules/user/entity/business";
+// import { Meal } from "../../src/modules/user/entity/meal/meal.entity";
+// import { Review } from "../../src/modules/user/entity/review/review.entity";
+// import { Address, City } from "../../src/modules/user/entity/address";
+// import {
+//   Booking,
+//   Transactions,
+//   Payment,
+//   Refund,
+// } from "../../src/modules/user/entity/bookings";
+// import { Deal } from "../../src/modules/user/entity/bookings/deal.entity";
+// import { TourPackage } from "../../src/modules/user/entity/property/tour-package.entity";
+// import { Vehicle } from "../../src/modules/user/entity/property/vehicle.entity";
+// import { Availability } from "../../src/modules/user/entity/property/availbility.entity";
+// import { S3ImagesEntity } from "../../src/modules/user/entity/images/s3Images.entity";
+// import { ListingPrice, Payout } from "../../src/modules/user/entity/payout";
+
+const isProduction = process.env.NODE_ENV === "production";
+
+// For production, we need to use the compiled JS files
+const entities = isProduction
+  ? [
+      join(__dirname, "../../src/modules/user/entity/user/*.js"),
+      join(__dirname, "../../src/modules/user/entity/article/*.js"),
+      join(__dirname, "../../src/modules/user/entity/location/*.js"),
+      join(__dirname, "../../src/modules/user/entity/media/*.js"),
+      join(__dirname, "../../src/modules/user/entity/room/*.js"),
+      join(__dirname, "../../src/modules/user/entity/property/*.js"),
+      join(__dirname, "../../src/modules/user/entity/business/*.js"),
+      join(__dirname, "../../src/modules/user/entity/meal/*.js"),
+      join(__dirname, "../../src/modules/user/entity/review/*.js"),
+      join(__dirname, "../../src/modules/user/entity/address/*.js"),
+      join(__dirname, "../../src/modules/user/entity/bookings/*.js"),
+      join(__dirname, "../../src/modules/user/entity/images/*.js"),
+      join(__dirname, "../../src/modules/user/entity/payout/*.js"),
+    ]
+  : [
+      // Development: use TypeScript files with relative paths
+      join(__dirname, "../../src/modules/user/entity/user/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/article/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/location/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/media/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/room/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/property/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/business/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/meal/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/review/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/address/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/bookings/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/images/*.ts"),
+      join(__dirname, "../../src/modules/user/entity/payout/*.ts"),
+    ];
 export const AppDataSource = new DataSource({
   type: "postgres",
   host: config.db.host,
@@ -39,48 +85,50 @@ export const AppDataSource = new DataSource({
   username: config.db.username,
   password: config.db.password,
   database: config.db.database,
-  entities: [
-    User,
-    CustomerProfile,
-    Article,
-    Tag,
-    ArticleTag,
-    Location,
-    LocationAttributes,
-    LocationCategory,
-    LocationCategoryMapping,
-    Media,
-    RoomInventory,
-    RoomType,
-    Property,
-    Vendor,
-    Meal,
-    Review,
-    BusinessType,
-    Address,
-    City,
-    Booking,
-    Transactions,
-    RoomFeature,
-    ServiceOptions,
-    Deal,
-    TourPackage,
-    Vehicle,
-    Availability,
-    Payment,
-    S3ImagesEntity,
-    ListingPrice,
-    Payout,
-    Refund,
-  ],
+  // entities: [
+  //   User,
+  //   CustomerProfile,
+  //   Article,
+  //   Tag,
+  //   ArticleTag,
+  //   Location,
+  //   LocationAttributes,
+  //   LocationCategory,
+  //   LocationCategoryMapping,
+  //   Media,
+  //   RoomInventory,
+  //   RoomType,
+  //   Property,
+  //   Vendor,
+  //   Meal,
+  //   Review,
+  //   BusinessType,
+  //   Address,
+  //   City,
+  //   Booking,
+  //   Transactions,
+  //   RoomFeature,
+  //   ServiceOptions,
+  //   Deal,
+  //   TourPackage,
+  //   Vehicle,
+  //   Availability,
+  //   Payment,
+  //   S3ImagesEntity,
+  //   ListingPrice,
+  //   Payout,
+  //   Refund,
+  // ],
   // entities: [__dirname + '/**/*.entity.{ts,js}'],
+  entities: entities,
+
   synchronize: true,
   migrations: ["src/migrations/**/*.ts"],
   logging: true,
-  ssl: true,
-  extra: {
-    ssl: {
-      rejectUnauthorized: false,
-    },
-  },
+  // ssl: true,
+  // extra: {
+  //   ssl: {
+  //     rejectUnauthorized: false,
+  //   },
+  // },
 });

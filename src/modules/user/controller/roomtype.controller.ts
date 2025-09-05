@@ -1,25 +1,14 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { RoomTypeService } from "@modules/user/service";
-import { RoomType } from "@entity/room";
+import { RoomTypeService } from "../../user/service";
+import { RoomType } from "../entity/room";
+import { CreateRoomTypeDto } from "../dtos/roomtype.dto";
 
 export class RoomTypeController {
   constructor(private readonly roomTypeService: RoomTypeService) {}
 
+
   async createRoomType(
-    req: FastifyRequest<{
-      Body: {
-        name: string;
-        base_price: number;
-        max_occupancy: number;
-        total_rooms: number;
-        description: string;
-        propertyId: string;
-        images?: string[];
-        amenities?: string[];
-        active?: boolean;
-        size_sqm?: number;
-      };
-    }>,
+    req: FastifyRequest<{ Body: CreateRoomTypeDto }>,
     reply: FastifyReply
   ) {
     try {
@@ -37,10 +26,10 @@ export class RoomTypeController {
       } = req.body;
       const roomType = await this.roomTypeService.create({
         name,
-        base_price: base_price,
-        max_occupancy: max_occupancy,
-        total_rooms: total_rooms,
-        description: description,
+        base_price,
+        max_occupancy,
+        total_rooms,
+        description,
         property: { id: propertyId } as any,
         images,
         amenities,

@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { TourPackageService } from "@modules/user/service";
-import { TourPackage } from "@entity/property";
+import { TourPackageService } from "../../user/service";
+import { TourPackage } from "../entity/property";
 import { TourPackageReceiveDTO } from "../dtos/tourpackage.dto";
 
 export class TourPackageController {

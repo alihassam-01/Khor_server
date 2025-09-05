@@ -1,4 +1,4 @@
-import { AppDataSource } from "@config/ormconfig";
+import { AppDataSource } from "../../../config/ormconfig";
 import { Deal } from "../entity/bookings/deal.entity";
 // import { Deal } from "@getbrevo/brevo";
 

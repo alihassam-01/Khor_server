@@ -1,7 +1,7 @@
-import { AppDataSource } from "@config/ormconfig";
-import { City } from "@entity/address";
+import { AppDataSource } from "../../../../config/ormconfig";
+import { City } from "../../entity/address";
 import { Repository } from "typeorm";
-import { LocationService } from "@modules/user/service";
+import { LocationService } from "../../../user/service";
 
 export class LocationHelperService {
   private cityRepository: Repository<City>;

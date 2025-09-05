@@ -4,7 +4,7 @@ import { AuthService } from "../service/auth.service";
 
 import 'fastify'; // important!
 import { Repository } from "typeorm";
-import { User, CustomerProfile } from "@entity/user";
+import { User, CustomerProfile } from "../entity/user";
 import { MailService } from "../service/mail.service";
 import { AppDataSource } from "../../../config/ormconfig";
 import { Vendor } from "../entity/business";

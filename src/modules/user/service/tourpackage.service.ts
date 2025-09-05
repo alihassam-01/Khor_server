@@ -1,7 +1,7 @@
-import { AppDataSource } from "@config/ormconfig";
-import { TourPackage } from "@modules/user/entity/property";
+import { AppDataSource } from "../../../config/ormconfig";
+import { TourPackage } from "../../user/entity/property";
 import { ILike, In } from "typeorm";
-import { Location } from "@entity/location";
+import { Location } from "../entity/location";
 import { LocationHelperService } from "./helper/location-helper.service";
 import { S3ClientService } from "./s3client.service";
 

@@ -11,7 +11,7 @@ import {
   BeforeInsert,
   BeforeUpdate,
 } from "typeorm";
-import { Location } from "@entity/location";
+import { Location } from "../location";
 import { ArticleTag } from "./article-tags.entity";
 // Optional HTML cleaner
 // import { stripHtml } from "string-strip-html";
