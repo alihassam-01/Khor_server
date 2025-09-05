@@ -15,7 +15,7 @@ export class Vendor {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "varchar", length: 255, nullable: true})
+  @Column({ type: "varchar", length: 255, nullable: true })
   username!: string;
 
   @Column({ nullable: true })
@@ -27,6 +27,9 @@ export class Vendor {
   @OneToOne(() => User, (user) => user.vendor)
   @JoinColumn({ name: "user_id" })
   user!: User;
+
+  @Column({ nullable: true })
+  phone_number?: string;
 
   @OneToMany(() => Payout, (payout) => payout.vendor)
   payouts!: Payout[];
