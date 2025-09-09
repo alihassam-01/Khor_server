@@ -491,7 +491,9 @@ export class BookingService {
       where: {
         roomType: { id: roomTypeId },
         check_in_date: Between(checkInDate, checkOutDate),
-        booking_status: Not(In(["cancelled", "completed"])), // Exclude cancelled and completed bookings
+        booking_status: Not(
+          In(["cancelled", "completed", "refunded", "partial_refund"])
+        ),
       },
     });
 
@@ -554,6 +556,33 @@ export class BookingService {
     return Math.max((tourPackage.max_participants || 0) - totalBookedSeats, 0);
   }
 
+  /**
+   * Get all roomType IDs booked for a given date range
+   */
+  async getBookedRooms(
+    checkInDate: string,
+    checkOutDate: string
+  ): Promise<string[]> {
+    // Convert passed dates to Date objects and set time to 00:00:00 for accurate comparison
+    const startDate = new Date(checkInDate + "T00:00:00");
+    const endDate = new Date(checkOutDate + "T23:59:59");
+
+    const bookings = await this.repo.find({
+      where: {
+        check_in_date: Between(startDate.toISOString(), endDate.toISOString()),
+        booking_status: Not(
+          In(["cancelled", "completed", "refunded", "partial_refund"])
+        ),
+      },
+      relations: ["roomType"],
+    });
+
+    // Collect unique roomType IDs
+    const roomTypeIds = Array.from(
+      new Set(bookings.filter((b) => b.roomType).map((b) => b.id))
+    );
+    return roomTypeIds;
+  }
   /**
    * Confirm booking by ID
    */

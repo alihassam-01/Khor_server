@@ -63,4 +63,9 @@ export async function roomTypeRoutes(app: FastifyInstance) {
     "/room-types/vendor/search",
     roomtypeController.searchRoomTypesForVendor.bind(roomtypeController)
   );
+
+  app.get(
+    "/room-types/dates",
+    roomtypeController.getAllRoomTypesByDates.bind(roomtypeController)
+  );
 }

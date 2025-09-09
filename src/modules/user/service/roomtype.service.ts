@@ -6,6 +6,8 @@ import { Property } from "../entity/property";
 import { S3ClientService } from "./s3client.service";
 import { ListingPriceService } from "./listingPrice.service";
 import { ListingPrice } from "../entity/payout";
+import { LocationService } from "./location.service";
+import { BookingService } from "./bookings.service";
 
 export class RoomTypeService {
   private repo = AppDataSource.getRepository(RoomType);
@@ -13,6 +15,8 @@ export class RoomTypeService {
   private propertyRepo = AppDataSource.getRepository(Property);
   private s3ClientService = new S3ClientService();
   private listingPriceService = new ListingPriceService();
+  private locationService = new LocationService(AppDataSource);
+  private bookingService = new BookingService();
 
   /**
    * Create a new room type
@@ -27,7 +31,7 @@ export class RoomTypeService {
       base_price,
       entity_type: "room",
       entity_id: savedRoomType.id,
-      property: {id: savedRoomType.property.id} as Property,
+      property: { id: savedRoomType.property.id } as Property,
     });
     savedRoomType.base_price = listing.selling_price;
     return this.repo.save(savedRoomType);
@@ -182,6 +186,50 @@ export class RoomTypeService {
   async delete(id: string) {
     await this.repo.delete(id);
     return { success: true };
+  }
+
+  /**
+   * Get roomtypes by Location, checkindate and checkoutdate
+   * Returns all rooms in the location with no bookings in the given dates
+   */
+  async RoomTypesByDate(
+    location: string,
+    check_in_date: string,
+    check_out_date: string
+  ) {
+    const children = await this.locationService.getAllDescendants(
+      Number(location)
+    );
+    const addresses = await this.locationService.getAddressesByLocationId(
+      children
+    );
+    const addressIds = addresses.map((address) => address.address_id);
+    const properties = await this.propertyRepo.find({
+      where: { address: { address_id: In(addressIds) } },
+      relations: ["address", "address.location"],
+    });
+    const propertyIds = properties.map((p) => p.id);
+
+    // Find all room types in these properties
+    const roomTypes = await this.repo.find({
+      where: { property: { id: In(propertyIds) } },
+      relations: ["property"],
+    });
+
+    const bookedRoomIdsRaw = await this.bookingService.getBookedRooms(
+      check_in_date,
+      check_out_date
+    );
+
+    const bookedRoomIds = bookedRoomIdsRaw.map(
+      (b: any) => b.booking_roomTypeId
+    );
+
+    // Filter out booked rooms
+    const availableRoomTypes = roomTypes.filter(
+      (roomType) => !bookedRoomIds.includes(roomType.id)
+    );
+    return availableRoomTypes;
   }
 
   /**

@@ -392,6 +392,22 @@ export class LocationService {
       order: { location_order: "ASC" },
     });
   }
+
+  async getAllDescendants(locationId: number): Promise<Location[]> {
+    const descendants: Location[] = [];
+    const stack: number[] = [locationId];
+
+    while (stack.length > 0) {
+      const currentId = stack.pop()!;
+      const children = await this.getLocationChildren(currentId);
+      descendants.push(...children);
+      for (const child of children) {
+        stack.push(child.location_id);
+      }
+    }
+
+    return descendants;
+  }
   async getCategoryById(categoryId: number): Promise<LocationCategory | null> {
     return await this.categoryRepository.findOne({
       where: { categoryId },

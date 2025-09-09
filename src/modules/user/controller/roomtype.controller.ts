@@ -6,7 +6,6 @@ import { CreateRoomTypeDto } from "../dtos/roomtype.dto";
 export class RoomTypeController {
   constructor(private readonly roomTypeService: RoomTypeService) {}
 
-
   async createRoomType(
     req: FastifyRequest<{ Body: CreateRoomTypeDto }>,
     reply: FastifyReply
@@ -177,6 +176,36 @@ export class RoomTypeController {
       reply.send(results);
     } catch (error: any) {
       this.handleError(reply, error, "Error searching room types", "20008");
+    }
+  }
+
+  async getAllRoomTypesByDates(
+    req: FastifyRequest<{
+      Querystring: {
+        locationFilter: number;
+        checkInDate: string;
+        checkOutDate: string;
+      };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const location = req.query.locationFilter;
+      const check_in_date = req.query.checkInDate;
+      const check_out_date = req.query.checkOutDate;
+      const results = await this.roomTypeService.RoomTypesByDate(
+        location as unknown as string,
+        check_in_date,
+        check_out_date
+      );
+      reply.send(results);
+    } catch (error: any) {
+      this.handleError(
+        reply,
+        error,
+        "Error Finding Rooms in the Date",
+        "20008"
+      );
     }
   }
   async searchRoomTypesForVendor(
