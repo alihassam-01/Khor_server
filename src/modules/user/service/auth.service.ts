@@ -6,6 +6,8 @@ import { MailService } from "./mail.service";
 import { UserType } from "../entity/ENUM/enum";
 import { Vendor } from "../entity/business";
 import { config } from "../../../config/config";
+import { sendEmail } from "./email";
+import { accountActivationTemplate } from "./email/templates/accountActivation";
 
 export class AuthService {
   constructor(
@@ -58,42 +60,64 @@ export class AuthService {
       "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/bear.png",
     ];
 
-    return await this.userRepository.manager.transaction(async (transactionalEntityManager) => {
-      await this.validateRegistration(email);
-      const hashedPassword = await this.hashPassword(password);
-      const verificationToken = this.generateVerificationToken(email);
+    return await this.userRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        console.log("validate email: ")
+        try {
+          await this.validateRegistration(email);
+        } catch (error: any) {
+          if (error?.message?.includes('EMAIL_IN_USE')) {
+            throw new Error('User already exists');
+          }
+          throw error;
+        }
+        const hashedPassword = await this.hashPassword(password);
+        const verificationToken = this.generateVerificationToken(email);
 
-      // Send verification email
-      await this.mailService.sendVerificationEmail(email, verificationToken);
-
-      const user = this.userRepository.create({
-        email,
-        password: hashedPassword,
-        userType,
-        verificationToken,
-        isVerified: false,
-      });
-
-      await transactionalEntityManager.save(User, user);
-
-      if (userType === UserType.VENDOR) {
-        const vendor = this.vendorRepository.create({
-          user,
-          username: name,
+        // Send verification email
+        // await this.mailService.sendVerificationEmail(email, verificationToken);
+        console.log("sending email: ")
+        await sendEmail({
+          to: email,
+          subject: "Account Activation ",
+          html: accountActivationTemplate(name, verificationToken),
         });
-        vendor.profile_picture = profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
-        await transactionalEntityManager.save(Vendor, vendor);
-      } else {
-        const customerProfile = this.customerProfileRepository.create({
-          username: name,
-          user,
-          profile_picture: profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)],
+
+        console.log("User seraching : ")
+        const user = this.userRepository.create({
+          email,
+          password: hashedPassword,
+          userType,
+          verificationToken,
+          isVerified: false,
         });
-        await transactionalEntityManager.save(CustomerProfile, customerProfile);
+        console.log("user", user)
+        await transactionalEntityManager.save(User, user);
+
+        if (userType === UserType.VENDOR) {
+          const vendor = this.vendorRepository.create({
+            user,
+            username: name,
+          });
+          vendor.profile_picture =
+            profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
+          await transactionalEntityManager.save(Vendor, vendor);
+        } else {
+          const customerProfile = this.customerProfileRepository.create({
+            username: name,
+            user,
+            profile_picture:
+              profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)],
+          });
+          await transactionalEntityManager.save(
+            CustomerProfile,
+            customerProfile
+          );
+        }
+
+        return user;
       }
-
-      return user;
-    });
+    );
   }
 
   // Email verification logic
@@ -165,9 +189,9 @@ export class AuthService {
     }
 
     const name =
-    user.userType === UserType.VENDOR
-      ? user.vendor?.username ?? "Unknown"
-      : user.customerProfile?.username;
+      user.userType === UserType.VENDOR
+        ? user.vendor?.username ?? "Unknown"
+        : user.customerProfile?.username;
 
     const token = jwt.sign(
       {

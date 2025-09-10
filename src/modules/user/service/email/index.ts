@@ -1,14 +1,24 @@
-import { EmailConfig } from '../../../../config/emailConfig/emailConfig.js';
-import { sendSMTP } from './provider/smtpProvider.js';
-import { sendSES } from './provider/sesProvider.js';
-
-export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+import { EmailConfig } from "../../../../config/emailConfig/emailConfig";
+import { sendSMTP } from "./provider/smtpProvider";
+import { sendSES } from "./provider/sesProvider";
+import { sendBrevo } from "./provider/brevoProvider";
+export async function sendEmail({
+  to,
+  subject,
+  html,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+}) {
   try {
     let messageId;
-    if (EmailConfig.provider === 'smtp') {
+    if (EmailConfig.provider === "smtp") {
       messageId = await sendSMTP({ to, subject, html });
-    } else if (EmailConfig.provider === 'ses') {
+    } else if (EmailConfig.provider === "ses") {
       messageId = await sendSES({ to, subject, html });
+    } else if (EmailConfig.provider === "brevo") {
+      messageId = await sendBrevo({ to, subject, html });
     } else {
       throw new Error(`Unknown email provider: ${EmailConfig.provider}`);
     }
