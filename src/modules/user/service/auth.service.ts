@@ -2,7 +2,6 @@ import { Repository } from "typeorm";
 import { User, CustomerProfile } from "../entity/user";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
-import { MailService } from "./mail.service";
 import { UserType } from "../entity/ENUM/enum";
 import { Vendor } from "../entity/business";
 import { config } from "../../../config/config";
@@ -15,7 +14,6 @@ export class AuthService {
     // private agencyProfileRepository: Repository<TravelAgencyProfile>,
     private vendorRepository: Repository<Vendor>,
     private customerProfileRepository: Repository<CustomerProfile>,
-    private mailService: MailService
   ) {}
 
   // Validate if email already exists
@@ -62,12 +60,11 @@ export class AuthService {
 
     return await this.userRepository.manager.transaction(
       async (transactionalEntityManager) => {
-        console.log("validate email: ")
         try {
           await this.validateRegistration(email);
         } catch (error: any) {
-          if (error?.message?.includes('EMAIL_IN_USE')) {
-            throw new Error('User already exists');
+          if (error?.message?.includes("EMAIL_IN_USE")) {
+            throw new Error("User already exists");
           }
           throw error;
         }
@@ -76,14 +73,14 @@ export class AuthService {
 
         // Send verification email
         // await this.mailService.sendVerificationEmail(email, verificationToken);
-        console.log("sending email: ")
+        console.log("sending email: ");
         await sendEmail({
           to: email,
           subject: "Account Activation ",
           html: accountActivationTemplate(name, verificationToken),
         });
 
-        console.log("User seraching : ")
+        console.log("User seraching : ");
         const user = this.userRepository.create({
           email,
           password: hashedPassword,
@@ -91,7 +88,7 @@ export class AuthService {
           verificationToken,
           isVerified: false,
         });
-        console.log("user", user)
+        console.log("user", user);
         await transactionalEntityManager.save(User, user);
 
         if (userType === UserType.VENDOR) {
@@ -162,7 +159,15 @@ export class AuthService {
 
     await this.userRepository.save(user);
 
-    await this.mailService.sendVerificationEmail(email, newToken);
+    const username =
+      user.userType === "vendor"
+        ? user.vendor?.username
+        : user.customerProfile?.username;
+    await sendEmail({
+      to: email,
+      subject: "Account Activation",
+      html: accountActivationTemplate(username as string, newToken),
+    });
   }
 
   // Login logic

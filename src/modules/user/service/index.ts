@@ -1,6 +1,5 @@
 export * from './article.service';
 export * from './auth.service';
-export * from './mail.service';
 export * from './user.service';
 export * from './roomtype.service';
 export * from './property.service';
