@@ -10,6 +10,14 @@ import { PayoutService } from "./payout.service";
 import { Vendor } from "../entity/business";
 import { ListingPriceService } from "./listingPrice.service";
 import { ListingPrice, Payout } from "../entity/payout";
+import GeneratePDF from "./pdf/generatePdf.service";
+import { SendEmail } from "./email/sendEmail";
+import {
+  BookingConfirmation,
+  EmailBookingData,
+  isHotelBooking,
+  isTourBooking,
+} from "../dtos/bookingConfirmation.dto";
 
 export class BookingService {
   private repo = AppDataSource.getRepository(Booking);
@@ -27,218 +35,66 @@ export class BookingService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      // 1. Create the booking
-      const booking = new Booking();
-      // get the user from user usign customer_id
-      booking.customer = await this.userRepository.findOneByOrFail({
-        id: bookingData.customer_id,
-      });
-      // check availability of roomType
-      if (bookingData.booking_type === "hotel") {
-        const isAvailable = await this.checkRoomAvailability(
-          bookingData.room_type_id || "",
-          bookingData.check_in_date,
-          bookingData.check_out_date
-        );
-        if (!isAvailable) {
-          throw new Error(
-            "Selected room type is not available for the given dates."
-          );
-        }
-      } else if (bookingData.booking_type === "tour") {
-        if (
-          bookingData.participants_count === undefined ||
-          !bookingData.tour_package_id ||
-          !bookingData.check_in_date
-        ) {
-          throw new Error("Missing required booking data for tour.");
-        }
-        if (
-          bookingData.participants_count >
-          (await this.getAvailableSeatsForTour(
-            bookingData.tour_package_id,
-            bookingData.check_in_date
-          ))
-        ) {
-          throw new Error("Not enough available seats for the selected tour.");
-        }
+      // Step 1: Validate booking data and availability
+      await this.validateBookingData(bookingData);
+      // Step 2: Create booking entity
+      const booking = await this.createBookingEntity(queryRunner, bookingData);
 
-        const tourPackage = await this.tourPackageRepository.findOneByOrFail({
-          id: bookingData.tour_package_id,
-        });
-        if (tourPackage.schedule) {
-          const { type, days, dates } = tourPackage.schedule;
-          const checkInDate = new Date(bookingData.check_in_date);
-          if (type === "anytime") {
-            // Anytime is always available
-          } else if (type === "specific-days") {
-            // Check if the booking dates match any of the specified days
-            const bookingDays = [checkInDate.getDay()];
-            // Convert days to numbers (0-6 for Sunday-Saturday)
-            const daysMap: Record<string, number> = {
-              sunday: 0,
-              monday: 1,
-              tuesday: 2,
-              wednesday: 3,
-              thursday: 4,
-              friday: 5,
-              saturday: 6,
-            };
-            if (
-              !days.some((day) =>
-                bookingDays.includes(daysMap[day.toLowerCase()])
-              )
-            ) {
-              throw new Error(
-                "Selected dates do not match the tour package schedule."
-              );
-            }
-          } else if (type === "specific-dates") {
-            const bookingDates = [checkInDate.getDate()];
-            if (!dates.some((date) => bookingDates.includes(date))) {
-              throw new Error(
-                "Selected dates do not match the tour package schedule."
-              );
-            }
-          }
-        }
-      }
-      booking.booking_type = bookingData.booking_type;
-      booking.total_amount = bookingData.total_amount;
-      booking.check_in_date = bookingData.check_in_date;
-      booking.special_requests = bookingData.special_requests;
-      booking.participants_count = bookingData.participants_count;
-      booking.booking_status = "pending";
-      booking.payment_status = "pending";
-      booking.check_out_date = bookingData.check_out_date;
-
-      // data for the payout entity
+      // Step 3: Calculate payout amount
       const bookingDays = this.getBookingDays(
         new Date(booking.check_in_date),
         new Date(booking.check_out_date)
       );
-      const listedPayout = await this.getListedPayout(booking);
+      const entity_id =
+        bookingData.room_type_id ||
+        bookingData.tour_package_id ||
+        bookingData.vehicle_id ||
+        "";
+      const listedPayout = await this.getListedPayout(
+        bookingData.booking_type,
+        entity_id,
+        bookingData.property_id as string
+      );
       const payoutAmount = bookingDays * Number(listedPayout?.base_price);
-      // Set relationships based on booking type
-      if (bookingData.property_id) {
-        booking.property = await this.propertyRepository.findOneByOrFail({
-          id: bookingData.property_id,
-        });
-      }
-      if (bookingData.booking_type === "hotel" && bookingData.room_type_id) {
-        booking.roomType = await this.roomTypeRepository.findOneByOrFail({
-          id: bookingData.room_type_id,
-        });
-        booking.rooms_count = bookingData.rooms_count;
-        // } else if (bookingData.booking_type === "car_rental" && bookingData.vehicle_id) {
-        //   booking.vehicle = await this.vehicleRepository.findOneByOrFail({
-        //     id: bookingData.vehicle_id,
-        //   });
-      } else if (
-        bookingData.booking_type === "tour" &&
-        bookingData.tour_package_id
-      ) {
-        booking.tourPackages = await this.tourPackageRepository.findOneByOrFail(
-          {
-            id: bookingData.tour_package_id,
-          }
+
+      // Step 4: Process payment and transaction
+      const { paymentResult, savedTransaction, payment } =
+        await this.processPaymentAndTransaction(
+          queryRunner,
+          booking,
+          bookingData,
+          paymentData
         );
-      }
-      const savedBooking = await queryRunner.manager.save(Booking, booking);
-      // 2. Process payment
-      let paymentResult;
-      let transaction = new Transactions();
-      let payment = new Payment();
-      transaction.customer_id = bookingData.customer_id;
-      transaction.amount = bookingData.total_amount;
-      transaction.payment_method = paymentData.payment_method;
-      transaction.booking = savedBooking;
-      transaction.status = "pending";
-      if (paymentData.payment_method === "credit-card") {
-        try {
-          // Create payment method
-          // const paymentMethod = await this.paymentProcessor.createPaymentMethod({
-          //   number: paymentData.card_number,
-          //   exp_month: paymentData.card_exp_month,
-          //   exp_year: paymentData.card_exp_year,
-          //   cvc: paymentData.card_cvc,
-          // });
-
-          // // Create payment intent
-          // const paymentIntent = await this.paymentProcessor.createPaymentIntent(
-          //   bookingData.total_amount,
-          //   "usd",
-          //   { booking_id: savedBooking.id }
-          // );
-
-          // // Confirm payment
-          // paymentResult = await this.paymentProcessor.confirmCardPayment(
-          //   paymentIntent.id,
-          //   paymentMethod.id
-          // );
-
-          // Simulating payment processing for the example
-          paymentResult = {
-            status: "succeeded",
-            id: "pi_1234567890",
-            amount_received: bookingData.total_amount,
-          };
-          // // Update transaction details
-          transaction.status =
-            paymentResult.status === "succeeded" ? "succeeded" : "failed";
-          payment.amount = bookingData.total_amount;
-          payment.status = paymentResult.status as
-            | "pending"
-            | "succeeded"
-            | "failed";
-          // payment.payment_processor_id = paymentIntent.id;
-          // payment.last4_digits = paymentMethod.card.last4;
-          // payment.card_brand = paymentMethod.card.brand;
-          payment.payment_processor_id = paymentResult.id;
-          payment.last4_digits = "1234";
-          payment.card_brand = "VISA";
-          if (paymentResult.status === "succeeded") {
-            savedBooking.payment_status = "paid";
-            booking.payment_status = "paid";
-          } else {
-            // transaction.failure_reason = paymentResult.last_payment_error?.message || "Payment failed";
-          }
-        } catch (error: any) {
-          transaction.status = "failed";
-
-          transaction.failure_reason = error.message;
-          transaction.failure_code = error.code;
-          throw error;
-        }
-      } else {
-        // Handle other payment methods (cash, bank transfer, etc.)
-        transaction.status = "pending";
-      }
-
-      // Save transaction
-      const savedTransaction = await queryRunner.manager.save(transaction);
-      payment.transaction = savedTransaction;
-      await queryRunner.manager.save(payment);
-      // Update booking with transaction
-      savedBooking.transaction = savedTransaction;
+      console.log(payment);
+      // Step 5: Update booking with transaction
+      booking.transaction = savedTransaction;
       const bookingWithRelations = await queryRunner.manager.findOne(Booking, {
-        where: { id: savedBooking.id },
+        where: { id: booking.id },
         relations: ["property", "property.vendor"],
       });
+
+      // Step 6: Handle payout creation
       if (savedTransaction.status === "succeeded") {
-        await this.payoutService.create({
-          manager: queryRunner.manager,
-          amount: payoutAmount,
-          vendor: { id: bookingWithRelations?.property.vendor.id } as Vendor,
-          transaction: { id: savedTransaction.id } as Transactions,
-        });
+        try {
+          await this.payoutService.create({
+            manager: queryRunner.manager,
+            amount: payoutAmount,
+            vendor: { id: bookingWithRelations?.property.vendor.id } as Vendor,
+            transaction: { id: savedTransaction.id } as Transactions,
+          });
+        } catch (err) {
+          console.error("Error during payout creation:", err);
+          throw err;
+        }
       }
-      await queryRunner.manager.save(savedBooking);
+      await queryRunner.manager.save(booking);
       await queryRunner.commitTransaction();
+
+      // Step 7: Send booking confirmation email
+      this.sendBookingMail(bookingData as any);
       return {
-        booking: savedBooking,
+        booking,
         transaction: savedTransaction,
         paymentResult,
       };
@@ -249,6 +105,250 @@ export class BookingService {
       await queryRunner.release();
     }
   }
+
+  // Helper: Validate booking data and availability
+  private async validateBookingData(bookingData: CreateBookingDto) {
+    // get the user from user using customer_id
+    await this.userRepository.findOneByOrFail({ id: bookingData.customer_id });
+    if (bookingData.booking_type === "hotel") {
+      const isAvailable = await this.checkRoomAvailability(
+        bookingData.room_type_id || "",
+        bookingData.check_in_date,
+        bookingData.check_out_date
+      );
+      if (!isAvailable) {
+        throw new Error(
+          "Selected room type is not available for the given dates."
+        );
+      }
+    } else if (bookingData.booking_type === "tour") {
+      if (
+        bookingData.participants_count === undefined ||
+        !bookingData.tour_package_id ||
+        !bookingData.check_in_date
+      ) {
+        throw new Error("Missing required booking data for tour.");
+      }
+      if (
+        bookingData.participants_count >
+        (await this.getAvailableSeatsForTour(
+          bookingData.tour_package_id,
+          bookingData.check_in_date
+        ))
+      ) {
+        throw new Error("Not enough available seats for the selected tour.");
+      }
+      const tourPackage = await this.tourPackageRepository.findOneByOrFail({
+        id: bookingData.tour_package_id,
+      });
+      if (tourPackage.schedule) {
+        const { type, days, dates } = tourPackage.schedule;
+        const checkInDate = new Date(bookingData.check_in_date);
+        if (type === "anytime") {
+          // Anytime is always available
+        } else if (type === "specific-days") {
+          const bookingDays = [checkInDate.getDay()];
+          const daysMap: Record<string, number> = {
+            sunday: 0,
+            monday: 1,
+            tuesday: 2,
+            wednesday: 3,
+            thursday: 4,
+            friday: 5,
+            saturday: 6,
+          };
+          if (
+            !days.some((day) =>
+              bookingDays.includes(daysMap[day.toLowerCase()])
+            )
+          ) {
+            throw new Error(
+              "Selected dates do not match the tour package schedule."
+            );
+          }
+        } else if (type === "specific-dates") {
+          const bookingDates = [checkInDate.getDate()];
+          if (!dates.some((date) => bookingDates.includes(date))) {
+            throw new Error(
+              "Selected dates do not match the tour package schedule."
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // Helper: Create booking entity
+  private async createBookingEntity(
+    queryRunner: any,
+    bookingData: CreateBookingDto
+  ) {
+    const booking = new Booking();
+    booking.customer = await this.userRepository.findOneByOrFail({
+      id: bookingData.customer_id,
+    });
+    booking.booking_type = bookingData.booking_type;
+    booking.total_amount = bookingData.total_amount;
+    booking.check_in_date = bookingData.check_in_date;
+    booking.special_requests = bookingData.special_requests;
+    booking.participants_count = bookingData.participants_count;
+    booking.booking_status = "pending";
+    booking.payment_status = "pending";
+    booking.check_out_date = bookingData.check_out_date;
+    if (bookingData.property_id) {
+      booking.property = await this.propertyRepository.findOneByOrFail({
+        id: bookingData.property_id,
+      });
+    }
+    if (bookingData.booking_type === "hotel" && bookingData.room_type_id) {
+      booking.roomType = await this.roomTypeRepository.findOneByOrFail({
+        id: bookingData.room_type_id,
+      });
+      booking.rooms_count = bookingData.rooms_count;
+      // } else if (bookingData.booking_type === "car_rental" && bookingData.vehicle_id) {
+      //   booking.vehicle = await this.vehicleRepository.findOneByOrFail({
+      //     id: bookingData.vehicle_id,
+      //   });
+    } else if (
+      bookingData.booking_type === "tour" &&
+      bookingData.tour_package_id
+    ) {
+      booking.tourPackages = await this.tourPackageRepository.findOneByOrFail({
+        id: bookingData.tour_package_id,
+      });
+    }
+    return await queryRunner.manager.save(Booking, booking);
+  }
+
+  // Helper: Process payment and transaction
+  private async processPaymentAndTransaction(
+    queryRunner: any,
+    booking: Booking,
+    bookingData: CreateBookingDto,
+    paymentData: PaymentDetailsDto
+  ) {
+    let paymentResult;
+    let transaction = new Transactions();
+    let payment = new Payment();
+    transaction.customer_id = bookingData.customer_id;
+    transaction.amount = bookingData.total_amount;
+    transaction.payment_method = paymentData.payment_method;
+    transaction.booking = booking;
+    transaction.status = "pending";
+    if (paymentData.payment_method === "credit-card") {
+      try {
+        // Create payment method
+        // const paymentMethod = await this.paymentProcessor.createPaymentMethod({
+        //   number: paymentData.card_number,
+        //   exp_month: paymentData.card_exp_month,
+        //   exp_year: paymentData.card_exp_year,
+        //   cvc: paymentData.card_cvc,
+        // });
+
+        // // Create payment intent
+        // const paymentIntent = await this.paymentProcessor.createPaymentIntent(
+        //   bookingData.total_amount,
+        //   "usd",
+        //   { booking_id: booking.id }
+        // );
+
+        // // Confirm payment
+        // paymentResult = await this.paymentProcessor.confirmCardPayment(
+        //   paymentIntent.id,
+        //   paymentMethod.id
+        // );
+
+        // Simulating payment processing for the example
+        paymentResult = {
+          status: "succeeded",
+          id: "pi_1234567890",
+          amount_received: bookingData.total_amount,
+        };
+        // // Update transaction details
+        transaction.status =
+          paymentResult.status === "succeeded" ? "succeeded" : "failed";
+        payment.amount = bookingData.total_amount;
+        payment.status = paymentResult.status as
+          | "pending"
+          | "succeeded"
+          | "failed";
+        // payment.payment_processor_id = paymentIntent.id;
+        // payment.last4_digits = paymentMethod.card.last4;
+        // payment.card_brand = paymentMethod.card.brand;
+        payment.payment_processor_id = paymentResult.id;
+        payment.last4_digits = "1234";
+        payment.card_brand = "VISA";
+        if (paymentResult.status === "succeeded") {
+          booking.payment_status = "paid";
+        } else {
+          // transaction.failure_reason = paymentResult.last_payment_error?.message || "Payment failed";
+        }
+      } catch (error: any) {
+        transaction.status = "failed";
+        transaction.failure_reason = error.message;
+        transaction.failure_code = error.code;
+        throw error;
+      }
+    } else {
+      // Handle other payment methods (cash, bank transfer, etc.)
+      transaction.status = "pending";
+    }
+    // Save transaction
+    const savedTransaction = await queryRunner.manager.save(transaction);
+    payment.transaction = savedTransaction;
+    await queryRunner.manager.save(payment);
+    return { paymentResult, savedTransaction, payment };
+  }
+
+  sendBookingMail = async (bookingData: BookingConfirmation) => {
+    // Extract common data
+    const baseData = {
+      bookingType: bookingData.booking_type,
+      customerName: bookingData.customerInfo.fullName,
+      propertyName:
+        bookingData.propertyLocation?.address?.location?.name || null,
+      locality: bookingData.propertyLocation?.locality || null,
+      city: bookingData.propertyLocation?.city || null,
+      startDate: bookingData.check_in_date,
+      endDate: bookingData.check_out_date,
+      totalPrice: bookingData.total_amount,
+      paymentStatus: bookingData.payment_status,
+      bookingStatus: bookingData.booking_status,
+      vendorEmail: (bookingData as any).vendorEmail, // Optional fields from any
+      vendorPhone: (bookingData as any).vendorPhone, // Optional fields from any
+    };
+
+    // Type-specific data
+    let htmlData: EmailBookingData;
+    if (isTourBooking(bookingData)) {
+      htmlData = {
+        ...baseData,
+        guests: (bookingData as any).participants_count ?? 1,
+        packageName: bookingData.packageName,
+        plan: bookingData.plan,
+        customerEmail: bookingData.customerInfo.email,
+      };
+    } else if (isHotelBooking(bookingData)) {
+      htmlData = {
+        ...baseData,
+        guests: bookingData.participants_count,
+        roomName: bookingData.roomName,
+        customerEmail: bookingData.customerInfo.email,
+      };
+    } else {
+      // Fallback for unknown booking types
+      htmlData = {
+        ...baseData,
+        guests: (bookingData as any).participants_count ?? 1,
+        customerEmail: (bookingData as any).customerInfo.email,
+      };
+    }
+
+    const pdfUint8Array = await GeneratePDF(bookingData);
+    const pdfBuffer = Buffer.from(pdfUint8Array);
+    const sendEmail = new SendEmail();
+    sendEmail.sendBookingConfirmationEmail(htmlData, pdfBuffer);
+  };
 
   /**
    * Get all bookings with their related entities
@@ -680,7 +780,16 @@ export class BookingService {
   private async getRefundAmount(
     booking: Booking
   ): Promise<{ refund: number; vendorRefund: number }> {
-    const listedPayout = await this.getListedPayout(booking);
+    const entity_id =
+      booking.roomType?.id ||
+      booking.tourPackages?.id ||
+      booking.vehicle?.id ||
+      "";
+    const listedPayout = await this.getListedPayout(
+      booking.booking_type,
+      entity_id,
+      booking.property.id
+    );
     const commissionRate = Number(listedPayout?.commission_rate) || 0;
     const checkIn = new Date(booking.check_in_date);
     const checkOut = new Date(booking.check_out_date);
@@ -730,26 +839,31 @@ export class BookingService {
   }
 
   private async getListedPayout(
-    booking: Booking
+    booking_type: string,
+    entity_id: string,
+    property_id: string
   ): Promise<ListingPrice | null> {
     const listingType: "vehicle" | "room" | "tour" =
-      booking.booking_type === "car_rental"
+      booking_type === "car_rental"
         ? "vehicle"
-        : booking.booking_type === "hotel"
+        : booking_type === "hotel"
         ? "room"
         : "tour";
 
     let listingId: string | undefined;
-    if (listingType === "room" && booking.roomType) {
-      listingId = booking.roomType.id;
-    } else if (listingType === "tour" && booking.tourPackages) {
-      listingId = booking.tourPackages.id;
-    } else if (listingType === "vehicle" && booking.vehicle) {
-      listingId = booking.vehicle.id;
+    if (listingType === "room" && entity_id) {
+      listingId = entity_id;
+    } else if (listingType === "tour" && entity_id) {
+      listingId = entity_id;
+    } else if (listingType === "vehicle" && entity_id) {
+      listingId = entity_id;
     } else {
-      listingId = booking.property.id;
+      listingId = property_id;
     }
 
-    return this.listingService.findByIdAndType(listingId, listingType);
+    return this.listingService.findByIdAndType(
+      listingId as string,
+      listingType
+    );
   }
 }

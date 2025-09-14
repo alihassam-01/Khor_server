@@ -1,17 +1,29 @@
-import AWS from 'aws-sdk';
-import { EmailConfig } from '../../../../../config/emailConfig/emailConfig';
+import AWS from "aws-sdk";
+import { EmailConfig } from "../../../../../config/emailConfig/emailConfig";
 
-export async function sendSES({ to, subject, html }: { to: string; subject: string; html: string }) {
+export async function sendSES({
+  to,
+  subject,
+  html,
+  attachment,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+  attachment?: any;
+}) {
   AWS?.config.update({
     region: EmailConfig.ses.region,
     accessKeyId: EmailConfig.ses.accessKeyId,
-    secretAccessKey: EmailConfig.ses.secretAccessKey
+    secretAccessKey: EmailConfig.ses.secretAccessKey,
   });
 
   const ses = new AWS.SES();
 
   if (!EmailConfig.ses.from) {
-    throw new Error("SES 'from' email address is not defined in configuration.");
+    throw new Error(
+      "SES 'from' email address is not defined in configuration."
+    );
   }
 
   const params = {
@@ -19,8 +31,9 @@ export async function sendSES({ to, subject, html }: { to: string; subject: stri
     Destination: { ToAddresses: [to] },
     Message: {
       Subject: { Data: subject },
-      Body: { Html: { Data: html } }
-    }
+      Body: { Html: { Data: html } },
+    },
+    Attachment: attachment,
   };
 
   const result = await ses.sendEmail(params).promise();

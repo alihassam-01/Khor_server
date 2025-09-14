@@ -72,15 +72,12 @@ export class AuthService {
         const verificationToken = this.generateVerificationToken(email);
 
         // Send verification email
-        // await this.mailService.sendVerificationEmail(email, verificationToken);
-        console.log("sending email: ");
         await sendEmail({
           to: email,
           subject: "Account Activation ",
           html: accountActivationTemplate(name, verificationToken),
         });
 
-        console.log("User seraching : ");
         const user = this.userRepository.create({
           email,
           password: hashedPassword,
@@ -88,7 +85,6 @@ export class AuthService {
           verificationToken,
           isVerified: false,
         });
-        console.log("user", user);
         await transactionalEntityManager.save(User, user);
 
         if (userType === UserType.VENDOR) {

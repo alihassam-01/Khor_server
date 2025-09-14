@@ -30,6 +30,7 @@
     "mailersend": "^2.5.0",
     "nodemailer": "^7.0.5",
     "pg": "^8.15.6",
+    "puppeteer": "^24.20.0",
     "typeorm": "^0.3.22"
   },
   "devDependencies": {

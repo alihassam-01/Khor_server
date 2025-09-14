@@ -6,19 +6,21 @@ export async function sendEmail({
   to,
   subject,
   html,
+  attachment,
 }: {
   to: string;
   subject: string;
   html: string;
+  attachment?: any;
 }) {
   try {
     let messageId;
     if (EmailConfig.provider === "smtp") {
-      messageId = await sendSMTP({ to, subject, html });
+      messageId = await sendSMTP({ to, subject, html, attachment });
     } else if (EmailConfig.provider === "ses") {
-      messageId = await sendSES({ to, subject, html });
+      messageId = await sendSES({ to, subject, html, attachment });
     } else if (EmailConfig.provider === "brevo") {
-      messageId = await sendBrevo({ to, subject, html });
+      messageId = await sendBrevo({ to, subject, html, attachment });
     } else {
       throw new Error(`Unknown email provider: ${EmailConfig.provider}`);
     }
