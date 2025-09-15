@@ -90,11 +90,16 @@ export class BookingService {
       }
       const savedBooking = await queryRunner.manager.save(booking);
       await queryRunner.commitTransaction();
-
+      (bookingData as any).payment_status = (
+        savedBooking as Booking
+      ).payment_status;
+      (bookingData as any).booking_status = (
+        savedBooking as Booking
+      ).booking_status;
       // Step 7: Send booking confirmation email
       this.sendBookingMail(bookingData as any);
       return {
-        savedBooking,
+        booking,
         transaction: savedTransaction,
         paymentResult,
       };
