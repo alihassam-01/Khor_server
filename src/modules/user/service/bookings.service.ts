@@ -88,13 +88,13 @@ export class BookingService {
           throw err;
         }
       }
-      await queryRunner.manager.save(booking);
+      const savedBooking = await queryRunner.manager.save(booking);
       await queryRunner.commitTransaction();
 
       // Step 7: Send booking confirmation email
       this.sendBookingMail(bookingData as any);
       return {
-        booking,
+        savedBooking,
         transaction: savedTransaction,
         paymentResult,
       };
