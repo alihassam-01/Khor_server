@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { TagService } from "@modules/user/service";
+import { TagService } from "../../user/service";
 
 export class TagController {
   constructor(private readonly tagService: TagService) {}

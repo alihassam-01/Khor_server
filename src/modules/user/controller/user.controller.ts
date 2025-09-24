@@ -1,5 +1,10 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { UserService } from "../service/user.service";
+import {
+  ValidationError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../../../constant/error";
 
 export class UserController {
   constructor(private userService: UserService) {}
@@ -35,12 +40,58 @@ export class UserController {
   }
 
   async update(
-    req: FastifyRequest<{ Params: { id: string }; Body: {updates: any} }>,
+    req: FastifyRequest<{ Params: { id: string }; Body: { updates: any } }>,
     reply: FastifyReply
   ) {
     const userId = req.params.id;
     const userData = req.body.updates;
     const updatedUser = await this.userService.updateUser(userId, userData);
     reply.send(updatedUser);
+  }
+
+  async updatePassword(
+    req: FastifyRequest<{ Body: { currentPassword: string; newPassword: string; confirmPassword: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      // Get userId from authenticated user instead of request body
+      const userId = req.user?.id || req.user?.userId;
+      
+      if (!userId) {
+        return reply.status(401).send({
+          success: false,
+          message: "User not authenticated"
+        });
+      }
+
+      const { currentPassword, newPassword, confirmPassword } = req.body;
+
+      // Create PassData object with userId from token
+      const passData = {
+        userId,
+        currentPassword,
+        newPassword,
+        confirmPassword
+      };
+
+      const response = await this.userService.updatePassword(passData);
+      reply.send(response);
+    } catch (error: any) {
+      let statusCode = 500;
+
+      if (error instanceof ValidationError) {
+        statusCode = 400; // Bad Request
+      } else if (error instanceof NotFoundError) {
+        statusCode = 404; // Not Found
+      } else if (error instanceof UnauthorizedError) {
+        statusCode = 401; // Unauthorized
+      }
+
+      reply.status(statusCode).send({
+        success: false,
+        message: error.message || "Failed to update password",
+        error: error.name || "UnknownError",
+      });
+    }
   }
 }

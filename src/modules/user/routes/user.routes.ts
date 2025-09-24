@@ -17,4 +17,9 @@ export default async function userRoutes(fastify: FastifyInstance) {
     userController.update.bind(userController)
   );
   fastify.get("/users/:id", userController.getUserById.bind(userController));
+  fastify.post<{ Body: { currentPassword: string; newPassword: string; confirmPassword: string } }>(
+    "/users/password",
+    { preHandler: authenticate },
+    userController.updatePassword.bind(userController)
+  );
 }

@@ -13,7 +13,7 @@ export class AuthService {
     private userRepository: Repository<User>,
     // private agencyProfileRepository: Repository<TravelAgencyProfile>,
     private vendorRepository: Repository<Vendor>,
-    private customerProfileRepository: Repository<CustomerProfile>,
+    private customerProfileRepository: Repository<CustomerProfile>
   ) {}
 
   // Validate if email already exists
@@ -30,8 +30,16 @@ export class AuthService {
   }
 
   // Hash password
-  private async hashPassword(password: string): Promise<string> {
+  public async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, 10);
+  }
+
+  // Compare password with hash
+  public async comparePassword(
+    password: string,
+    hash: string
+  ): Promise<boolean> {
+    return bcrypt.compare(password, hash);
   }
 
   // Generate verification token
