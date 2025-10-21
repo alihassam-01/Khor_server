@@ -44,4 +44,10 @@ export default async function authRoutes(fastify: FastifyInstance) {
     "/auth/resend-verification-email",
     authController.resendVerificationEmail.bind(authController)
   );
+
+  // Reset Password (from emailed token)
+  fastify.post(
+    "/auth/reset-password",
+    authController.resetPassword.bind(authController)
+  );
 }

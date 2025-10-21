@@ -5,6 +5,20 @@ import { bookingConfirmationEmailTemplate } from "./templates/bookingConfirmatio
 // import { bookingConfirmationEmailTemplate } from './templates/bookingConfirmation';
 
 export class SendEmail {
+  async sendForgotPasswordEmail(
+    name: string,
+    email: string,
+    resetLink: string
+  ) {
+    const { forgotPasswordTemplate } = await import("./templates/forgotPassword");
+    const html = forgotPasswordTemplate(name, resetLink);
+    const success = await sendEmail({
+      to: email,
+      subject: "Reset Your Password",
+      html,
+    });
+    return success ? { status: "ok" } : { status: "error" };
+  }
   async sendAccountActivationEmail(
     name: string,
     email: string,

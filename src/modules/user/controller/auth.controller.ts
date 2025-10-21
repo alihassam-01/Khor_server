@@ -90,4 +90,23 @@ export class AuthController {
       reply.code(400).send({ error: error.message });
     }
   }
+
+  async resetPassword(
+    req: FastifyRequest<{
+      Body: { token: string; newPassword: string; confirmPassword: string };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const { token, newPassword, confirmPassword } = req.body;
+      if (!token || !newPassword || !confirmPassword) {
+        return reply.code(400).send({ error: 'token, newPassword and confirmPassword are required' });
+      }
+
+      const result = await this.authService.resetPassword(token, newPassword, confirmPassword);
+      reply.send(result);
+    } catch (error: any) {
+      reply.code(400).send({ error: error.message });
+    }
+  }
 }

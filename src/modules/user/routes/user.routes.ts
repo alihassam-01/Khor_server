@@ -22,4 +22,9 @@ export default async function userRoutes(fastify: FastifyInstance) {
     { preHandler: authenticate },
     userController.updatePassword.bind(userController)
   );
+
+  fastify.post<{ Body: { email: string } }>(
+    "/users/forgot-password",
+    userController.forgotPassword.bind(userController)
+  );
 }

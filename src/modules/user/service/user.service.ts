@@ -4,13 +4,44 @@ import { CustomerProfile, User } from "../entity/user";
 import { Vendor } from "../entity";
 import { PassData } from "../dtos/user.dto";
 import { AuthService } from "./auth.service";
+import { forgotPasswordTemplate } from "./email/templates/forgotPassword";
+import * as jwt from "jsonwebtoken";
+
 import {
   ValidationError,
   NotFoundError,
   UnauthorizedError,
 } from "../../../constant/error";
-
+import { sendEmail } from "./email";
+import { config } from "../../../config/config";
 export class UserService {
+  async forgotPassword(email: string) {
+    // Find user by email
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
+      return;
+    }
+
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET environment variable is not defined.");
+    }
+    const resetToken = jwt.sign({ email }, config.jwt.secret as string, {
+      expiresIn: "24h",
+    });
+
+    const resetLink = `${config.web_domain.url}/reset-password?token=${resetToken}`;
+    
+    const name =
+      user.userType === "vendor"
+        ? user.vendor?.username
+        : user.customerProfile?.username;
+    await sendEmail({
+      to: email,
+      subject: "Reset Password",
+      html: forgotPasswordTemplate(name as string, resetLink),
+    });
+    return;
+  }
   private userRepository = AppDataSource.getRepository(User);
   private vendorRepo = AppDataSource.getRepository(Vendor);
   private customerRepo = AppDataSource.getRepository(CustomerProfile);
@@ -165,7 +196,8 @@ export class UserService {
     }
 
     // Validate UUID format for userId
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
       throw new ValidationError("Invalid user ID format.");
     }

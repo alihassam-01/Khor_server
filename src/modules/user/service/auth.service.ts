@@ -217,4 +217,46 @@ export class AuthService {
       token,
     };
   }
+
+  // Reset password using token sent to user's email
+  async resetPassword(token: string, newPassword: string, confirmPassword: string) {
+    if (!token) {
+      throw new Error('Reset token is required');
+    }
+    if (!newPassword || !confirmPassword) {
+      throw new Error('New password and confirm password are required');
+    }
+    if (newPassword !== confirmPassword) {
+      throw new Error('Passwords do not match');
+    }
+    if (newPassword.length < 8) {
+      throw new Error('New password must be at least 8 characters long');
+    }
+
+    let payload: any;
+    try {
+      if (!config.jwt.secret) {
+        throw new Error('JWT secret is not configured');
+      }
+      payload = jwt.verify(token, config.jwt.secret as string) as any;
+    } catch (err: any) {
+      throw new Error('Invalid or expired reset token');
+    }
+
+    const email = payload?.email;
+    if (!email) {
+      throw new Error('Invalid token payload');
+    }
+
+    const user = await this.userRepository.findOneBy({ email });
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Update password
+    user.password = await this.hashPassword(newPassword);
+    await this.userRepository.save(user);
+
+    return { success: true, message: 'Password has been reset successfully' };
+  }
 }

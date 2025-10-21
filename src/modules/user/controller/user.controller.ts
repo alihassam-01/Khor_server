@@ -7,6 +7,21 @@ import {
 } from "../../../constant/error";
 
 export class UserController {
+  async forgotPassword(
+    req: FastifyRequest<{ Body: { email: string } }>,
+    reply: FastifyReply
+  ) {
+    const { email } = req.body;
+    if (!email) {
+      return reply.status(400).send({ success: false, message: "Email is required" });
+    }
+    try {
+  await this.userService.forgotPassword(email);
+      reply.send({ success: true, message: "If the email exists, a reset link has been sent." });
+    } catch (error: any) {
+      reply.status(500).send({ success: false, message: error.message || "Failed to process forgot password" });
+    }
+  }
   constructor(private userService: UserService) {}
 
   async createUser(
