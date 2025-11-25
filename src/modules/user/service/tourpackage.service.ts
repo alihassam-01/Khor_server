@@ -3,13 +3,13 @@ import { TourPackage } from "../../user/entity/property";
 import { ILike, In } from "typeorm";
 import { Location } from "../entity/location";
 import { LocationHelperService } from "./helper/location-helper.service";
-import { S3ClientService } from "./s3client.service";
+import { R2ClientService } from "./r2client.service";
 
 export class TourPackageService {
   private repo = AppDataSource.getRepository(TourPackage);
   private locationRepo = AppDataSource.getRepository(Location);
   private locationHelper = new LocationHelperService();
-  private s3ClientService = new S3ClientService();
+  private r2ClientService = new R2ClientService();
   /**
    * Create a new tour package
    */
@@ -97,7 +97,7 @@ export class TourPackageService {
         (img) => !images.includes(img)
       );
       if (deletedImages.length > 0) {
-        await this.s3ClientService.deleteFileFromS3(deletedImages);
+        await this.r2ClientService.deleteFileFromR2(deletedImages);
       }
     }
 

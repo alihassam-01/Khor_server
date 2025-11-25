@@ -10,7 +10,7 @@ import { articleTagRoutes } from "./articleTag.routes";
 import { tagRoutes } from "./tag.routes";
 import { bookingRoutes } from "./bookings.route";
 import { reviewRoutes } from "./reviews.routes";
-import { s3ClientRoutes } from "./s3client.routes";
+import { r2ClientRoutes } from "./r2client.routes";
 import userRoutes from "./user.routes";
 import PayoutRoutes from "./payout.routes";
 import RefundRoutes from "./refund.routes";
@@ -27,7 +27,7 @@ const routes = [
   articleTagRoutes,
   tagRoutes,
   vehicleRoutes,
-  s3ClientRoutes,
+  r2ClientRoutes,
   reviewRoutes,
   userRoutes,
   PayoutRoutes,

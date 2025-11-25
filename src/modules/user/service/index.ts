@@ -13,7 +13,7 @@ export * from './bookings.service';
 export * from './tag.service';
 export * from './articleTag.service';
 export * from './reviews.service';
-export * from './s3client.service';
+export * from './r2client.service';
 export * from './payout.service';
 export * from './refund.service';
 export * from './listingPrice.service';

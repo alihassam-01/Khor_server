@@ -3,7 +3,7 @@ import { RoomType } from "../entity/room";
 import { ILike, In } from "typeorm";
 import { LocationHelperService } from "./helper/location-helper.service";
 import { Property } from "../entity/property";
-import { S3ClientService } from "./s3client.service";
+import { R2ClientService } from "./r2client.service";
 import { ListingPriceService } from "./listingPrice.service";
 import { ListingPrice } from "../entity/payout";
 import { LocationService } from "./location.service";
@@ -13,7 +13,7 @@ export class RoomTypeService {
   private repo = AppDataSource.getRepository(RoomType);
   private locationHelper = new LocationHelperService();
   private propertyRepo = AppDataSource.getRepository(Property);
-  private s3ClientService = new S3ClientService();
+  private r2ClientService = new R2ClientService();
   private listingPriceService = new ListingPriceService();
   private locationService = new LocationService(AppDataSource);
   private bookingService = new BookingService();
@@ -150,7 +150,7 @@ export class RoomTypeService {
       (img) => !images?.includes(img)
     );
     if (deletedImages && deletedImages.length > 0) {
-      await this.s3ClientService.deleteFileFromS3(deletedImages);
+      await this.r2ClientService.deleteFileFromR2(deletedImages);
     }
     const listingRoom = await this.listingPriceService.findByIdAndType(
       id,

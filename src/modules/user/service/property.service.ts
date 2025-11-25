@@ -266,10 +266,40 @@ export class PropertyService {
       { description: ILike(`%${term}%`) },
       ...(allowedTypes.includes(term) ? [{ type: term as any }] : []),
     ];
-    return await this.repo.find({
+    const properties = await this.repo.find({
       where,
-      relations: ["vendor"],
+      relations: ["vendor",
+        "roomTypes",
+        "vehicles",
+        "tourPackages",
+        "tourPackages.destinations",
+        "tourPackages.destinations.city",
+        "deals",
+        "address",
+        "address.location",
+        "address.location.parent",],
     });
+
+    const cityCache = new Map<number, any>();
+
+    const enrichedProperties = await Promise.all(
+      properties.map(async (property) => {
+        const enriched = await this.locationHelper.enrichWithLocationData(
+          property
+        );
+
+        if (property.tourPackages?.length > 0) {
+          enriched.tourPackages = await Promise.all(
+            property.tourPackages.map((pkg) =>
+              this.locationHelper.enrichTourPackageWithCities(pkg, cityCache)
+            )
+          );
+        }
+
+        return enriched;
+      })
+    );
+    return enrichedProperties;
   }
 
   // async create(data: CreateProperty) {

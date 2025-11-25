@@ -13,4 +13,5 @@ export default async function articleRoutes(fastify: FastifyInstance) {
   fastify.get("/articles/:id", articleController.getArticleById.bind(articleController));
   fastify.put("/articles/:id", articleController.updateArticle.bind(articleController));
   fastify.delete("/articles/:id", articleController.deleteArticle.bind(articleController));
+  fastify.get("/articles/search", articleController.searchArticles.bind(articleController));
 }

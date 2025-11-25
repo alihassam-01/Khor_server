@@ -33,4 +33,10 @@ export class Vendor {
 
   @OneToMany(() => Payout, (payout) => payout.vendor)
   payouts!: Payout[];
+
+  @Column({type: "boolean", nullable: true, default: false})
+  is_verified?: boolean
+
+  @Column({type: "varchar", nullable: true})
+  cnic?: string
 }

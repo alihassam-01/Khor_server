@@ -10,42 +10,44 @@ import { S3ImagesEntity } from "../entity/images/s3Images.entity";
 import { AppDataSource } from "../../../config/ormconfig";
 import { In } from "typeorm";
 
-export class S3ClientService {
-  private s3 = new S3Client({
-    region: config.aws.region,
+export class R2ClientService {
+  private r2Client = new S3Client({
+    region: "auto",
+    endpoint: `https://${config.r2.accountId}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId: config.aws.accessKeyId,
-      secretAccessKey: config.aws.secretAccessKey,
+      accessKeyId: config.r2.accessKeyId,
+      secretAccessKey: config.r2.secretAccessKey,
     },
   });
   private s3Image = AppDataSource.getRepository(S3ImagesEntity);
+
   /**
-   * Get the S3 client instance
+   * Get the R2 client instance
    */
-  getS3Client() {
-    return this.s3;
+  getR2Client() {
+    return this.r2Client;
   }
 
   /**
    * Get the bucket name
    */
   getBucketName() {
-    return config.aws.bucketName;
+    return config.r2.bucketName;
   }
 
   /**
-   * Get the bucket URL
+   * Get the bucket URL (public URL for R2)
+   * Note: R2_PUBLIC_URL should be your public domain (e.g., https://pub-xxx.r2.dev or custom domain)
+   * configured in Cloudflare R2 bucket settings
    */
   getBucketUrl() {
-    return `https://${this.getBucketName()}.s3.${
-      config.aws.region
-    }.amazonaws.com`;
+    return config.r2.publicUrl;
   }
 
   /**
-   * Upload a file to S3
+   * Upload a file to R2
    */
-  uploadFileToS3 = async (
+  uploadFileToR2 = async (
     fileBuffer: Buffer,
     originalName: string,
     mimetype: string
@@ -58,10 +60,10 @@ export class S3ClientService {
       Body: fileBuffer,
       ContentType: mimetype,
     });
-    await this.s3.send(command);
+    await this.r2Client.send(command);
     const url = `${this.getBucketUrl()}/${key}`;
     if (!url) {
-      throw new Error("Failed to upload file to S3");
+      throw new Error("Failed to upload file to R2");
     }
     const imageEntity = this.s3Image.create({
       key,
@@ -74,9 +76,9 @@ export class S3ClientService {
   };
 
   /**
-   * Delete a file from S3
+   * Delete a file from R2
    */
-  deleteFileFromS3 = async (keyOrUrl: string | string[]) => {
+  deleteFileFromR2 = async (keyOrUrl: string | string[]) => {
     let keys: string[];
     if (Array.isArray(keyOrUrl)) {
       keys = keyOrUrl.map((item) => {
@@ -94,7 +96,7 @@ export class S3ClientService {
         Objects: keys.map((k) => ({ Key: k })),
       },
     });
-    await this.s3.send(command);
+    await this.r2Client.send(command);
     await this.s3Image.update({ key: In(keys) }, { isDeleted: true });
     return { success: true, message: "File deleted successfully" };
   };

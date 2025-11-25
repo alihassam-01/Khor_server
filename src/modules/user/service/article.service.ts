@@ -3,6 +3,7 @@ import { Article, Tag, ArticleTag } from "../entity/article";
 import { Location } from "../entity/location";
 import { ArticleDTO } from "../dtos/article.dto";
 import { LocationHelperService } from "./helper/location-helper.service";
+import { ILike } from "typeorm";
 // import { LocationCategory } from "../entity/location-category.entity";
 // import { In } from 'typeorm';
 // import {Media} from '../entity/media.entity';
@@ -23,10 +24,11 @@ export class ArticleService {
       excerpt: article.excerpt,
       content: article.content,
       published_at: article.published_at,
-      seo_title: article.seo_title || "",
-      seo_keywords: article.seo_keywords || "",
-      seo_description: article.seo_description || "",
-      image_urls: article.image_urls || "",
+  seo_title: article.seo_title || "",
+  seo_keywords: article.seo_keywords || "",
+  seo_description: article.seo_description || "",
+  // Ensure we always return an array for image_urls. If DB returns null/undefined, return []
+  image_urls: Array.isArray(article.image_urls) ? article.image_urls : [],
       location: {
         location_id: article.location?.location_id || 0,
         name: article.location?.name || "",
@@ -82,7 +84,15 @@ export class ArticleService {
       article.seo_keywords = articleData.seo_keywords || "";
       article.seo_description = articleData.seo_description;
       article.location = location;
-      article.image_urls = articleData.image_urls || ""; // Default to empty string if no image URL provided
+      // Accept either `image_urls` (array) or singular `image_url` (string) from caller.
+      // Default to empty array so Postgres receives a proper text[] parameter.
+      if (Array.isArray(articleData.image_urls)) {
+        article.image_urls = articleData.image_urls;
+      } else if (typeof articleData.image_url === 'string' && articleData.image_url.trim() !== '') {
+        article.image_urls = [articleData.image_url];
+      } else {
+        article.image_urls = [];
+      }
       const articleTags: ArticleTag[] = tags.map((tag) => {
         const articleTag = new ArticleTag();
         articleTag.article = article;
@@ -211,6 +221,15 @@ export class ArticleService {
         article.articleTags = articleTags;
       }
 
+      // Support updating image(s) in update flow if provided
+      if (articleData.image_urls || articleData.image_url) {
+        if (Array.isArray(articleData.image_urls)) {
+          article.image_urls = articleData.image_urls;
+        } else if (typeof articleData.image_url === 'string') {
+          article.image_urls = [articleData.image_url];
+        }
+      }
+
       const updatedArticle = await queryRunner.manager.save(article);
       await queryRunner.commitTransaction();
       article.articleTags.forEach((tag) => {
@@ -290,6 +309,32 @@ export class ArticleService {
       ],
       order: { published_at: "DESC" },
     });
+    // Enrich articles with location data
+    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
+      articles
+    );
+    return enrichedArticles;
+  }
+
+  /**
+   * Search articles by title, excerpt, or content
+   */
+  async searchArticles(term: string): Promise<Article[]> {
+    const articles = await this.articleRepository.find({
+      where: [
+        { title: ILike(`%${term}%`) },
+        { excerpt: ILike(`%${term}%`) },
+        { content: ILike(`%${term}%`) },
+      ],
+      relations: [
+        "articleTags",
+        "location",
+        "location.categoryMappings",
+        "location.attributes",
+      ],
+      order: { published_at: "DESC" },
+    });
+
     // Enrich articles with location data
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
       articles

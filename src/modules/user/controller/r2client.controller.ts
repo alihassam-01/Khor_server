@@ -1,11 +1,11 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { S3ClientService } from "../service";
+import { R2ClientService } from "../service";
 import * as fs from "fs";
-export class S3ClientController {
-  private s3ClientService: S3ClientService;
+export class R2ClientController {
+  private r2ClientService: R2ClientService;
 
   constructor() {
-    this.s3ClientService = new S3ClientService();
+    this.r2ClientService = new R2ClientService();
   }
 
   async uploadFile(req: FastifyRequest, reply: FastifyReply) {
@@ -19,7 +19,7 @@ export class S3ClientController {
       const uploadResults = [];
       for (const file of files) {
         const buffer = fs.readFileSync(file.filepath);
-        const result = await this.s3ClientService.uploadFileToS3(
+        const result = await this.r2ClientService.uploadFileToR2(
           buffer,
           file.filename,
           file.mimetype

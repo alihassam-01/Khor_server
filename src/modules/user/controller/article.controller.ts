@@ -76,4 +76,13 @@ export class ArticleController {
       reply.code(500).send({ message: error.message });
     }
   }
+
+  async searchArticles(req: FastifyRequest<{ Querystring: { term: string } }>, reply: FastifyReply) {
+    try {
+      const results = await this.articleService.searchArticles(req.query.term);
+      reply.send(results);
+    } catch (error: any) {
+      reply.code(500).send({ message: error.message });
+    }
+  }
 }
