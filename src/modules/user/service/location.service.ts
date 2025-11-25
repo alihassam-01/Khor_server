@@ -55,11 +55,11 @@ export class LocationService {
         locationData.attributes
       )
         ? locationData.attributes.reduce((acc, attr) => {
-            if (attr.attributeKey && attr.attributeValue !== undefined) {
-              acc[attr.attributeKey] = attr.attributeValue;
-            }
-            return acc;
-          }, {} as Record<string, string>)
+          if (attr.attributeKey && attr.attributeValue !== undefined) {
+            acc[attr.attributeKey] = attr.attributeValue;
+          }
+          return acc;
+        }, {} as Record<string, string>)
         : locationData.attributes;
       await this.setLocationAttributes(
         savedLocation.location_id,
@@ -131,6 +131,18 @@ export class LocationService {
         "attributes",
         "categoryMappings",
         "categoryMappings.category",
+      ],
+    });
+  }
+
+  async getLocationsByIds(ids: number[]): Promise<Location[]> {
+    return await this.locationRepository.find({
+      where: { location_id: In(ids) },
+      relations: [
+        "attributes",
+        "categoryMappings",
+        "categoryMappings.category",
+        "parent",
       ],
     });
   }

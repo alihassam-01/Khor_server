@@ -18,7 +18,7 @@ export class ListingPriceService {
    */
   async findAll() {
     return this.repo.find({
-      relations:['property']
+      relations: ['property']
     });
   }
 
@@ -29,22 +29,30 @@ export class ListingPriceService {
     return this.repo.findOne({ where: { entity_id: id } });
   }
 
-async findByIdAndType(id: string[] | string, type: string) {
+  async findByIdAndType(id: string, type: string): Promise<ListingPrice | null>;
+  async findByIdAndType(id: string[], type: string): Promise<ListingPrice[]>;
+  async findByIdAndType(
+    id: string[] | string,
+    type: string
+  ): Promise<ListingPrice | ListingPrice[] | null> {
     const where: any = {
-        entity_type: type as "room" | "vehicle" | "tour",
+      entity_type: type as "room" | "vehicle" | "tour",
     };
     if (Array.isArray(id)) {
-        where.entity_id = In(id);
+      where.entity_id = In(id);
+      const results = await this.repo.find({ where });
+      return results;
     } else {
-        where.entity_id = id;
+      where.entity_id = id;
+      const result = await this.repo.findOne({ where });
+      if (!result) {
+        console.error(
+          `ListingPrice not found for id: ${id} and type: ${type}`
+        );
+      }
+      return result;
     }
-    const result = await this.repo.findOne({ where });
-    if (!result) {
-        // throw new Error(`ListingPrice not found for id: ${Array.isArray(id) ? id.join(", ") : id} and type: ${type}`);
-        console.error(`ListingPrice not found for id: ${Array.isArray(id) ? id.join(", ") : id} and type: ${type}`);
-    }
-    return result;
-}
+  }
 
   /**
    * Update a listing by ID

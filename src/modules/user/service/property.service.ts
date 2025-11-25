@@ -70,10 +70,8 @@ export class PropertyService {
       ],
     });
 
-    const enrichedProperties = await Promise.all(
-      properties.map((property) =>
-        this.locationHelper.enrichWithLocationData(property)
-      )
+    const enrichedProperties = await this.locationHelper.enrichPropertiesWithLocationData(
+      properties
     );
 
     return enrichedProperties;
@@ -143,23 +141,25 @@ export class PropertyService {
     });
     const cityCache = new Map<number, any>();
 
-    const enrichedProperties = await Promise.all(
-      properties.map(async (property) => {
-        const enriched = await this.locationHelper.enrichWithLocationData(
-          property
-        );
+    const enrichedProperties =
+      await this.locationHelper.enrichPropertiesWithLocationData(properties);
 
-        if (property.tourPackages?.length > 0) {
-          enriched.tourPackages = await Promise.all(
-            property.tourPackages.map((pkg) =>
-              this.locationHelper.enrichTourPackageWithCities(pkg, cityCache)
-            )
-          );
-        }
+    // Collect all tour packages from all properties
+    const allTourPackages: any[] = [];
+    enrichedProperties.forEach((property) => {
+      if (property.tourPackages?.length > 0) {
+        allTourPackages.push(...property.tourPackages);
+      }
+    });
 
-        return enriched;
-      })
-    );
+    // Batch enrich tour packages
+    if (allTourPackages.length > 0) {
+      await this.locationHelper.enrichTourPackagesWithCitiesBatch(
+        allTourPackages,
+        cityCache
+      );
+    }
+
     return enrichedProperties;
   }
 
@@ -181,71 +181,67 @@ export class PropertyService {
       ],
     });
     if (!properties) return null;
+    if (!properties) return null;
+
+    // Collect all IDs
+    const roomTypeIds: string[] = [];
+    const tourPackageIds: string[] = [];
+    const vehicleIds: string[] = [];
+
+    properties.forEach((property) => {
+      property.roomTypes.forEach((rt) => roomTypeIds.push(rt.id));
+      property.tourPackages.forEach((tp) => tourPackageIds.push(tp.id));
+      property.vehicles.forEach((v) => vehicleIds.push(v.id));
+    });
+
+    // Batch fetch listing prices
+    const [roomPrices, tourPrices, vehiclePrices] = await Promise.all([
+      roomTypeIds.length > 0
+        ? this.listingPriceService.findByIdAndType(roomTypeIds, "room")
+        : [],
+      tourPackageIds.length > 0
+        ? this.listingPriceService.findByIdAndType(tourPackageIds, "tourPackage")
+        : [],
+      vehicleIds.length > 0
+        ? this.listingPriceService.findByIdAndType(vehicleIds, "vehicle")
+        : [],
+    ]);
+
+    // Create maps for quick lookup
+    const createPriceMap = (prices: any) => {
+      const map = new Map<string, any>();
+      if (Array.isArray(prices)) {
+        prices.forEach((p) => map.set(p.entity_id, p));
+      }
+      return map;
+    };
+
+    const roomPriceMap = createPriceMap(roomPrices);
+    const tourPriceMap = createPriceMap(tourPrices);
+    const vehiclePriceMap = createPriceMap(vehiclePrices);
+
+    // Assign prices back to entities
     for (const property of properties) {
-      // const listingPrices = await this.listingPriceService.findById(property.id);
-      // if (Array.isArray(listingPrices)) {
-      property.roomTypes.forEach(async (roomType) => {
-        const roomTypeIds = property.roomTypes.map((rt) => rt.id);
-        const listingPrices = await this.listingPriceService.findByIdAndType(
-          roomTypeIds,
-          "room"
-        );
-        let listingPrice;
-        if (Array.isArray(listingPrices)) {
-          listingPrice = listingPrices.find(
-            (lp: any) => lp.entity_id === roomType.id
-          );
-        } else if (listingPrices && listingPrices.entity_id === roomType.id) {
-          listingPrice = listingPrices;
-        }
-        if (listingPrice) {
-          roomType.base_price = listingPrice.base_price;
-        }
-      });
-      // Fetch listing prices for tourPackages and vehicles
-      const tourPackageIds = property.tourPackages.map((tp) => tp.id);
-      const tourPackageListingPrices =
-        await this.listingPriceService.findByIdAndType(
-          tourPackageIds,
-          "tourPackage"
-        );
-      property.tourPackages.forEach((tourPackage) => {
-        let listingPrice;
-        if (Array.isArray(tourPackageListingPrices)) {
-          listingPrice = tourPackageListingPrices.find(
-            (lp: any) => lp.entity_id === tourPackage.id
-          );
-        } else if (
-          tourPackageListingPrices &&
-          tourPackageListingPrices.entity_id === tourPackage.id
-        ) {
-          listingPrice = tourPackageListingPrices;
-        }
-        if (listingPrice) {
-          tourPackage.price_per_person = listingPrice.base_price;
+      property.roomTypes.forEach((roomType) => {
+        const price = roomPriceMap.get(roomType.id);
+        if (price) {
+          roomType.base_price = price.base_price;
         }
       });
 
-      const vehicleIds = property.vehicles.map((v) => v.id);
-      const vehicleListingPrices =
-        await this.listingPriceService.findByIdAndType(vehicleIds, "vehicle");
-      property.vehicles.forEach((vehicle) => {
-        let listingPrice;
-        if (Array.isArray(vehicleListingPrices)) {
-          listingPrice = vehicleListingPrices.find(
-            (lp: any) => lp.entity_id === vehicle.id
-          );
-        } else if (
-          vehicleListingPrices &&
-          vehicleListingPrices.entity_id === vehicle.id
-        ) {
-          listingPrice = vehicleListingPrices;
-        }
-        if (listingPrice) {
-          vehicle.daily_rate = listingPrice.base_price;
+      property.tourPackages.forEach((tourPackage) => {
+        const price = tourPriceMap.get(tourPackage.id);
+        if (price) {
+          tourPackage.price_per_person = price.base_price;
         }
       });
-      // }
+
+      property.vehicles.forEach((vehicle) => {
+        const price = vehiclePriceMap.get(vehicle.id);
+        if (price) {
+          vehicle.daily_rate = price.base_price;
+        }
+      });
     }
     const enrichedProperties = await Promise.all(
       properties.map((property) =>
@@ -282,23 +278,25 @@ export class PropertyService {
 
     const cityCache = new Map<number, any>();
 
-    const enrichedProperties = await Promise.all(
-      properties.map(async (property) => {
-        const enriched = await this.locationHelper.enrichWithLocationData(
-          property
-        );
+    const enrichedProperties =
+      await this.locationHelper.enrichPropertiesWithLocationData(properties);
 
-        if (property.tourPackages?.length > 0) {
-          enriched.tourPackages = await Promise.all(
-            property.tourPackages.map((pkg) =>
-              this.locationHelper.enrichTourPackageWithCities(pkg, cityCache)
-            )
-          );
-        }
+    // Collect all tour packages from all properties
+    const allTourPackages: any[] = [];
+    enrichedProperties.forEach((property) => {
+      if (property.tourPackages?.length > 0) {
+        allTourPackages.push(...property.tourPackages);
+      }
+    });
 
-        return enriched;
-      })
-    );
+    // Batch enrich tour packages
+    if (allTourPackages.length > 0) {
+      await this.locationHelper.enrichTourPackagesWithCitiesBatch(
+        allTourPackages,
+        cityCache
+      );
+    }
+
     return enrichedProperties;
   }
 

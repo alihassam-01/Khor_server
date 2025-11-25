@@ -50,18 +50,16 @@ export class RoomTypeService {
       ],
     });
 
-    const enrichedRoomTypes = await Promise.all(
-      roomTypes.map(async (roomType: RoomType) => {
-        if (roomType.property) {
-          roomType.property = await this.locationHelper.enrichWithLocationData(
-            roomType.property
-          );
-        }
-        return roomType;
-      })
-    );
+    // Collect properties from room types
+    const properties = roomTypes
+      .map((rt) => rt.property)
+      .filter((p) => p !== undefined);
 
-    return enrichedRoomTypes;
+    if (properties.length > 0) {
+      await this.locationHelper.enrichPropertiesWithLocationData(properties);
+    }
+
+    return roomTypes;
   }
   /**
    * Get all room types for vendor with listing prices
@@ -152,10 +150,9 @@ export class RoomTypeService {
     if (deletedImages && deletedImages.length > 0) {
       await this.r2ClientService.deleteFileFromR2(deletedImages);
     }
-    const listingRoom = await this.listingPriceService.findByIdAndType(
-      id,
-      "room"
-    );
+    const result = await this.listingPriceService.findByIdAndType(id, "room");
+    const listingRoom = Array.isArray(result) ? result[0] : result;
+
     if (listingRoom && updates.base_price != listingRoom?.base_price) {
       const savedListing = await this.listingPriceService.update(
         listingRoom.id,
@@ -282,17 +279,14 @@ export class RoomTypeService {
       return roomType;
     });
 
-    const enrichedRoomTypes = await Promise.all(
-      listedRooms.map(async (roomType: RoomType) => {
-        if (roomType.property) {
-          roomType.property = await this.locationHelper.enrichWithLocationData(
-            roomType.property
-          );
-        }
-        return roomType;
-      })
-    );
+    const properties = listedRooms
+      .map((rt) => rt.property)
+      .filter((p) => p !== undefined);
 
-    return enrichedRoomTypes;
+    if (properties.length > 0) {
+      await this.locationHelper.enrichPropertiesWithLocationData(properties);
+    }
+
+    return listedRooms;
   }
 }

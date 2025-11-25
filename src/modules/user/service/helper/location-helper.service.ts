@@ -1,7 +1,8 @@
 import { AppDataSource } from "../../../../config/ormconfig";
 import { City } from "../../entity/address";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import { LocationService } from "../../../user/service";
+import { Location } from "../../entity/location";
 
 export class LocationHelperService {
   private cityRepository: Repository<City>;
@@ -98,10 +99,205 @@ export class LocationHelperService {
         if (!article.location_id) {
           return { ...article, city: null, locality: null };
         }
-        const { city, locality } = await this.getCityAndLocality(article.location_id);
+        const { city, locality } = await this.getCityAndLocality(
+          article.location_id
+        );
         return { ...article, city, locality };
       })
     );
+  }
+
+  /**
+   * Batch enriches properties with location hierarchy data (city and locality)
+   * @param properties The list of properties to enrich
+   * @returns The enriched properties with city and locality information
+   */
+  public async enrichPropertiesWithLocationData<
+    T extends { address?: { location?: any } }
+  >(properties: T[]): Promise<(T & { city: any; locality: any })[]> {
+    // 1. Collect all unique location IDs
+    const locationIds = new Set<number>();
+    properties.forEach((property) => {
+      if (property.address?.location) {
+        locationIds.add(property.address.location.location_id);
+      }
+    });
+
+    if (locationIds.size === 0) {
+      return properties.map((p) => ({ ...p, city: null, locality: null }));
+    }
+
+    // 2. Fetch hierarchies for all locations
+    // We can use a map to store locationId -> hierarchy
+    const hierarchyMap = new Map<number, any[]>();
+
+    // For now, we'll iterate and fetch hierarchies, but we can optimize this further
+    // by fetching all ancestors in one go if we had a materialized path or closure table.
+    // Given the current structure, we can at least parallelize or just accept this part
+    // is still somewhat iterative but we can optimize the city/locality lookup.
+    // A better approach for the current structure:
+    // Fetch all locations in the set. Then fetch their parents recursively until root.
+    // Build the hierarchy in memory.
+
+    // Optimization: Fetch all involved locations and their parents up to root.
+    // Since we don't have a simple "get all ancestors" query without recursive CTEs or iterative calls,
+    // we will stick to parallel fetching of hierarchies for now, which is better than serial.
+    // OR better: use Promise.all for the hierarchy fetching part if it's not too large.
+
+    await Promise.all(
+      Array.from(locationIds).map(async (id) => {
+        // We need the location object to call getLocationHierarchy.
+        // Assuming we can get it from the property or fetch it.
+        // The property has address.location, which might be a partial object.
+        // Let's ensure we have the full location object or fetch it.
+        const property = properties.find(
+          (p) => p.address?.location?.location_id === id
+        );
+        if (property?.address?.location) {
+          const hierarchy = await this.locationService.getLocationHierarchy(
+            property.address.location
+          );
+          hierarchyMap.set(id, hierarchy);
+        }
+      })
+    );
+
+    // 3. Collect all location IDs from all hierarchies to fetch cities in one go
+    const allLocationIdsInHierarchies = new Set<number>();
+    hierarchyMap.forEach((hierarchy) => {
+      hierarchy.forEach((node) =>
+        allLocationIdsInHierarchies.add(node.location_id)
+      );
+    });
+
+    // 4. Batch fetch cities for all these locations
+    const cities = await this.cityRepository.find({
+      where: { location: { location_id: In(Array.from(allLocationIdsInHierarchies)) } },
+      relations: ["location"],
+    });
+
+    const cityMap = new Map<number, City>(); // location_id -> City
+    cities.forEach((city) => {
+      if (city.location) {
+        cityMap.set(city.location.location_id, city);
+      }
+    });
+
+    // 5. Enrich properties using in-memory data
+    return properties.map((property) => {
+      if (!property.address?.location) {
+        return { ...property, city: null, locality: null };
+      }
+
+      const locationId = property.address.location.location_id;
+      const hierarchy = hierarchyMap.get(locationId) || [];
+
+      // Find city in hierarchy
+      let city = null;
+      for (const node of hierarchy) {
+        if (cityMap.has(node.location_id)) {
+          city = { ...cityMap.get(node.location_id), type: "city" };
+          break;
+        }
+      }
+
+      // Find locality
+      let locality = null;
+      if (city) {
+        const cityIndex = hierarchy.findIndex(
+          (node) => node.location_id === city.location?.location_id
+        );
+        if (cityIndex !== -1 && hierarchy[cityIndex + 1]) {
+          locality = { ...hierarchy[cityIndex + 1], type: "locality" };
+        }
+      }
+
+      return {
+        ...property,
+        city,
+        locality,
+      };
+    });
+  }
+
+  /**
+   * Batch enriches tour packages with cities
+   * @param tourPackages List of tour packages
+   * @param cityCache Optional cache
+   */
+  public async enrichTourPackagesWithCitiesBatch<
+    T extends { destinations?: any[] }
+  >(
+    tourPackages: T[],
+    cityCache: Map<number, any> = new Map()
+  ): Promise<(T & { cities: any[] })[]> {
+    // 1. Collect all unique destination location IDs
+    const allDestinationIds = new Set<number>();
+    tourPackages.forEach((pkg) => {
+      pkg.destinations?.forEach((dest) => {
+        if (!cityCache.has(dest.location_id)) {
+          allDestinationIds.add(dest.location_id);
+        }
+      });
+    });
+
+    if (allDestinationIds.size > 0) {
+      // 2. Fetch hierarchies for all uncached destinations
+      // We need to fetch the location objects first to get hierarchies
+      const locations = await this.locationService.getLocationsByIds(
+        Array.from(allDestinationIds)
+      );
+
+      const hierarchyMap = new Map<number, any[]>();
+      await Promise.all(
+        locations.map(async (loc: Location) => {
+          const hierarchy = await this.locationService.getLocationHierarchy(loc);
+          hierarchyMap.set(loc.location_id, hierarchy);
+        })
+      );
+
+      // 3. Collect all IDs in hierarchies to fetch cities
+      const allHierarchyIds = new Set<number>();
+      hierarchyMap.forEach((h) =>
+        h.forEach((node) => allHierarchyIds.add(node.location_id))
+      );
+
+      // 4. Fetch cities
+      const cities = await this.cityRepository.find({
+        where: { location: { location_id: In(Array.from(allHierarchyIds)) } },
+        relations: ["location"],
+      });
+      const cityMap = new Map<number, City>();
+      cities.forEach((c) => {
+        if (c.location) cityMap.set(c.location.location_id, c);
+      });
+
+      // 5. Update cache
+      hierarchyMap.forEach((hierarchy, locationId) => {
+        let city = null;
+        for (const node of hierarchy) {
+          if (cityMap.has(node.location_id)) {
+            city = { ...cityMap.get(node.location_id), type: "city" };
+            break;
+          }
+        }
+        cityCache.set(locationId, city);
+      });
+    }
+
+    // 6. Map results
+    return tourPackages.map((pkg) => {
+      const cities: any[] = [];
+      if (pkg.destinations) {
+        pkg.destinations.forEach((dest) => {
+          const city = cityCache.get(dest.location_id);
+          if (city && !cities.some((c) => c.city_id === city.city_id)) {
+            cities.push(city);
+          }
+        });
+      }
+      return { ...pkg, cities };
+    });
   }
 
   /**

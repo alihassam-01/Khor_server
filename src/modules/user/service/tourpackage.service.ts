@@ -37,7 +37,20 @@ export class TourPackageService {
    * Get all tour packages
    */
   async findAll() {
-    return this.repo.find({ relations: ["property", "destinations"] });
+    const tours = await this.repo.find({
+      relations: ["property", "destinations"],
+    });
+
+    // Batch enrich properties
+    const properties = tours
+      .map((t) => t.property)
+      .filter((p) => p !== undefined);
+
+    if (properties.length > 0) {
+      await this.locationHelper.enrichPropertiesWithLocationData(properties);
+    }
+
+    return tours;
   }
 
   /**
@@ -60,9 +73,11 @@ export class TourPackageService {
     if (tour.property) {
       return {
         ...tour,
-        property: await this.locationHelper.enrichWithLocationData(
-          tour.property
-        ),
+        property: (
+          await this.locationHelper.enrichPropertiesWithLocationData([
+            tour.property,
+          ])
+        )[0],
       };
     }
 
