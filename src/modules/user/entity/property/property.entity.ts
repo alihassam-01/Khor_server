@@ -72,4 +72,7 @@ export class Property {
 
   @OneToMany(() => TourPackage, (tour) => tour.property)
   tourPackages!: TourPackage[];
+
+  @Column({ type: "tsvector", select: false })
+  search_vector!: any;
 }

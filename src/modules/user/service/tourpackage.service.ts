@@ -1,6 +1,6 @@
 import { AppDataSource } from "../../../config/ormconfig";
 import { TourPackage } from "../../user/entity/property";
-import { ILike, In } from "typeorm";
+import { In } from "typeorm";
 import { Location } from "../entity/location";
 import { LocationHelperService } from "./helper/location-helper.service";
 import { R2ClientService } from "./r2client.service";
@@ -181,13 +181,10 @@ export class TourPackageService {
    * Search tour packages by name, difficulty, or includes
    */
   async search(term: string) {
-    return this.repo.find({
-      where: [
-        { name: ILike(`%${term}%`) },
-        { description: ILike(`%${term}%`) },
-        // { difficulty_level: ILike(`%${term}%`) },
-      ],
-      relations: ["property"],
-    });
+    return this.repo.createQueryBuilder("tourPackage")
+      .leftJoinAndSelect("tourPackage.property", "property")
+      .where("tourPackage.search_vector @@ plainto_tsquery('english', :term)", { term })
+      .orderBy("ts_rank(tourPackage.search_vector, plainto_tsquery('english', :term))", "DESC")
+      .getMany();
   }
 }

@@ -1,6 +1,6 @@
 import { AppDataSource } from "../../../config/ormconfig";
 import { Property } from "../entity/property";
-import { FindOptionsWhere, ILike, In } from "typeorm";
+import { ILike, In } from "typeorm";
 import { CreateProperty } from "../dtos/property.dto";
 import { LocationService } from "./location.service";
 // import { City } from "@entity/address";
@@ -257,24 +257,30 @@ export class PropertyService {
   async search(term: string) {
     // Only allow exact match for 'type' since it's a string literal union
     const allowedTypes = ["hotel", "car_rental", "tour"];
-    const where: FindOptionsWhere<Property>[] = [
-      { name: ILike(`%${term}%`) },
-      { description: ILike(`%${term}%`) },
-      ...(allowedTypes.includes(term) ? [{ type: term as any }] : []),
-    ];
-    const properties = await this.repo.find({
-      where,
-      relations: ["vendor",
-        "roomTypes",
-        "vehicles",
-        "tourPackages",
-        "tourPackages.destinations",
-        "tourPackages.destinations.city",
-        "deals",
-        "address",
-        "address.location",
-        "address.location.parent",],
-    });
+
+    const queryBuilder = this.repo.createQueryBuilder("property")
+      .leftJoinAndSelect("property.vendor", "vendor")
+      .leftJoinAndSelect("property.roomTypes", "roomTypes")
+      .leftJoinAndSelect("property.vehicles", "vehicles")
+      .leftJoinAndSelect("property.tourPackages", "tourPackages")
+      .leftJoinAndSelect("tourPackages.destinations", "destinations")
+      .leftJoinAndSelect("destinations.city", "city")
+      .leftJoinAndSelect("property.deals", "deals")
+      .leftJoinAndSelect("property.address", "address")
+      .leftJoinAndSelect("address.location", "location")
+      .leftJoinAndSelect("location.parent", "parent");
+
+    if (allowedTypes.includes(term)) {
+      queryBuilder
+        .where("property.type = :type", { type: term })
+        .orWhere("property.search_vector @@ plainto_tsquery('english', :term)", { term });
+    } else {
+      queryBuilder.where("property.search_vector @@ plainto_tsquery('english', :term)", { term });
+    }
+
+    const properties = await queryBuilder
+      .orderBy("ts_rank(property.search_vector, plainto_tsquery('english', :term))", "DESC")
+      .getMany();
 
     const cityCache = new Map<number, any>();
 

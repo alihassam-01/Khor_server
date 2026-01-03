@@ -84,4 +84,7 @@ export class TourPackage {
 
   @UpdateDateColumn({ type: "timestamptz" })
   updated_at!: Date;
+
+  @Column({ type: "tsvector", select: false })
+  search_vector!: any;
 }
