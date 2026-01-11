@@ -54,4 +54,35 @@ export class SendEmail {
     });
     return success ? { status: "ok" } : { status: "error" };
   }
+  async sendContactEmail(
+    name: string,
+    email: string,
+    subject: string,
+    message: string
+  ) {
+    const adminEmail = process.env.INFO_EMAIL || process.env.CONTACT_EMAIL || process.env.SMTP_EMAIL || "info@gokhor.com";
+    if (!adminEmail) {
+      console.error("CONTACT_EMAIL or SMTP_EMAIL not configured.");
+      return { status: "error", message: "Server configuration error" };
+    }
+
+    const html = `
+      <h3>New Contact Message</h3>
+      <p><strong>Name:</strong> ${name}</p>
+      <p><strong>Email:</strong> ${email}</p>
+      <p><strong>Subject:</strong> ${subject}</p>
+      <br/>
+      <p><strong>Message:</strong></p>
+      <p>${message.replace(/\n/g, '<br>')}</p>
+    `;
+
+    const success = await sendEmail({
+      to: adminEmail,
+      subject: `[Contact Us] ${subject}`,
+      html,
+      replyTo: email,
+    });
+
+    return success ? { status: "ok" } : { status: "error" };
+  }
 }

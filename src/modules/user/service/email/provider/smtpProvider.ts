@@ -6,11 +6,13 @@ export async function sendSMTP({
   subject,
   html,
   attachment,
+  replyTo,
 }: {
   to: string;
   subject: string;
   html: string;
   attachment?: any;
+  replyTo?: string;
 }) {
   const transporter = nodemailer.createTransport({
     host: EmailConfig.smtp.host,
@@ -28,6 +30,7 @@ export async function sendSMTP({
     subject,
     html,
     attachments: attachment,
+    replyTo,
   });
 
   return info.messageId;

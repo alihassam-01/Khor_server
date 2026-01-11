@@ -35,7 +35,7 @@ export const ReviewController = {
     request: FastifyRequest<{
       Params: {
         targetId: string;
-        targetType: "property" | "room_type" | "tour_package";
+        targetType: "property" | "room_type" | "tour_package" | "article";
       };
     }>,
     reply: FastifyReply

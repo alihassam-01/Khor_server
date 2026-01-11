@@ -21,11 +21,11 @@ export class Review {
   user!: User;
 
   // Polymorphic Relation
-  @Column({ type: "uuid", nullable: true })
+  @Column({ type: "text", nullable: true })
   target_id!: string | null;
 
   @Column({ type: "text", nullable: true })
-  target_type!: "property" | "room_type" | "tour_package" | null;
+  target_type!: "property" | "room_type" | "tour_package" | "article" | "location" | null;
 
   @Column({ type: "text", nullable: true })
   review_text!: string;

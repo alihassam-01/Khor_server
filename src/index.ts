@@ -12,10 +12,10 @@ async function startServer() {
   });
 
   await app.register(fastifyMultipart, {
-  limits: {
-    fileSize: 5 * 1024 * 1024, 
-  }
-});
+    limits: {
+      fileSize: 5 * 1024 * 1024,
+    }
+  });
   await app.register(import('@fastify/formbody'));
 
   await app.register(import('@fastify/cors'), {
@@ -24,15 +24,19 @@ async function startServer() {
   });
 
   app.get('/ping', async (_request, reply) => {
-    reply.send({ status: "ok" }); 
+    reply.send({ status: "ok" });
   });
 
   try {
-    
+
     await app.register(typeormPlugin, { timeout: 120000 });
+
+    // Log enabled features
+    const { logEnabledFeatures } = await import('./config/features.config');
+    logEnabledFeatures();
   } catch (error) {
     console.error("Error connecting to database:", error);
-    process.exit(1); 
+    process.exit(1);
   }
 
   try {
@@ -41,11 +45,11 @@ async function startServer() {
     }
   } catch (error) {
     console.error("Error registering routes:", error);
-    process.exit(1);  
+    process.exit(1);
   }
 
   app.setErrorHandler((_error, _request, reply) => {
-    reply.status(500).send({ message: "Internal Server Error" }); 
+    reply.status(500).send({ message: "Internal Server Error" });
   });
 
   try {

@@ -3,7 +3,9 @@ import { LocationService } from "../service/location.service";
 import { CreateCityDto, CreateLocationDto } from "../dtos/location.dto";
 
 export class LocationController {
-  constructor(private readonly locationService: LocationService) {}
+  constructor(
+    private readonly locationService: LocationService
+  ) { }
 
   async createLocation(
     req: FastifyRequest<{ Body: CreateLocationDto }>,
@@ -16,7 +18,7 @@ export class LocationController {
       this.handleError(error, reply);
     }
   }
-  
+
   async createCity(
     req: FastifyRequest<{ Body: CreateCityDto }>,
     reply: FastifyReply

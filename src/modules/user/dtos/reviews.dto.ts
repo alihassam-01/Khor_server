@@ -7,4 +7,4 @@ export interface CreateReviewDTO {
   customerId?: string;
 }
 
-export type ReviewTargetType = 'property' | 'room_type' | 'tour_package';
+export type ReviewTargetType = 'property' | 'room_type' | 'tour_package' | 'article' | 'location';

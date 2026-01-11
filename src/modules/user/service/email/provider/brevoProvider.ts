@@ -6,11 +6,13 @@ export async function sendBrevo({
   subject,
   html,
   attachment,
+  replyTo,
 }: {
   to: string;
   subject: string;
   html: string;
   attachment?: any;
+  replyTo?: string;
 }) {
   const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 
@@ -30,17 +32,20 @@ export async function sendBrevo({
     name: EmailConfig.brevo.fromName,
     email: EmailConfig.brevo.fromEmail,
   };
+  if (replyTo) {
+    sendSmtpEmail.replyTo = { email: replyTo };
+  }
   if (attachment) {
     // Ensure attachment is an array of objects with name and base64 content
     sendSmtpEmail.attachment = Array.isArray(attachment)
       ? attachment.map(att => ({
-          name: att.name || att.filename || 'attachment.pdf',
-          content: att.content?.toString('base64') || att.content || '',
-        }))
+        name: att.name || att.filename || 'attachment.pdf',
+        content: att.content?.toString('base64') || att.content || '',
+      }))
       : [{
-          name: attachment.name || attachment.filename || 'attachment.pdf',
-          content: attachment.content?.toString('base64') || attachment.content || '',
-        }];
+        name: attachment.name || attachment.filename || 'attachment.pdf',
+        content: attachment.content?.toString('base64') || attachment.content || '',
+      }];
   }
   sendSmtpEmail.to = [{ email: to }];
 

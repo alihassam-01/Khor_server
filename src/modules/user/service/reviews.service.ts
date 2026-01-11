@@ -16,16 +16,19 @@ export class ReviewService {
    */
   async createReview(data: CreateReviewDTO) {
     const { userId, targetId, targetType, reviewText, rating } = data;
-    const hasBooking = await this.bookingRepo.findOne({
-      where: {
-        customer: { id: userId },
-        booking_status: In(["completed", "confirmed", "pending"]), // adjust as needed
-        // [targetType]: { id: targetId },
-      },
-      relations: ["customer"], // load relation to filter correctly
-    });
-    if (!hasBooking) {
-      throw new Error("You can only review items you have booked.");
+    // Check for booking only if NOT an article or location
+    if (targetType !== 'article' && targetType !== 'location') {
+      const hasBooking = await this.bookingRepo.findOne({
+        where: {
+          customer: { id: userId },
+          booking_status: In(["completed", "confirmed", "pending"]), // adjust as needed
+          // [targetType]: { id: targetId },
+        },
+        relations: ["customer"], // load relation to filter correctly
+      });
+      if (!hasBooking) {
+        throw new Error("You can only review items you have booked.");
+      }
     }
 
     const user = await this.userRepo.findOneByOrFail({ id: userId });
@@ -79,6 +82,7 @@ export class ReviewService {
       user: {
         username:
           r.user?.customerProfile?.username ||
+          r.user?.vendor?.username ||
           `User-${r.user.id.slice(0, 6)}...`,
       },
     }));
@@ -185,6 +189,7 @@ export class ReviewService {
           user: {
             username:
               r.user?.customerProfile?.username ||
+              r.user?.vendor?.username ||
               `User-${r.user.id.slice(0, 6)}...`,
           },
         })),

@@ -2,9 +2,12 @@ import { FastifyInstance } from "fastify";
 import { ArticleService } from "../service/article.service";
 import { ArticleController } from "../controller/article.controller";
 
+import { ReviewService } from "../service/reviews.service";
+
 export default async function articleRoutes(fastify: FastifyInstance) {
   const articleService = new ArticleService();
-  const articleController = new ArticleController(articleService);
+  const reviewService = new ReviewService();
+  const articleController = new ArticleController(articleService, reviewService);
 
   fastify.post("/articles", articleController.createArticle.bind(articleController));
   fastify.get("/articles", articleController.getAllArticles.bind(articleController));

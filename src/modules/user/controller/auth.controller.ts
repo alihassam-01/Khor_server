@@ -3,7 +3,7 @@ import { AuthService } from "../service/auth.service";
 import { UserType } from "../entity/ENUM/enum";
 
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   async register(
     req: FastifyRequest<{
@@ -18,10 +18,10 @@ export class AuthController {
     reply: FastifyReply
   ) {
     try {
-       await this.authService.register(
+      await this.authService.register(
         req.body.email,
         req.body.password,
-        req.body.userType,
+        UserType.CUSTOMER, // Enforce UserType.CUSTOMER
         req.body.name,
 
       );
@@ -34,8 +34,9 @@ export class AuthController {
       } catch (_) {
         parsedError.message = error.message;
       }
-    
-      reply.code(400).send(parsedError);    }
+
+      reply.code(400).send(parsedError);
+    }
   }
 
   async resendVerificationEmail(
