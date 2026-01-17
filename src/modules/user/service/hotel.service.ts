@@ -1,109 +1,218 @@
-// import { AppDataSource } from "../../../config/ormconfig";
-// import { Hotel, ServiceOptions } from "@entity/property";
-// import { BusinessType, Vendor } from "@entity/business";
-// import { RoomType } from "../entity/room";
-// import { LocationService } from "./location.service";
+import { AppDataSource } from "../../../config/ormconfig";
+import { Hotel, HotelReview, HotelRoomType } from "../entity/ads";
+import { Location } from "../entity/location";
+import {
+    IHotelDTO,
+    ICreateHotelDTO,
+    IUpdateHotelDTO,
+} from "../dtos/hotel.dto";
 
-// export class HotelService {
-//   //   private businessTypeRepository = AppDataSource.getRepository(BusinessType);
-//   //   private propertyRepository = AppDataSource.getRepository(Property);
-//   //   private vendorRepository = AppDataSource.getRepository(Vendor);
-//   private hotelRepository = AppDataSource.getRepository(Hotel);
-//   private roomTypeRepository = AppDataSource.getRepository(RoomType);
-//   private serviceOptionsRepository =
-//     AppDataSource.getRepository(ServiceOptions);
-//   constructor(private readonly locationService: LocationService) {}
+export class HotelService {
+    private hotelRepository = AppDataSource.getRepository(Hotel);
+    private locationRepository = AppDataSource.getRepository(Location);
 
-//   async createRoomType(
-//     name: string,
-//     basePrice: number,
-//     maxOccupancy: number,
-//     totalRooms: number,
-//     typeDescription: string,
-//     propertyId: number
-//   ): Promise<RoomType> {
-//     const hotel = await this.hotelRepository.findOneByOrFail({
-//       property_id: propertyId,
-//     });
 
-//     const roomType = this.roomTypeRepository.create({
-//       room_type_name: name,
-//       room_type_base_price: basePrice,
-//       room_type_max_capacity: maxOccupancy,
-//       total_rooms: totalRooms,
-//       room_type_description: typeDescription,
-//       property: hotel,
-//     });
+    private toHotelDTO(hotel: Hotel): IHotelDTO {
+        return {
+            id: hotel.id,
+            name: hotel.name,
+            type: "hotel",
+            rating: Number(hotel.rating),
+            reviews: hotel.reviews,
+            price: Number(hotel.price),
+            location: hotel.location_name,
+            image: hotel.image,
+            description: hotel.description,
+            amenities: hotel.amenities,
+            logo: hotel.logo,
+            verified: hotel.verified,
+            links: {
+                phone: hotel.phone,
+                whatsapp: hotel.whatsapp,
+            },
+            detailed_reviews:
+                hotel.detailed_reviews?.map((review) => ({
+                    user_name: review.user_name,
+                    rating: Number(review.rating),
+                    comment: review.comment,
+                    date: review.date,
+                })) || [],
+            roomTypes:
+                hotel.room_types?.map((roomType) => ({
+                    type: roomType.type,
+                    price: Number(roomType.price),
+                    amenities: roomType.amenities,
+                    capacity: roomType.capacity,
+                })) || [],
+        };
+    }
 
-//     return await this.roomTypeRepository.save(roomType);
-//   }
+    async createHotel(hotelData: ICreateHotelDTO): Promise<IHotelDTO> {
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
 
-//   async createServiceOption(
-//     name: string,
-//     possibleValues: string[],
-//     propertyType: string
-//   ): Promise<ServiceOptions> {
-//     const serviceOption = this.serviceOptionsRepository.create({
-//       name,
-//       possibleValues,
-//       propertyType,
-//     });
+        try {
+            // Verify location exists
+            const location = await this.locationRepository.findOne({
+                where: { location_id: hotelData.location_id },
+            });
 
-//     return await this.serviceOptionsRepository.save(serviceOption);
-//   }
+            if (!location) {
+                throw new Error("Location not found");
+            }
 
-//   async createHotel(
-//     hotelName: string,
-//     locationId: number,
-//     street_address: string,
-//     businessTypeId: number,
-//     landmark: string,
-//     vendorId: string,
-//     is_primary: boolean,
-//     markupFileLocation?: string
-//   ): Promise<Hotel> {
-//     const vendorRepo = AppDataSource.getRepository(Vendor);
-//     const businessTypeRepo = AppDataSource.getRepository(BusinessType);
-//     const hotelRepo = AppDataSource.getRepository(Hotel);
+            // Create hotel
+            const hotel = new Hotel();
+            hotel.name = hotelData.name;
+            hotel.rating = hotelData.rating || 0;
+            hotel.reviews = hotelData.reviews || 0;
+            hotel.price = hotelData.price;
+            hotel.location_name = hotelData.location_name;
+            hotel.image = hotelData.image;
+            hotel.description = hotelData.description;
+            hotel.amenities = hotelData.amenities;
+            hotel.logo = hotelData.logo || null;
+            hotel.verified = hotelData.verified || false;
+            hotel.phone = hotelData.phone || null;
+            hotel.whatsapp = hotelData.whatsapp || null;
+            hotel.location = location;
+            hotel.location_id = hotelData.location_id;
+            hotel.is_active = hotelData.is_active !== undefined ? hotelData.is_active : true;
 
-//     const vendor = await vendorRepo.findOneByOrFail({ id: vendorId });
-//     const businessType = await businessTypeRepo.findOneByOrFail({
-//       id: businessTypeId,
-//     });
-//     const address = await this.locationService.createAddress(
-//       locationId,
-//       street_address,
-//       landmark,
-//       is_primary
-//     );
-//     // const hotel = hotelRepo.create({
-//     //   hotel_name: hotelName,
-//     //   addressId: address.address_id,
-//     //   vendor,
-//     //   businessType,
-//     //   ...(markupFileLocation
-//     //     ? { markup_file_location: markupFileLocation }
-//     //     : {}),
-//     // });
-//     const hotel = new Hotel();
-//     hotel.hotel_name = hotelName;
-//     hotel.addressId = address.address_id;
-//     hotel.vendor = vendor;
-//     hotel.businessType = businessType;
-//     if (markupFileLocation) {
-//       hotel.markup_file_location = markupFileLocation;
-//     }
-//     (hotel as any).property_type = "hotel";
-//     // console.log("Hotel object before saving:", hotel);
-//     const saved = await hotelRepo.save(hotel);
-//     console.log(hotel instanceof Hotel); // should be true
+            const savedHotel = await queryRunner.manager.save(hotel);
 
-//     console.log("Saved Hotel:", saved);
-//     // return await hotelRepo.save(hotel);
-//     return saved;
-//   }
+            // Create reviews if provided
+            if (hotelData.detailed_reviews && hotelData.detailed_reviews.length > 0) {
+                const reviews = hotelData.detailed_reviews.map((reviewData) => {
+                    const review = new HotelReview();
+                    review.user_name = reviewData.user_name;
+                    review.rating = reviewData.rating;
+                    review.comment = reviewData.comment;
+                    review.date = reviewData.date;
+                    review.hotel = savedHotel;
+                    review.hotel_id = savedHotel.id;
+                    return review;
+                });
+                await queryRunner.manager.save(reviews);
+                savedHotel.detailed_reviews = reviews;
+            }
 
-// //   const async addRoomInventory(
-// //     roomTypeId: number,
+            // Create room types if provided
+            if (hotelData.roomTypes && hotelData.roomTypes.length > 0) {
+                const roomTypes = hotelData.roomTypes.map((roomTypeData) => {
+                    const roomType = new HotelRoomType();
+                    roomType.type = roomTypeData.type;
+                    roomType.price = roomTypeData.price;
+                    roomType.amenities = roomTypeData.amenities;
+                    roomType.capacity = roomTypeData.capacity;
+                    roomType.hotel = savedHotel;
+                    roomType.hotel_id = savedHotel.id;
+                    return roomType;
+                });
+                await queryRunner.manager.save(roomTypes);
+                savedHotel.room_types = roomTypes;
+            }
 
-// }
+            await queryRunner.commitTransaction();
+            return this.toHotelDTO(savedHotel);
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    async getHotelById(id: string): Promise<IHotelDTO | null> {
+        const hotel = await this.hotelRepository.findOne({
+            where: { id },
+            relations: ["location", "detailed_reviews", "room_types"],
+        });
+
+        if (!hotel) {
+            return null;
+        }
+
+        return this.toHotelDTO(hotel);
+    }
+
+    async getAllHotels(): Promise<IHotelDTO[]> {
+        const hotels = await this.hotelRepository.find({
+            relations: ["location", "detailed_reviews", "room_types"],
+            order: { created_at: "DESC" },
+        });
+
+        return hotels.map((hotel) => this.toHotelDTO(hotel));
+    }
+
+    async getHotelsByLocation(locationId: number): Promise<IHotelDTO[]> {
+        const hotels = await this.hotelRepository.find({
+            where: { location_id: locationId, is_active: true },
+            relations: ["location", "detailed_reviews", "room_types"],
+            order: { created_at: "DESC" },
+        });
+
+        return hotels.map((hotel) => this.toHotelDTO(hotel));
+    }
+
+    async updateHotel(
+        id: string,
+        hotelData: IUpdateHotelDTO
+    ): Promise<IHotelDTO> {
+        const hotel = await this.hotelRepository.findOne({
+            where: { id },
+            relations: ["location", "detailed_reviews", "room_types"],
+        });
+
+        if (!hotel) {
+            throw new Error("Hotel not found");
+        }
+
+        // Update fields if provided
+        if (hotelData.name !== undefined) hotel.name = hotelData.name;
+        if (hotelData.rating !== undefined) hotel.rating = hotelData.rating;
+        if (hotelData.reviews !== undefined) hotel.reviews = hotelData.reviews;
+        if (hotelData.price !== undefined) hotel.price = hotelData.price;
+        if (hotelData.location_name !== undefined)
+            hotel.location_name = hotelData.location_name;
+        if (hotelData.image !== undefined) hotel.image = hotelData.image;
+        if (hotelData.description !== undefined)
+            hotel.description = hotelData.description;
+        if (hotelData.amenities !== undefined)
+            hotel.amenities = hotelData.amenities;
+        if (hotelData.logo !== undefined) hotel.logo = hotelData.logo;
+        if (hotelData.verified !== undefined) hotel.verified = hotelData.verified;
+        if (hotelData.phone !== undefined) hotel.phone = hotelData.phone;
+        if (hotelData.whatsapp !== undefined) hotel.whatsapp = hotelData.whatsapp;
+        if (hotelData.is_active !== undefined)
+            hotel.is_active = hotelData.is_active;
+
+        // Update location if changed
+        if (
+            hotelData.location_id !== undefined &&
+            hotel.location_id !== hotelData.location_id
+        ) {
+            const location = await this.locationRepository.findOne({
+                where: { location_id: hotelData.location_id },
+            });
+            if (location) {
+                hotel.location = location;
+                hotel.location_id = hotelData.location_id;
+            }
+        }
+
+        const updatedHotel = await this.hotelRepository.save(hotel);
+        return this.toHotelDTO(updatedHotel);
+    }
+
+    async deleteHotel(id: string): Promise<void> {
+        const hotel = await this.hotelRepository.findOne({ where: { id } });
+
+        if (!hotel) {
+            throw new Error("Hotel not found");
+        }
+
+        await this.hotelRepository.remove(hotel);
+    }
+}

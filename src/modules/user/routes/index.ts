@@ -17,6 +17,10 @@ import PayoutRoutes from "./payout.routes";
 import RefundRoutes from "./refund.routes";
 import ListingPrice from "./listingprice.routes";
 import { contactRoutes } from "./contact.routes";
+import { hotelRoutes } from "./hotel.routes";
+import { restaurantRoutes } from "./restaurant.routes";
+import { adsRoutes } from "./ads.routes";
+
 
 // Core routes - always enabled
 const routes = [
@@ -24,7 +28,11 @@ const routes = [
   userRoutes,
   r2ClientRoutes, // Required for media uploads
   contactRoutes,
+  hotelRoutes, // Admin hotel management
+  restaurantRoutes, // Admin restaurant management
+  adsRoutes, // Public ads endpoint
 ];
+
 
 // Conditionally add feature routes based on feature flags
 if (features.articles) {

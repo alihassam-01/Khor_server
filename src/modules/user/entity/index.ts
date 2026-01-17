@@ -12,7 +12,15 @@ export * from "./bookings/transactions.entity";
 // export * from "./business/business-type.entity";
 // export * from "./business/business-verification.entity";
 export * from "./business/vendor-entity";
+export * from "./ads/hotel.entity";
+export * from "./ads/hotel-review.entity";
+export { HotelRoomType } from "./ads/room-type.entity";
+export * from "./ads/restaurant.entity";
+export * from "./ads/restaurant-review.entity";
+
 export * from "./ENUM/enum";
+export * from "./ENUM/ad.enum";
+
 export * from "./images/s3Images.entity";
 export * from "./location/location-attributes.entity";
 export * from "./location/location-category-mapping.entity";

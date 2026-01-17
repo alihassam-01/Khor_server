@@ -1,16 +1,13 @@
-// import { FastifyInstance } from "fastify";
-// import { HotelController } from "../controller/hotel.controller";
-// import { HotelService } from "../service/hotel.service";
-// import { LocationService } from "../service/location.service";
-// import { AppDataSource } from "../../../config/ormconfig";
+import { FastifyInstance } from "fastify";
+import { HotelController } from "../controller/hotel.controller";
 
-// export default async function hotelRoutes(fastify: FastifyInstance){
-//         const locationService = new LocationService(AppDataSource);
-//     const hotelService = new HotelService(locationService);
-//     const hotelController = new HotelController(hotelService);
+export async function hotelRoutes(fastify: FastifyInstance) {
+    const hotelController = new HotelController();
 
-//     fastify.post("/room/room-type", hotelController.createRoomType.bind(hotelController))
-//     fastify.post("/hotel", hotelController.createHotel.bind(hotelController))
-//     fastify.post("/room/service-option", hotelController.createServiceOption.bind(hotelController))
-
-// }
+    // Admin routes for hotel management
+    fastify.post("/admin/hotels", hotelController.createHotel.bind(hotelController));
+    fastify.get("/admin/hotels", hotelController.getAllHotels.bind(hotelController));
+    fastify.get("/admin/hotels/:id", hotelController.getHotelById.bind(hotelController));
+    fastify.put("/admin/hotels/:id", hotelController.updateHotel.bind(hotelController));
+    fastify.delete("/admin/hotels/:id", hotelController.deleteHotel.bind(hotelController));
+}
