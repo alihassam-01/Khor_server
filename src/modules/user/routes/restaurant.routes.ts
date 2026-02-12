@@ -11,7 +11,7 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
     );
     fastify.get(
         "/admin/restaurants",
-        restaurantController.getAllRestaurants.bind(restaurantController)
+        restaurantController.getAllRestaurantsAdmin.bind(restaurantController)
     );
     fastify.get(
         "/admin/restaurants/:id",
@@ -25,4 +25,16 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
         "/admin/restaurants/:id",
         restaurantController.deleteRestaurant.bind(restaurantController)
     );
+
+    // Admin routes for ad management
+    fastify.post("/admin/restaurants/:id/toggle-status", restaurantController.toggleAdStatus.bind(restaurantController));
+    fastify.post("/admin/restaurants/:id/renew", restaurantController.renewAd.bind(restaurantController));
+    fastify.get("/admin/restaurants/expired", restaurantController.getExpiredAds.bind(restaurantController));
+    fastify.get("/admin/restaurants/featured", restaurantController.getFeaturedAds.bind(restaurantController));
+    fastify.get("/admin/restaurants/premium", restaurantController.getPremiumAds.bind(restaurantController));
+    fastify.get("/admin/restaurants/vendor/:vendorId", restaurantController.getAdsByVendor.bind(restaurantController));
+    fastify.post("/admin/restaurants/:id/featured", restaurantController.setFeaturedStatus.bind(restaurantController));
+
+    // Routes to get restaurants
+    fastify.get("/restaurants", restaurantController.getAllRestaurants.bind(restaurantController));
 }

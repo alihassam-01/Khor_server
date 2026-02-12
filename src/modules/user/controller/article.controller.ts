@@ -1,18 +1,11 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ArticleService } from '../service/article.service';
-
 import { R2ClientService } from '../service/r2client.service';
-
-
-import { ReviewService } from '../service/reviews.service';
 
 export class ArticleController {
   private r2ClientService: R2ClientService;
 
-  constructor(
-    private readonly articleService: ArticleService,
-    private readonly reviewService: ReviewService
-  ) {
+  constructor(private readonly articleService: ArticleService) {
     this.r2ClientService = new R2ClientService();
   }
 
@@ -87,12 +80,8 @@ export class ArticleController {
         return reply.code(404).send({ message: 'Article not found' });
       }
 
-      const reviewData = await this.reviewService.getReviewsForTarget(
-        article.article_id.toString(),
-        "article"
-      );
-
-      reply.send({ ...article, ...reviewData });
+      // Reviews removed for Phase 1
+      reply.send(article);
     } catch (error: any) {
       reply.code(500).send({ message: error.message });
     }
@@ -105,12 +94,8 @@ export class ArticleController {
         return reply.code(404).send({ message: 'Article not found' });
       }
 
-      const reviewData = await this.reviewService.getReviewsForTarget(
-        article.article_id.toString(),
-        "article"
-      );
-
-      reply.send({ ...article, ...reviewData });
+      // Reviews removed for Phase 1
+      reply.send(article);
     } catch (error: any) {
       reply.code(500).send({ message: error.message });
     }
@@ -208,21 +193,8 @@ export class ArticleController {
     try {
       const articles = await this.articleService.getAllArticles();
 
-      const articleIds = articles.map(a => a.article_id.toString());
-      const reviewsData = await this.reviewService.getReviewsByTargetIds(articleIds);
-
-      const reviewsMap = new Map(reviewsData.map(r => [r.target_id, r]));
-
-      const articlesWithReviews = articles.map(article => {
-        const reviewInfo = reviewsMap.get(article.article_id.toString()) || {
-          totalReviews: 0,
-          avgRating: 0,
-          reviews: []
-        };
-        return { ...article, ...reviewInfo };
-      });
-
-      reply.send(articlesWithReviews);
+      // Reviews removed for Phase 1
+      reply.send(articles);
     } catch (error: any) {
       reply.code(500).send({ message: error.message });
     }

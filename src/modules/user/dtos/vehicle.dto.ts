@@ -1,4 +1,4 @@
-export interface CreateVehicleDto {
+export interface ICreateVehicleDto {
   make: string;
   model: string;
   year: number;
@@ -10,7 +10,7 @@ export interface CreateVehicleDto {
   features?: string[];
   images?: string[];
   license_plate?: string;
-  property_id: string; 
+  property_id: string;
 }
 
-export interface UpdateVehicleDto extends Partial<CreateVehicleDto> {}
+export interface IUpdateVehicleDto extends Partial<ICreateVehicleDto> { }

@@ -1,5 +1,5 @@
 // Base Types
-interface BaseBooking {
+interface IBaseBooking {
   customer_id: string;
   total_amount: number;
   booking_type: "tour" | "hotel";
@@ -10,11 +10,11 @@ interface BaseBooking {
   check_out_date: string;
   participants_count: number;
   special_requests?: string;
-  customerInfo: CustomerInfo;
-  propertyLocation: PropertyLocation;
+  customerInfo: ICustomerInfo;
+  propertyLocation: IPropertyLocation;
 }
 
-interface CustomerInfo {
+interface ICustomerInfo {
   fullName: string;
   email: string;
   phone: string;
@@ -24,21 +24,21 @@ interface CustomerInfo {
   customerId: string;
 }
 
-interface PropertyLocation {
+interface IPropertyLocation {
   locality: string | null;
   city: string | null;
-  address: Address | null;
+  address: IAddress | null;
 }
 
-interface Address {
+interface IAddress {
   address_id: number;
   street_address: string;
-  location: Location;
+  location: ILocation;
   landmark: string;
   is_primary: boolean;
 }
 
-interface Location {
+interface ILocation {
   location_id: number;
   name: string;
   plusCode: string;
@@ -48,10 +48,10 @@ interface Location {
   created_at: string;
   slug: string;
   updated_at: string;
-  parent?: LocationParent;
+  parent?: ILocationParent;
 }
 
-interface LocationParent {
+interface ILocationParent {
   location_id: number;
   name: string;
   plusCode: string;
@@ -64,37 +64,37 @@ interface LocationParent {
 }
 
 // Extended Types
-interface TourBooking extends BaseBooking {
+interface ITourBooking extends IBaseBooking {
   booking_type: "tour";
-  plan: TourPlan;
+  plan: ITourPlan;
   tour_package_id: string;
   packageName: string;
 }
 
-interface TourPlan {
+interface ITourPlan {
   planType: "complete-package" | "custom" | string;
   duration: string;
 }
 
-interface HotelBooking extends BaseBooking {
+interface IHotelBooking extends IBaseBooking {
   booking_type: "hotel";
   room_type_id: string;
   roomName: string;
 }
 
 // Union type for all booking types
-type BookingConfirmation = TourBooking | HotelBooking;
+type IBookingConfirmation = ITourBooking | IHotelBooking;
 
 // Type guard functions
-function isTourBooking(booking: BookingConfirmation): booking is TourBooking {
+function isTourBooking(booking: IBookingConfirmation): booking is ITourBooking {
   return booking.booking_type === "tour";
 }
 
-function isHotelBooking(booking: BookingConfirmation): booking is HotelBooking {
+function isHotelBooking(booking: IBookingConfirmation): booking is IHotelBooking {
   return booking.booking_type === "hotel";
 }
 
-function getBookingDescription(booking: BookingConfirmation): string {
+function getBookingDescription(booking: IBookingConfirmation): string {
   switch (booking.booking_type) {
     case "tour":
       return `Tour: ${booking.packageName} for ${booking.participants_count} people`;
@@ -105,7 +105,7 @@ function getBookingDescription(booking: BookingConfirmation): string {
   }
 }
 
-interface EmailBookingData {
+interface IEmailBookingData {
   bookingType: "tour" | "hotel";
   customerEmail: string;
   customerName: string;
@@ -126,21 +126,27 @@ interface EmailBookingData {
     planType: string;
     duration: string;
   };
+  // Additional fields that might be passed
+  customerInfo?: {
+    fullName: string;
+    email: string;
+    phone: string;
+  };
 }
 
 // Export everything if needed
 export type {
-  BaseBooking,
-  CustomerInfo,
-  PropertyLocation,
-  Address,
-  Location,
-  LocationParent,
-  TourBooking,
-  TourPlan,
-  HotelBooking,
-  BookingConfirmation,
-  EmailBookingData,
+  IBaseBooking,
+  ICustomerInfo,
+  IPropertyLocation,
+  IAddress,
+  ILocation,
+  ILocationParent,
+  ITourBooking,
+  ITourPlan,
+  IHotelBooking,
+  IBookingConfirmation,
+  IEmailBookingData,
 };
 
 export { isTourBooking, isHotelBooking, getBookingDescription };

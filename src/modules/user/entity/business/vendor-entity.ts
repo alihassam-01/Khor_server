@@ -1,42 +1,40 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  OneToMany,
-  OneToOne,
-  JoinColumn,
-  Column,
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    OneToOne,
+    JoinColumn,
+    CreateDateColumn,
+    UpdateDateColumn,
 } from "typeorm";
-import { Property } from "../property";
 import { User } from "../user";
-import { Payout } from "../payout";
 
+/**
+ * Minimal Vendor entity for Phase 1
+ * Used only for authentication and user management
+ * Full vendor features will be implemented in Phase 2
+ */
 @Entity("vendors")
 export class Vendor {
-  @PrimaryGeneratedColumn("uuid")
-  id!: string;
+    @PrimaryGeneratedColumn("uuid")
+    id!: string;
 
-  @Column({ type: "varchar", length: 255, nullable: true })
-  username!: string;
+    @OneToOne(() => User, (user) => user.vendor, { onDelete: "CASCADE" })
+    @JoinColumn({ name: "user_id" })
+    user!: User;
 
-  @Column({ nullable: true })
-  profile_picture?: string;
+    @Column({ type: "text", nullable: true })
+    username?: string;
 
-  @OneToMany(() => Property, (property) => property.vendor)
-  properties!: Property[];
+    @Column({ type: "text", nullable: true })
+    profile_picture?: string;
 
-  @OneToOne(() => User, (user) => user.vendor)
-  @JoinColumn({ name: "user_id" })
-  user!: User;
+    @Column({ type: "text", nullable: true })
+    phone_number?: string;
 
-  @Column({ nullable: true })
-  phone_number?: string;
+    @CreateDateColumn({ type: "timestamptz" })
+    created_at!: Date;
 
-  @OneToMany(() => Payout, (payout) => payout.vendor)
-  payouts!: Payout[];
-
-  @Column({type: "boolean", nullable: true, default: false})
-  is_verified?: boolean
-
-  @Column({type: "varchar", nullable: true})
-  cnic?: string
+    @UpdateDateColumn({ type: "timestamptz" })
+    updated_at!: Date;
 }

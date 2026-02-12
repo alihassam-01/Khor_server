@@ -1,29 +1,25 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "../service/auth.service";
 import { UserType } from "../entity/ENUM/enum";
+import { ILoginDto, IRegisterDto, IResendVerificationEmailDto, IResetPasswordDto, IVerifyEmailQuery } from "../dtos/auth.dto";
 
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
   async register(
     req: FastifyRequest<{
-      Body: {
-        email: string;
-        password: string;
-        userType: UserType;
-        name: string;
-        phoneNumber?: string;
-      };
+      Body: IRegisterDto;
     }>,
     reply: FastifyReply
   ) {
     try {
+      const userType = req.body.userType || UserType.CUSTOMER;
       await this.authService.register(
         req.body.email,
         req.body.password,
-        UserType.CUSTOMER, // Enforce UserType.CUSTOMER
+        userType,
         req.body.name,
-
+        req.body.callBackUrl,
       );
       reply.code(201).send({ message: "Registration successful. Please check your email to verify your account." });
     } catch (error: any) {
@@ -41,14 +37,12 @@ export class AuthController {
 
   async resendVerificationEmail(
     req: FastifyRequest<{
-      Body: {
-        email: string;
-      };
+      Body: IResendVerificationEmailDto;
     }>,
     reply: FastifyReply
   ) {
     try {
-      await this.authService.resendVerificationEmail(req.body.email);
+      await this.authService.resendVerificationEmail(req.body.email, req.body.callBackUrl);
       reply.send({ message: "Verification email sent successfully" });
     } catch (error: any) {
       reply.code(400).send({ error: error.message });
@@ -56,27 +50,17 @@ export class AuthController {
   }
   async login(
     req: FastifyRequest<{
-      Body: {
-        email: string;
-        password: string;
-      };
+      Body: ILoginDto;
     }>,
     reply: FastifyReply
   ) {
-    try {
-      const result = await this.authService.login(req.body.email, req.body.password);
-      // reply.send({ token: result.token, user: result.user });
-      reply.send(result);
-    } catch (error: any) {
-      reply.code(401).send({ error: error.message });
-    }
+    const result = await this.authService.login(req.body.email, req.body.password);
+    reply.send(result);
   }
 
   async verifyEmail(
     req: FastifyRequest<{
-      Querystring: {
-        token: string;
-      };
+      Querystring: IVerifyEmailQuery;
     }>,
     reply: FastifyReply
   ) {
@@ -94,7 +78,7 @@ export class AuthController {
 
   async resetPassword(
     req: FastifyRequest<{
-      Body: { token: string; newPassword: string; confirmPassword: string };
+      Body: IResetPasswordDto;
     }>,
     reply: FastifyReply
   ) {

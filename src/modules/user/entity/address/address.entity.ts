@@ -3,14 +3,11 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { Location } from "../location";
 import { User } from "../user";
-import { Property } from "../property";
-// import { Hotel } from "../property";
 
 @Entity("address")
 export class Address {
@@ -33,8 +30,4 @@ export class Address {
   // one to one with user
   @OneToOne(() => User, (user) => user.address)
   user?: User;
-  // @OneToOne(() => Hotel, (hotel) => hotel.address)
-  // hotel?: Hotel;
-  @OneToMany(() => Property, (property) => property.address)
-properties?: Property[];
 }

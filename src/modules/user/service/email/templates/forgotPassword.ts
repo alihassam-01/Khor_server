@@ -1,8 +1,8 @@
 export function forgotPasswordTemplate(
-  name: string,
-  resetLink: string
+    name: string,
+    resetLink: string
 ) {
-  return `
+    return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -181,14 +181,12 @@ export function forgotPasswordTemplate(
                 <p class="message">If you did not request a password reset, please ignore this email or contact support.</p>
             </div>
             <div class="footer">
-                <p>© 2023 <a href="https://www.khor.com" class="website-link">Khor</a>. All rights reserved.</p>
-                <p class="contact-info">123 Business Avenue, Suite 100<br>San Francisco, CA 94107</p>
-                <p class="contact-info">Contact us: <a href="mailto:support@khor.com" class="website-link">support@khor.com</a> | (555) 123-4567</p>
+                <p>© ${new Date().getFullYear()} <a href="https://www.gokhor.com" class="website-link">Khor</a>. All rights reserved.</p>
+                <p class="contact-info">Contact us: <a href="mailto:info@gokhor.com" class="website-link">info@gokhor.com</a></p>
                 <div class="social-links">
-                    <a href="https://facebook.com/khor" class="social-icon">f</a>
-                    <a href="https://linkedin.com/company/khor" class="social-icon">in</a>
-                    <a href="https://twitter.com/khor" class="social-icon">t</a>
-                    <a href="https://instagram.com/khor" class="social-icon">ig</a>
+                    <a href="https://web.facebook.com/people/GoKhor/61586037316500/" class="social-icon">f</a>
+                    <a href="https://www.linkedin.com/company/gokhor" class="social-icon">in</a>
+                    <a href="https://www.instagram.com/khor.explore" class="social-icon">ig</a>
                 </div>
             </div>
         </div>

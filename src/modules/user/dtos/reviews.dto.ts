@@ -1,4 +1,4 @@
-export interface CreateReviewDTO {
+export interface ICreateReviewDTO {
   userId: string;
   targetId: string;
   targetType: ReviewTargetType;

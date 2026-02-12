@@ -1,4 +1,5 @@
 import { IReviewDTO } from "./hotel.dto";
+import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
 
 export interface IRestaurantDTO {
     id: string;
@@ -12,10 +13,18 @@ export interface IRestaurantDTO {
     links: {
         phone: string | null;
         whatsapp: string | null;
+        facebook?: string | null;
+        instagram?: string | null;
+        website?: string | null;
     };
     description: string;
     menu_images: string[];
     detailed_reviews: IReviewDTO[];
+    vendor_id?: string;
+    expires_at?: Date;
+    subscription_type?: SubscriptionType;
+    is_paid?: boolean;
+    is_featured?: boolean;
 }
 
 export interface ICreateRestaurantDTO {
@@ -27,11 +36,16 @@ export interface ICreateRestaurantDTO {
     image: string;
     phone?: string | null;
     whatsapp?: string | null;
+    facebook?: string | null;
+    instagram?: string | null;
+    website?: string | null;
     description: string;
     menu_images?: string[];
     location_id: number;
     is_active?: boolean;
     detailed_reviews?: IReviewDTO[];
+    vendor_id?: string;
+    subscription_type?: SubscriptionType;
 }
 
 export interface IUpdateRestaurantDTO {
@@ -43,8 +57,14 @@ export interface IUpdateRestaurantDTO {
     image?: string;
     phone?: string | null;
     whatsapp?: string | null;
+    facebook?: string | null;
+    instagram?: string | null;
+    website?: string | null;
     description?: string;
     menu_images?: string[];
     location_id?: number;
     is_active?: boolean;
+    vendor_id?: string;
+    subscription_type?: SubscriptionType;
+    is_featured?: boolean;
 }

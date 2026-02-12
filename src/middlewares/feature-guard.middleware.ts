@@ -10,16 +10,16 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { features, FeatureFlags } from '../config/features.config';
+import { FEATURES, IFeatureFlags } from '../config/features.config';
 
 /**
  * Creates a feature guard middleware for a specific feature
  * @param feature - The feature to check
  * @returns Fastify hook function
  */
-export function createFeatureGuard(feature: keyof FeatureFlags) {
+export function createFeatureGuard(feature: keyof IFeatureFlags) {
     return async (_request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-        if (!features[feature]) {
+        if (!FEATURES[feature]) {
             await reply.status(503).send({
                 error: 'Feature Not Available',
                 message: `The ${feature} feature is not currently enabled on this server.`,
@@ -37,8 +37,8 @@ export function createFeatureGuard(feature: keyof FeatureFlags) {
  * @param feature - The feature to check
  * @throws Error if feature is disabled
  */
-export function requireFeature(feature: keyof FeatureFlags): void {
-    if (!features[feature]) {
+export function requireFeature(feature: keyof IFeatureFlags): void {
+    if (!FEATURES[feature]) {
         throw new Error(`Feature '${feature}' is not enabled`);
     }
 }

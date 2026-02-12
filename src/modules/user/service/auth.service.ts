@@ -1,12 +1,14 @@
 import { Repository } from "typeorm";
-import { User, CustomerProfile } from "../entity/user";
+import { User, CustomerProfile, Vendor } from "../entity";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
 import { UserType } from "../entity/ENUM/enum";
-import { Vendor } from "../entity/business";
-import { config } from "../../../config/config";
+import { CONFIG } from "../../../config/config";
 import { sendEmail } from "./email";
 import { accountActivationTemplate } from "./email/templates/accountActivation";
+import { AppError } from "../../../common/errors/AppError";
+import { ErrorCodes } from "../../../common/errors/error-codes";
+
 
 export class AuthService {
   constructor(
@@ -14,7 +16,7 @@ export class AuthService {
     // private agencyProfileRepository: Repository<TravelAgencyProfile>,
     private vendorRepository: Repository<Vendor>,
     private customerProfileRepository: Repository<CustomerProfile>
-  ) {}
+  ) { }
 
   // Validate if email already exists
   private async validateRegistration(email: string): Promise<void> {
@@ -55,7 +57,8 @@ export class AuthService {
     email: string,
     password: string,
     userType: UserType,
-    name: string
+    name: string,
+    callBackUrl: string
   ): Promise<User> {
     const profileIMAGES = [
       "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png",
@@ -83,7 +86,7 @@ export class AuthService {
         await sendEmail({
           to: email,
           subject: "Account Activation ",
-          html: accountActivationTemplate(name, verificationToken),
+          html: accountActivationTemplate(name, verificationToken, callBackUrl),
         });
 
         const user = this.userRepository.create({
@@ -147,8 +150,11 @@ export class AuthService {
     }
   }
 
-  async resendVerificationEmail(email: string): Promise<void> {
-    const user = await this.userRepository.findOneBy({ email });
+  async resendVerificationEmail(email: string, callBackUrl: string): Promise<void> {
+    const user = await this.userRepository.findOne({
+      where: { email },
+      relations: ["vendor", "customerProfile"],
+    });
 
     if (!user) {
       throw new Error("User not found");
@@ -170,7 +176,7 @@ export class AuthService {
     await sendEmail({
       to: email,
       subject: "Account Activation",
-      html: accountActivationTemplate(username as string, newToken),
+      html: accountActivationTemplate(username as string, newToken, callBackUrl),
     });
   }
 
@@ -186,14 +192,14 @@ export class AuthService {
       relations: ["vendor", "customerProfile"],
     });
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw new Error("Invalid email or password");
+      throw new AppError("Invalid email or password", 401, ErrorCodes.INVALID_CREDENTIALS);
     }
 
     if (!user.isVerified) {
-      throw new Error("Please verify your email before logging in");
+      throw new AppError("Please verify your email before logging in", 401, ErrorCodes.EMAIL_NOT_VERIFIED);
     }
 
-    if (!config.jwt.secret) {
+    if (!CONFIG.jwt.secret) {
       throw new Error("JWT_SECRET is not configured");
     }
 
@@ -210,7 +216,7 @@ export class AuthService {
         vendorId:
           user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
       },
-      config.jwt.secret as string,
+      CONFIG.jwt.secret as string,
       { expiresIn: "7d" }
     );
     return {
@@ -235,10 +241,10 @@ export class AuthService {
 
     let payload: any;
     try {
-      if (!config.jwt.secret) {
+      if (!CONFIG.jwt.secret) {
         throw new Error('JWT secret is not configured');
       }
-      payload = jwt.verify(token, config.jwt.secret as string) as any;
+      payload = jwt.verify(token, CONFIG.jwt.secret as string) as any;
     } catch (err: any) {
       throw new Error('Invalid or expired reset token');
     }
@@ -255,6 +261,7 @@ export class AuthService {
 
     // Update password
     user.password = await this.hashPassword(newPassword);
+    user.isVerified = true;
     await this.userRepository.save(user);
 
     return { success: true, message: 'Password has been reset successfully' };

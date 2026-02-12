@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { LocationService } from "../service/location.service";
-import { CreateCityDto, CreateLocationDto } from "../dtos/location.dto";
+import { ICreateCityDto, ICreateLocationDto } from "../dtos/location.dto";
 
 export class LocationController {
   constructor(
@@ -8,7 +8,7 @@ export class LocationController {
   ) { }
 
   async createLocation(
-    req: FastifyRequest<{ Body: CreateLocationDto }>,
+    req: FastifyRequest<{ Body: ICreateLocationDto }>,
     reply: FastifyReply
   ) {
     try {
@@ -20,7 +20,7 @@ export class LocationController {
   }
 
   async createCity(
-    req: FastifyRequest<{ Body: CreateCityDto }>,
+    req: FastifyRequest<{ Body: ICreateCityDto }>,
     reply: FastifyReply
   ) {
     try {

@@ -1,4 +1,4 @@
-export interface CreateProperty {
+export interface ICreateProperty {
   name: string;
   description: string;
   streetAddress?: string;

@@ -9,4 +9,10 @@ export async function adsRoutes(fastify: FastifyInstance) {
         "/ads/location/:location_id",
         adsController.getAdsByLocation.bind(adsController)
     );
+
+    // Public route to get combined hotels and restaurants with pagination and search
+    fastify.get(
+        "/ads/hotel-restaurant",
+        adsController.getCombinedAds.bind(adsController)
+    );
 }

@@ -1,4 +1,4 @@
-export interface ArticleDTO {
+export interface IArticleDTO {
     article_id: number;
     title: string;
     slug: string;

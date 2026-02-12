@@ -7,7 +7,7 @@ import {
 } from "../entity/location";
 import { DataSource } from "typeorm";
 import { Address, City } from "../entity/address";
-import { CreateCityDto, CreateLocationDto } from "../dtos/location.dto";
+import { ICreateCityDto, ICreateLocationDto } from "../dtos/location.dto";
 
 export class LocationService {
   private locationRepository: Repository<Location>;
@@ -29,7 +29,7 @@ export class LocationService {
   }
 
   // Location CRUD Operations
-  async createLocation(locationData: CreateLocationDto): Promise<Location> {
+  async createLocation(locationData: ICreateLocationDto): Promise<Location> {
     const location = new Location();
     location.name = locationData.name;
     location.slug = this.generateSlug(locationData.name);
@@ -78,7 +78,7 @@ export class LocationService {
     return savedLocation;
   }
 
-  async createCity(cityData: CreateCityDto): Promise<City> {
+  async createCity(cityData: ICreateCityDto): Promise<City> {
     const location = await this.createLocation(cityData);
 
     const city = new City();

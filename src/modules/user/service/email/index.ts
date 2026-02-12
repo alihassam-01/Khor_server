@@ -1,7 +1,7 @@
 import { EmailConfig } from "../../../../config/emailConfig/emailConfig";
 import { sendSMTP } from "./provider/smtpProvider";
-import { sendSES } from "./provider/sesProvider";
-import { sendBrevo } from "./provider/brevoProvider";
+// import { sendSES } from "./provider/sesProvider"; // Disabled - not using SES
+
 export async function sendEmail({
   to,
   subject,
@@ -19,18 +19,18 @@ export async function sendEmail({
     let messageId;
     if (EmailConfig.provider === "smtp") {
       messageId = await sendSMTP({ to, subject, html, attachment, replyTo });
-    } else if (EmailConfig.provider === "ses") {
-      messageId = await sendSES({ to, subject, html, attachment, replyTo });
-    } else if (EmailConfig.provider === "brevo") {
-      messageId = await sendBrevo({ to, subject, html, attachment, replyTo });
-    } else {
+    }
+    // else if (EmailConfig.provider === "ses") {
+    //   messageId = await sendSES({ to, subject, html, attachment, replyTo });
+    // } 
+    else {
       throw new Error(`Unknown email provider: ${EmailConfig.provider}`);
     }
 
-    console.log(`✅ Email sent (${EmailConfig.provider}): ${messageId}`);
+    console.log(`Email sent (${EmailConfig.provider}): ${messageId}`);
     return true;
   } catch (err) {
-    console.error(`❌ Email send failed:`, err);
+    console.error(`Email send failed:`, err);
     return false;
   }
 }

@@ -1,4 +1,4 @@
-export interface TourPackageReceiveDTO {
+export interface ITourPackageReceiveDTO {
   name: string;
   description?: string;
   duration_days: number;

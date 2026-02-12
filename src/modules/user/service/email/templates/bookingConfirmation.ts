@@ -1,33 +1,7 @@
-interface EmailBookingData {
-  bookingType: "tour" | "hotel";
-  customerName: string;
-  propertyName: string | null | undefined;
-  roomName?: string;
-  packageName?: string;
-  locality: string | null;
-  city: string | null;
-  startDate: string;
-  endDate: string;
-  totalPrice: number;
-  guests: number;
-  paymentStatus: string;
-  bookingStatus: string;
-  vendorEmail?: string;
-  vendorPhone?: string;
-  plan?: {
-    planType: string;
-    duration: string;
-  };
-  // Additional fields that might be passed
-  customerInfo?: {
-    fullName: string;
-    email: string;
-    phone: string;
-  };
-}
+import { IEmailBookingData } from "../../../dtos/bookingConfirmation.dto";
 
 export function bookingConfirmationEmailTemplate(
-  bookingInfo: EmailBookingData
+  bookingInfo: IEmailBookingData
 ) {
   // Safe data extraction with fallbacks
   const customerName =
@@ -162,53 +136,45 @@ export function bookingConfirmationEmailTemplate(
           <div class="summary">
             <p><strong>Property:</strong> ${propertyName}</p>
             ${roomName ? `<p><strong>Room:</strong> ${roomName}</p>` : ""}
-            ${
-              bookingInfo.packageName
-                ? `<p><strong>Package:</strong> ${bookingInfo.packageName}</p>`
-                : ""
-            }
-            ${
-              locality || city
-                ? `<p><strong>Location:</strong> ${locality}${
-                    locality && city ? ", " : ""
-                  }${city}</p>`
-                : ""
-            }
+            ${bookingInfo.packageName
+      ? `<p><strong>Package:</strong> ${bookingInfo.packageName}</p>`
+      : ""
+    }
+            ${locality || city
+      ? `<p><strong>Location:</strong> ${locality}${locality && city ? ", " : ""
+      }${city}</p>`
+      : ""
+    }
             <p><strong>Check-in:</strong> ${checkInDate}</p>
             <p><strong>Check-out:</strong> ${checkOutDate}</p>
-            ${
-              bookingInfo.guests
-                ? `<p><strong>Guests:</strong> ${bookingInfo.guests}</p>`
-                : ""
-            }
+            ${bookingInfo.guests
+      ? `<p><strong>Guests:</strong> ${bookingInfo.guests}</p>`
+      : ""
+    }
             <p><strong>Total Price:</strong> <span class="highlight">PKR ${totalPrice}</span></p>
-            <p><strong>Status:</strong> ${
-              bookingInfo.bookingStatus || "Confirmed"
-            }</p>
+            <p><strong>Status:</strong> ${bookingInfo.bookingStatus || "Confirmed"
+    }</p>
           </div>
 
           <p>A detailed invoice and booking information is available in the attached PDF.</p>
 
-          ${
-            vendorEmail || vendorPhone
-              ? `
+          ${vendorEmail || vendorPhone
+      ? `
           <p>If you have any questions, feel free to contact your vendor at 
-            ${
-              vendorEmail ? `<span class="highlight">${vendorEmail}</span>` : ""
-            }
+            ${vendorEmail ? `<span class="highlight">${vendorEmail}</span>` : ""
+      }
             ${vendorEmail && vendorPhone ? "or call " : ""}
-            ${
-              vendorPhone ? `<span class="highlight">${vendorPhone}</span>` : ""
-            }.
+            ${vendorPhone ? `<span class="highlight">${vendorPhone}</span>` : ""
+      }.
           </p>
           `
-              : ""
-          }
+      : ""
+    }
         </div>
 
         <div class="footer">
           <p>© 2025 <a href="https://www.gokhor.com" style="color:#008080; text-decoration:none; font-weight:bold;">Khor</a>. All rights reserved.</p>
-          <p>Contact us: <a href="mailto:support@khor.com" style="color:#008080;">support@gokhor.com</a> | (555) 123-4567</p>
+          <p>Contact us: <a href="mailto:info@gokhor.com" style="color:#008080;">info@gokhor.com</a> | (555) 123-4567</p>
         </div>
       </div>
     </body>

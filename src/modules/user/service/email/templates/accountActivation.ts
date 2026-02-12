@@ -1,8 +1,9 @@
 export function accountActivationTemplate(
-  name: string,
-  activationLink: string
+    name: string,
+    activationLink: string,
+    callBackUrl: string
 ) {
-  return `
+    return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -196,7 +197,7 @@ export function accountActivationTemplate(
                 
                 <p class="message">To get started, please activate your account by clicking the button below:</p>
                 
-                <a href="${activationLink}" class="activation-button">ACTIVATE YOUR ACCOUNT</a>
+                <a href="${callBackUrl + `?token=` + activationLink}" class="activation-button">ACTIVATE YOUR ACCOUNT</a>
                 
                 <div class="expiry-notice">
                     <p>This activation link will expire in 24 hours</p>
@@ -207,26 +208,25 @@ export function accountActivationTemplate(
                 <p class="message">If you have trouble clicking the button, copy and paste the following URL into your browser:</p>
                 
                 <p class="message" style="word-break: break-all; color: #008080; background-color: #F8F8F8; padding: 10px; border-radius: 5px;">
-                    ${activationLink}
+                    ${callBackUrl + `?token=` + activationLink}
                 </p>
                 
                 <p class="message">If you did not create an account with Khor, please ignore this email.</p>
             </div>
             
             <div class="footer">
-                <p>© 2023 <a href="https://www.khor.com" class="website-link">Khor</a>. All rights reserved.</p>
-                <p class="contact-info">123 Business Avenue, Suite 100<br>San Francisco, CA 94107</p>
-                <p class="contact-info">Contact us: <a href="mailto:support@khor.com" class="website-link">support@khor.com</a> | (555) 123-4567</p>
+                <p>© ${new Date().getFullYear()} <a href="https://www.gokhor.com" class="website-link">Khor</a>. All rights reserved.</p>
+                <p class="contact-info">Contact us: <a href="mailto:info@gokhor.com" class="website-link">info@gokhor.com</a></p>
                 
                 <div class="social-links">
-                    <a href="https://facebook.com/khor" class="social-icon">f</a>
-                    <a href="https://linkedin.com/company/khor" class="social-icon">in</a>
-                    <a href="https://twitter.com/khor" class="social-icon">t</a>
-                    <a href="https://instagram.com/khor" class="social-icon">ig</a>
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
+                    <a href="https://web.facebook.com/people/GoKhor/61586037316500/" class="social-icon">f</a>
+                    <a href="https://www.linkedin.com/company/gokhor" class="social-icon">in</a>
+                    <a href="https://www.instagram.com/khor.explore" class="social-icon">ig</a>
+                    </div>
+                    </div>
+                    </div>
+                    </body>
+                    </html>
+                    `;
 }
+// <a href="https://twitter.com/khor" class="social-icon">t</a>

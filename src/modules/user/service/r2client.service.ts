@@ -3,7 +3,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { config } from "../../../config/config";
+import { CONFIG } from "../../../config/config";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import { S3ImagesEntity } from "../entity/images/s3Images.entity";
@@ -13,10 +13,10 @@ import { In } from "typeorm";
 export class R2ClientService {
   private r2Client = new S3Client({
     region: "auto",
-    endpoint: `https://${config.r2.accountId}.r2.cloudflarestorage.com`,
+    endpoint: `https://${CONFIG.r2.accountId}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId: config.r2.accessKeyId,
-      secretAccessKey: config.r2.secretAccessKey,
+      accessKeyId: CONFIG.r2.accessKeyId,
+      secretAccessKey: CONFIG.r2.secretAccessKey,
     },
   });
   private s3Image = AppDataSource.getRepository(S3ImagesEntity);
@@ -32,7 +32,7 @@ export class R2ClientService {
    * Get the bucket name
    */
   getBucketName() {
-    return config.r2.bucketName;
+    return CONFIG.r2.bucketName;
   }
 
   /**
@@ -41,7 +41,7 @@ export class R2ClientService {
    * configured in Cloudflare R2 bucket settings
    */
   getBucketUrl() {
-    return config.r2.publicUrl;
+    return CONFIG.r2.publicUrl;
   }
 
   /**

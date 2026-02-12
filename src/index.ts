@@ -3,8 +3,9 @@ import fastify from "fastify";
 // import { AppDataSource } from "./config/ormconfig";
 import typeormPlugin from './app/plugins/typeorm';
 import routes from './modules/user/routes';
-import { config } from './config/config';
+import { CONFIG } from './config/config';
 import fastifyMultipart from "@fastify/multipart";
+import { globalErrorHandler } from './common/errors/global-error-handler';
 
 async function startServer() {
   const app = fastify({
@@ -12,6 +13,7 @@ async function startServer() {
   });
 
   await app.register(fastifyMultipart, {
+    attachFieldsToBody: true,
     limits: {
       fileSize: 5 * 1024 * 1024,
     }
@@ -48,13 +50,11 @@ async function startServer() {
     process.exit(1);
   }
 
-  app.setErrorHandler((_error, _request, reply) => {
-    reply.status(500).send({ message: "Internal Server Error" });
-  });
+  app.setErrorHandler(globalErrorHandler);
 
   try {
-    await app.listen({ port: config.server.port, host: config.server.host });
-    console.info(`Server running on http://${config.server.host}:${config.server.port}`);
+    await app.listen({ port: CONFIG.server.port, host: CONFIG.server.host });
+    console.info(`Server running on http://${CONFIG.server.host}:${CONFIG.server.port}`);
   } catch (err) {
     console.error("Error starting server:", err);
     process.exit(1);

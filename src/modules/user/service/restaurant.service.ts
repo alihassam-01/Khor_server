@@ -6,6 +6,7 @@ import {
     ICreateRestaurantDTO,
     IUpdateRestaurantDTO,
 } from "../dtos/restaurant.dto";
+import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
 
 export class RestaurantService {
     private restaurantRepository = AppDataSource.getRepository(Restaurant);
@@ -25,6 +26,9 @@ export class RestaurantService {
             links: {
                 phone: restaurant.phone,
                 whatsapp: restaurant.whatsapp,
+                facebook: restaurant.facebook,
+                instagram: restaurant.instagram,
+                website: restaurant.website,
             },
             description: restaurant.description,
             menu_images: restaurant.menu_images,
@@ -65,6 +69,9 @@ export class RestaurantService {
             restaurant.image = restaurantData.image;
             restaurant.phone = restaurantData.phone || null;
             restaurant.whatsapp = restaurantData.whatsapp || null;
+            restaurant.facebook = restaurantData.facebook || null;
+            restaurant.instagram = restaurantData.instagram || null;
+            restaurant.website = restaurantData.website || null;
             restaurant.description = restaurantData.description;
             restaurant.menu_images = restaurantData.menu_images || [];
             restaurant.location = location;
@@ -73,6 +80,24 @@ export class RestaurantService {
                 restaurantData.is_active !== undefined
                     ? restaurantData.is_active
                     : true;
+
+            // Handle subscription and vendor
+            restaurant.vendor_id = restaurantData.vendor_id;
+
+            // Default to FREE if not specified
+            const subscriptionType = restaurantData.subscription_type || SubscriptionType.FREE;
+            restaurant.subscription_type = subscriptionType;
+
+            // Set is_paid based on subscription type
+            restaurant.is_paid = subscriptionType !== SubscriptionType.FREE;
+
+            // Calculate expiration date
+            const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
+            const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+            const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey];
+
+            const now = new Date();
+            restaurant.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
             const savedRestaurant = await queryRunner.manager.save(restaurant);
 
@@ -118,13 +143,25 @@ export class RestaurantService {
         return this.toRestaurantDTO(restaurant);
     }
 
-    async getAllRestaurants(): Promise<IRestaurantDTO[]> {
-        const restaurants = await this.restaurantRepository.find({
-            relations: ["location", "detailed_reviews"],
-            order: { created_at: "DESC" },
-        });
+    async getAllRestaurants({ page = 1, limit = 10, searchQuery = "" }: { page?: number; limit?: number; searchQuery?: string } = {}): Promise<{ items: IRestaurantDTO[]; total: number; page: number; limit: number; }> {
+        const skip = (page - 1) * limit;
+        const queryBuilder = this.restaurantRepository.createQueryBuilder("restaurant")
+            .leftJoinAndSelect("restaurant.location", "location")
+            .leftJoinAndSelect("restaurant.detailed_reviews", "detailed_reviews")
+            .where("restaurant.is_active = :isActive", { isActive: true })
+            .orderBy("restaurant.created_at", "DESC");
 
-        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+        if (searchQuery && searchQuery.trim() !== "") {
+            queryBuilder.andWhere("(restaurant.name ILIKE :search OR restaurant.description ILIKE :search)", { search: `%${searchQuery}%` });
+        }
+
+        const [restaurants, total] = await queryBuilder.skip(skip).take(limit).getManyAndCount();
+        return {
+            items: restaurants.map((restaurant) => this.toRestaurantDTO(restaurant)),
+            total,
+            page,
+            limit,
+        };
     }
 
     async getRestaurantsByLocation(locationId: number): Promise<IRestaurantDTO[]> {
@@ -202,5 +239,125 @@ export class RestaurantService {
         }
 
         await this.restaurantRepository.remove(restaurant);
+    }
+
+    // ========== ADMIN METHODS ==========
+
+    async toggleAdStatus(id: string, isActive: boolean): Promise<IRestaurantDTO> {
+        const restaurant = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["location", "detailed_reviews"],
+        });
+
+        if (!restaurant) {
+            throw new Error("Restaurant not found");
+        }
+
+        restaurant.is_active = isActive;
+        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
+        return this.toRestaurantDTO(updatedRestaurant);
+    }
+
+    async renewAd(
+        id: string,
+        subscriptionType: import("../entity/ENUM/ad-payment.enum").SubscriptionType
+    ): Promise<IRestaurantDTO> {
+        const restaurant = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["location", "detailed_reviews"],
+        });
+
+        if (!restaurant) {
+            throw new Error("Restaurant not found");
+        }
+
+        const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
+
+        // Map subscription type to constant key
+        const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey];
+
+        const now = new Date();
+        const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+
+        restaurant.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+        restaurant.subscription_type = subscriptionType;
+        restaurant.is_paid = true;
+        restaurant.is_active = true;
+
+        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
+        return this.toRestaurantDTO(updatedRestaurant);
+    }
+
+    async getExpiredAds(): Promise<IRestaurantDTO[]> {
+        const now = new Date();
+        const restaurants = await this.restaurantRepository
+            .createQueryBuilder("restaurant")
+            .leftJoinAndSelect("restaurant.location", "location")
+            .leftJoinAndSelect("restaurant.detailed_reviews", "detailed_reviews")
+            .where("restaurant.expires_at < :now", { now })
+            .orWhere("restaurant.expires_at IS NULL")
+            .orderBy("restaurant.created_at", "DESC")
+            .getMany();
+
+        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    }
+
+    async getAdsByVendor(vendorId: string): Promise<IRestaurantDTO[]> {
+        const restaurants = await this.restaurantRepository.find({
+            where: { vendor_id: vendorId },
+            relations: ["location", "detailed_reviews"],
+            order: { created_at: "DESC" },
+        });
+
+        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    }
+
+    async setFeaturedStatus(id: string, isFeatured: boolean): Promise<IRestaurantDTO> {
+        const restaurant = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["location", "detailed_reviews"],
+        });
+
+        if (!restaurant) {
+            throw new Error("Restaurant not found");
+        }
+
+        restaurant.is_featured = isFeatured;
+        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
+        return this.toRestaurantDTO(updatedRestaurant);
+    }
+
+    async getAllRestaurantsAdmin(): Promise<IRestaurantDTO[]> {
+        const restaurants = await this.restaurantRepository.find({
+            relations: ["location", "detailed_reviews"],
+            order: { created_at: "DESC" },
+        });
+
+        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    }
+
+    async getFeaturedAds(): Promise<IRestaurantDTO[]> {
+        const restaurants = await this.restaurantRepository.find({
+            where: { is_featured: true, is_active: true },
+            relations: ["location", "detailed_reviews"],
+            order: { created_at: "DESC" },
+        });
+
+        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    }
+
+    async getPremiumAds(): Promise<IRestaurantDTO[]> {
+        const { SubscriptionType } = await import("../entity/ENUM/ad-payment.enum");
+        const restaurants = await this.restaurantRepository
+            .createQueryBuilder("restaurant")
+            .leftJoinAndSelect("restaurant.location", "location")
+            .leftJoinAndSelect("restaurant.detailed_reviews", "detailed_reviews")
+            .where("restaurant.is_paid = :isPaid", { isPaid: true })
+            .andWhere("restaurant.subscription_type != :free", { free: SubscriptionType.FREE })
+            .orderBy("restaurant.created_at", "DESC")
+            .getMany();
+
+        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
     }
 }

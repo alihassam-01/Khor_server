@@ -1,4 +1,4 @@
-export interface PassData{
+export interface IPassData {
   currentPassword: string,
   newPassword: string,
   confirmPassword: string,

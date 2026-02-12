@@ -1,11 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, OneToMany } from 'typeorm';
-// import { TravelAgencyProfile } from './travel-agency-profile.entity';
+import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn } from 'typeorm';
 import { CustomerProfile } from './customer-profile.entity';
 import { UserType } from '../ENUM/enum';
 import { Vendor } from '../business';
 import { Address } from '../address';
-import { Booking } from '../bookings';
-import { Review } from '../review/review.entity';
 
 @Entity()
 export class User {
@@ -40,12 +37,6 @@ export class User {
 
   @OneToOne(() => CustomerProfile, (profile) => profile.user, { nullable: true })
   customerProfile?: CustomerProfile;
-
-  @OneToMany(() => Booking, (booking) => booking.customer)
-  bookings?: Booking[];
-
-  @OneToMany(() => Review, (review) => review.user)
-  reviews?: Review[];
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt!: Date;

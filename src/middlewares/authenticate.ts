@@ -1,7 +1,7 @@
 // authMiddleware.ts
 import jwt from "jsonwebtoken";
 import { FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
-import { config } from "../config/config";
+import { CONFIG } from "../config/config";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -25,7 +25,7 @@ export const authenticate: preHandlerHookHandler = async (
 
   const token = authHeader.split(" ")[1];
   try {
-    const decoded = jwt.verify(token, config.jwt.secret as string);
+    const decoded = jwt.verify(token, CONFIG.jwt.secret as string);
     request.user = decoded;
   } catch (err) {
     return reply.status(401).send({ message: "Invalid token" });

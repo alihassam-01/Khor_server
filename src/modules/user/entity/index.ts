@@ -1,47 +1,36 @@
+// Address entities
 export * from "./address/address.entity";
 export * from "./address/city.entity";
-// export * from "./address/locality.entity";
+
+// Article entities
 export * from "./article/article.entity";
 export * from "./article/article-tags.entity";
 export * from "./article/tags.entity";
-export * from "./bookings/booking.entity";
-export * from "./bookings/deal.entity";
-export * from "./bookings/payment.entity";
-export * from "./bookings/refund.entity";
-export * from "./bookings/transactions.entity";
-// export * from "./business/business-type.entity";
-// export * from "./business/business-verification.entity";
-export * from "./business/vendor-entity";
+
+// Ads entities (Phase 1)
 export * from "./ads/hotel.entity";
 export * from "./ads/hotel-review.entity";
 export { HotelRoomType } from "./ads/room-type.entity";
 export * from "./ads/restaurant.entity";
 export * from "./ads/restaurant-review.entity";
 
+// Enums
 export * from "./ENUM/enum";
 export * from "./ENUM/ad.enum";
 
+// Media entities
 export * from "./images/s3Images.entity";
+export * from "./media/media.entity";
+
+// Location entities
 export * from "./location/location-attributes.entity";
 export * from "./location/location-category-mapping.entity";
 export * from "./location/location-category.entity";
 export * from "./location/location.entity";
-export * from "./meal/meal.entity";
-export * from "./media/media.entity";
-// export * from "./package/index";
-export * from "./payout/listingPrice.entity";
-export * from "./payout/payout.entity";
-export * from "./property/availbility.entity";
-// export * from "./property/car.entity";
-// export * from "./property/hotel/hotel.entity";
-export * from "./property/property.entity";
-export * from "./property/service-options.entity";
-export * from "./property/tour-package.entity";
-export * from "./property/vehicle.entity";
-export * from "./review/review.entity";
-export * from "./room/room-feature.entity";
-export * from "./room/room-inventory.entity";
-export * from "./room/room-type.entity";
-// export * from "./room/";
+
+// User entities
 export * from "./user/customer-profile.entity";
 export * from "./user/user.entity";
+
+// Business entities (minimal for Phase 1)
+export * from "./business";

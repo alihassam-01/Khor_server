@@ -2,10 +2,11 @@ import { IsNull, Not } from "typeorm";
 import { AppDataSource } from "../../../config/ormconfig";
 import { CustomerProfile, User } from "../entity/user";
 import { Vendor } from "../entity";
-import { PassData } from "../dtos/user.dto";
+import { IPassData } from "../dtos/user.dto";
 import { AuthService } from "./auth.service";
 import { forgotPasswordTemplate } from "./email/templates/forgotPassword";
 import * as jwt from "jsonwebtoken";
+import { UserType } from "../entity/ENUM/enum";
 
 import {
   ValidationError,
@@ -13,7 +14,7 @@ import {
   UnauthorizedError,
 } from "../../../constant/error";
 import { sendEmail } from "./email";
-import { config } from "../../../config/config";
+import { CONFIG } from "../../../config/config";
 export class UserService {
   async forgotPassword(email: string) {
     // Find user by email
@@ -25,14 +26,14 @@ export class UserService {
     if (!process.env.JWT_SECRET) {
       throw new Error("JWT_SECRET environment variable is not defined.");
     }
-    const resetToken = jwt.sign({ email }, config.jwt.secret as string, {
+    const resetToken = jwt.sign({ email }, CONFIG.jwt.secret as string, {
       expiresIn: "24h",
     });
 
-    const resetLink = `${config.web_domain.url}/reset-password?token=${resetToken}`;
-    
+    const resetLink = `${CONFIG.web_domain.url}/reset-password?token=${resetToken}`;
+
     const name =
-      user.userType === "vendor"
+      user.userType === UserType.VENDOR
         ? user.vendor?.username
         : user.customerProfile?.username;
     await sendEmail({
@@ -73,15 +74,15 @@ export class UserService {
       userType: user.userType,
       createdAt: user.createdAt,
       profilePicture:
-        user.userType === "vendor"
+        user.userType === UserType.VENDOR
           ? user.vendor?.profile_picture
           : user.customerProfile?.profile_picture,
       username:
-        user.userType === "vendor"
+        user.userType === UserType.VENDOR
           ? user.vendor?.username
           : user.customerProfile?.username,
       phoneNumber:
-        user.userType === "vendor"
+        user.userType === UserType.VENDOR
           ? user.vendor?.phone_number
           : user.customerProfile?.phone_number,
     };
@@ -103,7 +104,7 @@ export class UserService {
       userType: user.userType,
       createdAt: user.createdAt,
       profile:
-        user.userType === "customer" ? user.customerProfile : user.vendor,
+        user.userType === UserType.CUSTOMER ? user.customerProfile : user.vendor,
     }));
   }
 
@@ -151,7 +152,7 @@ export class UserService {
     if (!user) {
       throw new Error("User not found");
     }
-    if (user?.userType === "vendor") {
+    if (user?.userType === UserType.VENDOR) {
       const vendor = await this.vendorRepo.findOne({
         where: { user: { id: user.id } },
       });
@@ -167,7 +168,7 @@ export class UserService {
         }
         await this.vendorRepo.save(vendor);
       }
-    } else if (user?.userType === "customer") {
+    } else if (user?.userType === UserType.CUSTOMER) {
       const customer = await this.customerRepo.findOne({
         where: { user: { id: user.id } },
       });
@@ -187,7 +188,7 @@ export class UserService {
     return this.getUserById(user.id);
   }
 
-  async updatePassword(passData: PassData) {
+  async updatePassword(passData: IPassData) {
     const { userId, currentPassword, newPassword, confirmPassword } = passData;
 
     // Validation

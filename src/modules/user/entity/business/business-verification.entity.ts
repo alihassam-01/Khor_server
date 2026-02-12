@@ -1,1 +1,0 @@
-// lisence number, property_id, vendor_id, 

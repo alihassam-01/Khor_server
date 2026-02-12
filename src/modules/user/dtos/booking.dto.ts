@@ -1,4 +1,4 @@
-export type CreateBookingDto = {
+export type ICreateBookingDto = {
   customer_id: string;
   booking_type: "hotel" | "car_rental" | "tour";
   property_id?: string;
@@ -13,7 +13,7 @@ export type CreateBookingDto = {
   special_requests?: string;
 };
 
-export type PaymentDetailsDto = {
+export type IPaymentDetailsDto = {
   payment_method: string;
   card_number?: string;
   card_exp_month?: number;

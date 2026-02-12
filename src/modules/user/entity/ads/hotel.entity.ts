@@ -9,6 +9,8 @@ import {
     OneToMany,
 } from "typeorm";
 import { Location } from "../location";
+import { User } from "../user";
+import { SubscriptionType } from "../ENUM/ad-payment.enum";
 
 @Entity("hotels")
 export class Hotel {
@@ -51,8 +53,40 @@ export class Hotel {
     @Column("varchar", { length: 50, nullable: true })
     whatsapp!: string | null;
 
+    @Column("varchar", { length: 255, nullable: true })
+    facebook!: string | null;
+
+    @Column("varchar", { length: 255, nullable: true })
+    instagram!: string | null;
+
+    @Column("varchar", { length: 255, nullable: true })
+    website!: string | null;
+
     @Column("boolean", { default: true })
     is_active!: boolean;
+
+    @Column("uuid", { nullable: true })
+    vendor_id?: string;
+
+    @ManyToOne(() => User, { nullable: true })
+    @JoinColumn({ name: "vendor_id" })
+    vendor?: User;
+
+    @Column("timestamp", { nullable: true })
+    expires_at?: Date;
+
+    @Column({
+        type: "enum",
+        enum: SubscriptionType,
+        default: SubscriptionType.FREE,
+    })
+    subscription_type!: SubscriptionType;
+
+    @Column("boolean", { default: false })
+    is_paid!: boolean;
+
+    @Column("boolean", { default: false })
+    is_featured!: boolean;
 
     @ManyToOne(() => Location, { nullable: false })
     @JoinColumn({ name: "location_id" })

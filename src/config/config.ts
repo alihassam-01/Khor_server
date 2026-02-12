@@ -4,8 +4,9 @@ import * as dotenv from "dotenv";
 
 dotenv.config();  // Load environment variables from .env
 
-export const config = {
+export const CONFIG = {
   db: {
+    url: process.env.DATABASE_URL, // Single connection string (preferred)
     type: process.env.DB_TYPE || "postgres",
     host: process.env.DB_HOST || "localhost",
     port: Number(process.env.DB_PORT) || 5432,

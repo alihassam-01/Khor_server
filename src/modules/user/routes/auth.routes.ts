@@ -4,9 +4,10 @@ import { AuthService } from "../service/auth.service";
 
 import "fastify"; // important!
 import { Repository } from "typeorm";
-import { User, CustomerProfile } from "../entity/user";
+import { User, CustomerProfile, Vendor } from "../entity";
 import { AppDataSource } from "../../../config/ormconfig";
-import { Vendor } from "../entity/business";
+import { loginSchema, registerSchema, resendVerificationEmailSchema, resetPasswordSchema, verifyEmailSchema } from "../schemas/auth.schema";
+
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -28,26 +29,29 @@ export default async function authRoutes(fastify: FastifyInstance) {
   );
   const authController = new AuthController(authService);
   // Registration
-  fastify.post("/auth/register", authController.register.bind(authController));
+  fastify.post("/auth/register", { schema: registerSchema }, authController.register.bind(authController));
 
   // Login
-  fastify.post("/auth/login", authController.login.bind(authController));
+  fastify.post("/auth/login", { schema: loginSchema }, authController.login.bind(authController));
 
   // Email Verification (GET for link clicks)
   fastify.get(
     "/auth/verify-email",
+    { schema: verifyEmailSchema },
     authController.verifyEmail.bind(authController)
   );
 
   // Resend Verification Email
   fastify.post(
     "/auth/resend-verification-email",
+    { schema: resendVerificationEmailSchema },
     authController.resendVerificationEmail.bind(authController)
   );
 
   // Reset Password (from emailed token)
   fastify.post(
     "/auth/reset-password",
+    { schema: resetPasswordSchema },
     authController.resetPassword.bind(authController)
   );
 }

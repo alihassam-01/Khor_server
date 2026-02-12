@@ -1,4 +1,4 @@
-import { EmailBookingData } from "@modules/user/dtos/bookingConfirmation.dto";
+import { IEmailBookingData } from "@modules/user/dtos/bookingConfirmation.dto";
 import { sendEmail } from "./index";
 import { accountActivationTemplate } from "./templates/accountActivation";
 import { bookingConfirmationEmailTemplate } from "./templates/bookingConfirmation";
@@ -22,9 +22,10 @@ export class SendEmail {
   async sendAccountActivationEmail(
     name: string,
     email: string,
-    activationLink: string
+    activationLink: string,
+    callBackUrl: string
   ) {
-    const html = accountActivationTemplate(name, activationLink);
+    const html = accountActivationTemplate(name, activationLink, callBackUrl);
 
     const success = await sendEmail({
       to: email,
@@ -35,7 +36,7 @@ export class SendEmail {
     return success ? { status: "ok" } : { status: "error" };
   }
   async sendBookingConfirmationEmail(
-    bookingInfo: EmailBookingData,
+    bookingInfo: IEmailBookingData,
     pdfBuffer: Buffer
   ) {
     const html = bookingConfirmationEmailTemplate(bookingInfo);

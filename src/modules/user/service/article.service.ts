@@ -1,7 +1,7 @@
 import { AppDataSource } from "../../../config/ormconfig";
 import { Article, Tag, ArticleTag } from "../entity/article";
 import { Location } from "../entity/location";
-import { ArticleDTO } from "../dtos/article.dto";
+import { IArticleDTO } from "../dtos/article.dto";
 import { LocationHelperService } from "./helper/location-helper.service";
 import { ILike } from "typeorm";
 // import { LocationCategory } from "../entity/location-category.entity";
@@ -16,7 +16,7 @@ export class ArticleService {
   // private categoryRepository = AppDataSource.getRepository(LocationCategory);
   // private mediaRepository = AppDataSource.getRepository(Media);
 
-  private toArticleDTO(article: Article): ArticleDTO {
+  private toArticleDTO(article: Article): IArticleDTO {
     return {
       article_id: article.article_id,
       title: article.title,
@@ -24,11 +24,11 @@ export class ArticleService {
       excerpt: article.excerpt,
       content: article.content,
       published_at: article.published_at,
-  seo_title: article.seo_title || "",
-  seo_keywords: article.seo_keywords || "",
-  seo_description: article.seo_description || "",
-  // Ensure we always return an array for image_urls. If DB returns null/undefined, return []
-  image_urls: Array.isArray(article.image_urls) ? article.image_urls : [],
+      seo_title: article.seo_title || "",
+      seo_keywords: article.seo_keywords || "",
+      seo_description: article.seo_description || "",
+      // Ensure we always return an array for image_urls. If DB returns null/undefined, return []
+      image_urls: Array.isArray(article.image_urls) ? article.image_urls : [],
       location: {
         location_id: article.location?.location_id || 0,
         name: article.location?.name || "",
@@ -36,7 +36,7 @@ export class ArticleService {
       tags: article.articleTags?.map((tag) => tag.tag.name) || [],
     };
   }
-  async createArticle(articleData: any): Promise<ArticleDTO> {
+  async createArticle(articleData: any): Promise<IArticleDTO> {
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -153,7 +153,7 @@ export class ArticleService {
   async updateArticle(
     articleId: number,
     articleData: any
-  ): Promise<ArticleDTO> {
+  ): Promise<IArticleDTO> {
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();

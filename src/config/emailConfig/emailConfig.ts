@@ -10,15 +10,11 @@ export const EmailConfig = {
     from: process.env.SMTP_FROM || process.env.MAIL_FROM,
   },
 
+  // SES configuration (not currently in use but kept for type safety)
   ses: {
     region: process.env.AWS_SES_REGION,
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     from: process.env.SES_FROM,
-  },
-  brevo: {
-    apiKey: process.env.BREVO_API_KEY,
-    fromEmail: process.env.BREVO_FROM_EMAIL || "travelbalti@gmail.com",
-    fromName: process.env.BREVO_FROM_NAME || "Khor",
   },
 };

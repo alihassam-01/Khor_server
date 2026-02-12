@@ -1,4 +1,5 @@
 import { RoomTypeEnum } from "../entity/ENUM/ad.enum";
+import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
 
 export interface IReviewDTO {
     user_name: string;
@@ -30,9 +31,17 @@ export interface IHotelDTO {
     links: {
         phone: string | null;
         whatsapp: string | null;
+        facebook?: string | null;
+        instagram?: string | null;
+        website?: string | null;
     };
     detailed_reviews: IReviewDTO[];
     roomTypes: IRoomTypeDTO[];
+    vendor_id?: string;
+    expires_at?: Date;
+    subscription_type?: SubscriptionType;
+    is_paid?: boolean;
+    is_featured?: boolean;
 }
 
 export interface ICreateHotelDTO {
@@ -48,10 +57,15 @@ export interface ICreateHotelDTO {
     verified?: boolean;
     phone?: string | null;
     whatsapp?: string | null;
+    facebook?: string | null;
+    instagram?: string | null;
+    website?: string | null;
     location_id: number;
     is_active?: boolean;
     detailed_reviews?: IReviewDTO[];
     roomTypes?: IRoomTypeDTO[];
+    vendor_id?: string;
+    subscription_type?: SubscriptionType;
 }
 
 export interface IUpdateHotelDTO {
@@ -67,6 +81,12 @@ export interface IUpdateHotelDTO {
     verified?: boolean;
     phone?: string | null;
     whatsapp?: string | null;
+    facebook?: string | null;
+    instagram?: string | null;
+    website?: string | null;
     location_id?: number;
     is_active?: boolean;
+    vendor_id?: string;
+    subscription_type?: SubscriptionType;
+    is_featured?: boolean;
 }
