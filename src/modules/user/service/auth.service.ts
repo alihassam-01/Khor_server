@@ -8,6 +8,7 @@ import { sendEmail } from "./email";
 import { accountActivationTemplate } from "./email/templates/accountActivation";
 import { AppError } from "../../../common/errors/AppError";
 import { ErrorCodes } from "../../../common/errors/error-codes";
+import { logError, logInfo } from "../../../lib/logger";
 
 
 export class AuthService {
@@ -75,8 +76,10 @@ export class AuthService {
           await this.validateRegistration(email);
         } catch (error: any) {
           if (error?.message?.includes("EMAIL_IN_USE")) {
+            logError(error, 'User registration - Email already in use');
             throw new Error("User already exists");
           }
+          logError(error, 'User registration - Validation');
           throw error;
         }
         const hashedPassword = await this.hashPassword(password);
@@ -88,6 +91,7 @@ export class AuthService {
           subject: "Account Activation ",
           html: accountActivationTemplate(name, verificationToken, callBackUrl),
         });
+        logInfo(`Verification email sent to ${email}`);
 
         const user = this.userRepository.create({
           email,
@@ -119,6 +123,7 @@ export class AuthService {
           );
         }
 
+        logInfo(`User registered successfully: ${email}, Type: ${userType}`);
         return user;
       }
     );
@@ -143,9 +148,11 @@ export class AuthService {
       user.isVerified = true;
       user.verificationToken = undefined;
       await this.userRepository.save(user);
+      logInfo(`Email verified successfully for user: ${decoded.email}`);
 
       return true;
     } catch (error: any) {
+      logError(error, 'Email verification');
       throw new Error(`Email verification failed: ${error.message}`);
     }
   }
@@ -157,10 +164,12 @@ export class AuthService {
     });
 
     if (!user) {
+      logError(new Error(`User not found: ${email}`), 'Resend verification email');
       throw new Error("User not found");
     }
 
     if (user.isVerified) {
+      logError(new Error(`Email already verified: ${email}`), 'Resend verification email');
       throw new Error("Email is already verified");
     }
 
@@ -178,6 +187,7 @@ export class AuthService {
       subject: "Account Activation",
       html: accountActivationTemplate(username as string, newToken, callBackUrl),
     });
+    logInfo(`Verification email resent to ${email}`);
   }
 
   // Login logic
@@ -192,10 +202,12 @@ export class AuthService {
       relations: ["vendor", "customerProfile"],
     });
     if (!user || !(await bcrypt.compare(password, user.password))) {
+      logError(new Error(`Login failed for email: ${email}`), 'User login');
       throw new AppError("Invalid email or password", 401, ErrorCodes.INVALID_CREDENTIALS);
     }
 
     if (!user.isVerified) {
+      logError(new Error(`Unverified email login attempt: ${email}`), 'User login');
       throw new AppError("Please verify your email before logging in", 401, ErrorCodes.EMAIL_NOT_VERIFIED);
     }
 
@@ -219,6 +231,7 @@ export class AuthService {
       CONFIG.jwt.secret as string,
       { expiresIn: "7d" }
     );
+    logInfo(`User logged in successfully: ${email}`);
     return {
       token,
     };
@@ -227,6 +240,7 @@ export class AuthService {
   // Reset password using token sent to user's email
   async resetPassword(token: string, newPassword: string, confirmPassword: string) {
     if (!token) {
+      logError(new Error('Reset token missing'), 'Password reset');
       throw new Error('Reset token is required');
     }
     if (!newPassword || !confirmPassword) {
@@ -246,6 +260,7 @@ export class AuthService {
       }
       payload = jwt.verify(token, CONFIG.jwt.secret as string) as any;
     } catch (err: any) {
+      logError(err, 'Password reset - Invalid token');
       throw new Error('Invalid or expired reset token');
     }
 
@@ -256,6 +271,7 @@ export class AuthService {
 
     const user = await this.userRepository.findOneBy({ email });
     if (!user) {
+      logError(new Error(`User not found for password reset: ${email}`), 'Password reset');
       throw new Error('User not found');
     }
 
@@ -263,6 +279,7 @@ export class AuthService {
     user.password = await this.hashPassword(newPassword);
     user.isVerified = true;
     await this.userRepository.save(user);
+    logInfo(`Password reset successfully for user: ${email}`);
 
     return { success: true, message: 'Password has been reset successfully' };
   }

@@ -5,6 +5,7 @@ import * as dotenv from "dotenv";
 dotenv.config();  // Load environment variables from .env
 
 export const CONFIG = {
+  env: process.env.NODE_ENV || 'development',
   db: {
     url: process.env.DATABASE_URL, // Single connection string (preferred)
     type: process.env.DB_TYPE || "postgres",

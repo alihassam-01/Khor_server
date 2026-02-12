@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from "fastify";
 import { HotelService } from "../service/hotel.service";
 import { ICreateHotelDTO, IUpdateHotelDTO } from "../dtos/hotel.dto";
 import { R2ClientService } from "../service/r2client.service";
+import { logError, logInfo } from "../../../lib/logger";
 
 export class HotelController {
     private hotelService = new HotelService();
@@ -9,12 +10,65 @@ export class HotelController {
 
     async createHotel(req: FastifyRequest, reply: FastifyReply) {
         try {
+            // const userType = req.user?.userType;
+            const userId = req.user?.userId;
+
+            if (!userId) {
+                logError(new Error('Unauthenticated hotel creation attempt'), 'Hotel creation');
+                return reply.code(401).send({ 
+                    message: 'Authentication required. Please log in.' 
+                });
+            }
+
+            // For admin routes, optionally check if user is admin
+            // Uncomment if you want admin-only access:
+            // if (userType !== 'admin' && userType !== 'vendor') {
+            //     return reply.code(403).send({ 
+            //         message: 'Only admins and vendors can create hotels.' 
+            //     });
+            // }
+
             const contentType = (req.headers['content-type'] || '') as string;
             let hotelData: ICreateHotelDTO;
 
             if (contentType.includes('multipart/form-data')) {
-                // fields are attached to body because attachFieldsToBody:true
                 const body: any = req.body as any;
+                const getFieldValue = (field: any): any => {
+                    if (!field) return undefined;
+                    if (field.type === 'field' && 'value' in field) {
+                        return field.value;
+                    }
+                    return field;
+                };
+
+                const extractedBody: any = {};
+                for (const key in body) {
+                    extractedBody[key] = getFieldValue(body[key]);
+                }
+
+                const requiredFields = ['name', 'price', 'location_name', 'description', 'location_id'];
+                const missingFields = requiredFields.filter(field => !extractedBody[field]);
+                
+                if (missingFields.length > 0) {
+                    logError(new Error(`Missing required fields: ${missingFields.join(', ')}`), 'Hotel creation');
+                    return reply.code(400).send({ 
+                        message: `Missing required fields: ${missingFields.join(', ')}` 
+                    });
+                }
+
+                const parseNumber = (val: any, fieldName: string, required: boolean = false): number | undefined => {
+                    if (!val && val !== 0) {
+                        if (required) {
+                            throw new Error(`${fieldName} is required`);
+                        }
+                        return undefined;
+                    }
+                    const parsed = Number(val);
+                    if (isNaN(parsed)) {
+                        throw new Error(`${fieldName} must be a valid number, got: ${val}`);
+                    }
+                    return parsed;
+                };
 
                 // handle file upload for image field
                 let imageUrl: string | undefined = undefined;
@@ -37,34 +91,56 @@ export class HotelController {
                 };
 
                 hotelData = {
-                    name: body.name,
-                    price: Number(body.price),
-                    location_name: body.location_name,
-                    image: imageUrl || '',
-                    description: body.description,
-                    amenities: parseArrayField(body.amenities),
-                    location_id: Number(body.location_id),
-                    rating: body.rating ? Number(body.rating) : undefined,
-                    reviews: body.reviews ? Number(body.reviews) : undefined,
-                    logo: body.logo || undefined,
-                    verified: body.verified === 'true' || body.verified === true,
-                    phone: body.phone || undefined,
-                    whatsapp: body.whatsapp || undefined,
-                    facebook: body.facebook || undefined,
-                    instagram: body.instagram || undefined,
-                    website: body.website || undefined,
-                    detailed_reviews: body.detailed_reviews || undefined,
-                    roomTypes: body.roomTypes || undefined,
-                    vendor_id: body.vendor_id || undefined,
-                    subscription_type: body.subscription_type || undefined,
+                    name: extractedBody.name,
+                    price: parseNumber(extractedBody.price, 'price', true)!,
+                    location_name: extractedBody.location_name,
+                    image: imageUrl || extractedBody.image || '',
+                    description: extractedBody.description,
+                    amenities: parseArrayField(extractedBody.amenities),
+                    location_id: parseNumber(extractedBody.location_id, 'location_id', true)!,
+                    rating: parseNumber(extractedBody.rating, 'rating'),
+                    reviews: parseNumber(extractedBody.reviews, 'reviews'),
+                    logo: extractedBody.logo || undefined,
+                    verified: extractedBody.verified === 'true' || extractedBody.verified === true,
+                    phone: extractedBody.phone || undefined,
+                    whatsapp: extractedBody.whatsapp || undefined,
+                    facebook: extractedBody.facebook || undefined,
+                    instagram: extractedBody.instagram || undefined,
+                    website: extractedBody.website || undefined,
+                    detailed_reviews: extractedBody.detailed_reviews || undefined,
+                    roomTypes: extractedBody.roomTypes || undefined,
+                    vendor_id: extractedBody.vendor_id || undefined,
+                    subscription_type: extractedBody.subscription_type || undefined,
+                    is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 } as ICreateHotelDTO;
             } else {
-                hotelData = req.body as ICreateHotelDTO;
+                // JSON request body
+                const body = req.body as any;
+                
+                // Validate required fields for JSON too
+                if (!body.name || !body.price || !body.location_name || !body.description || !body.location_id) {
+                    const missing = [];
+                    if (!body.name) missing.push('name');
+                    if (!body.price && body.price !== 0) missing.push('price');
+                    if (!body.location_name) missing.push('location_name');
+                    if (!body.description) missing.push('description');
+                    if (!body.location_id && body.location_id !== 0) missing.push('location_id');
+                    
+                    logError(new Error(`Missing required fields: ${missing.join(', ')}`), 'Hotel creation (JSON)');
+                    return reply.code(400).send({ 
+                        message: `Missing required fields: ${missing.join(', ')}` 
+                    });
+                }
+                
+                hotelData = body as ICreateHotelDTO;
             }
 
+            logInfo('Creating hotel', { name: hotelData.name, location_id: hotelData.location_id });
             const hotel = await this.hotelService.createHotel(hotelData);
+            logInfo('Hotel created successfully', { id: hotel.id, name: hotel.name });
             reply.code(201).send(hotel);
         } catch (error: any) {
+            logError(error, 'Hotel creation');
             reply
                 .code(400)
                 .send({ message: error.message || "Failed to create hotel" });

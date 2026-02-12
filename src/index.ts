@@ -6,10 +6,12 @@ import routes from './modules/user/routes';
 import { CONFIG } from './config/config';
 import fastifyMultipart from "@fastify/multipart";
 import { globalErrorHandler } from './common/errors/global-error-handler';
+import { logError, logInfo } from './lib/logger';
 
 async function startServer() {
   const app = fastify({
-    pluginTimeout: 120000
+    pluginTimeout: 120000,
+    logger: true,
   });
 
   await app.register(fastifyMultipart, {
@@ -37,7 +39,7 @@ async function startServer() {
     const { logEnabledFeatures } = await import('./config/features.config');
     logEnabledFeatures();
   } catch (error) {
-    console.error("Error connecting to database:", error);
+    logError(error, "Database connection");
     process.exit(1);
   }
 
@@ -46,7 +48,7 @@ async function startServer() {
       await app.register(route, { prefix: "/api" });
     }
   } catch (error) {
-    console.error("Error registering routes:", error);
+    logError(error, "Route registration");
     process.exit(1);
   }
 
@@ -54,14 +56,14 @@ async function startServer() {
 
   try {
     await app.listen({ port: CONFIG.server.port, host: CONFIG.server.host });
-    console.info(`Server running on http://${CONFIG.server.host}:${CONFIG.server.port}`);
+    logInfo(`Server running on http://${CONFIG.server.host}:${CONFIG.server.port}`);
   } catch (err) {
-    console.error("Error starting server:", err);
+    logError(err, "Server startup");
     process.exit(1);
   }
 }
 
 startServer().catch((err) => {
-  console.error("Error in startServer:", err);
+  logError(err, "startServer function");
   process.exit(1);
 });

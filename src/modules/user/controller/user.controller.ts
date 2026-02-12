@@ -5,6 +5,7 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../../constant/error";
+import { logError } from "../../../lib/logger";
 
 export class UserController {
   async forgotPassword(
@@ -19,18 +20,11 @@ export class UserController {
   await this.userService.forgotPassword(email);
       reply.send({ success: true, message: "If the email exists, a reset link has been sent." });
     } catch (error: any) {
+      logError(error, 'Forgot password');
       reply.status(500).send({ success: false, message: error.message || "Failed to process forgot password" });
     }
   }
   constructor(private userService: UserService) {}
-
-  async createUser(
-    req: FastifyRequest<{ Body: { name: string; email: string } }>,
-    reply: FastifyReply
-  ) {
-    const user = await this.userService.createUser(req.body);
-    reply.code(201).send(user);
-  }
 
   async getUsers(_req: FastifyRequest, reply: FastifyReply) {
     const users = await this.userService.getUsers();
@@ -92,6 +86,7 @@ export class UserController {
       const response = await this.userService.updatePassword(passData);
       reply.send(response);
     } catch (error: any) {
+      logError(error, 'Update password');
       let statusCode = 500;
 
       if (error instanceof ValidationError) {

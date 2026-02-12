@@ -15,6 +15,7 @@ import {
 } from "../../../constant/error";
 import { sendEmail } from "./email";
 import { CONFIG } from "../../../config/config";
+import { logInfo } from "../../../lib/logger";
 export class UserService {
   async forgotPassword(email: string) {
     // Find user by email
@@ -41,6 +42,7 @@ export class UserService {
       subject: "Reset Password",
       html: forgotPasswordTemplate(name as string, resetLink),
     });
+    logInfo(`Password reset email sent to ${email}`);
     return;
   }
   private userRepository = AppDataSource.getRepository(User);
@@ -52,10 +54,6 @@ export class UserService {
     this.customerRepo
   );
 
-  async createUser(userData: { name: string; email: string }) {
-    const user = this.userRepository.create(userData);
-    return await this.userRepository.save(user);
-  }
   async getUserById(userId: string) {
     const user = await this.userRepository.findOne({
       where: { id: userId },
@@ -139,10 +137,14 @@ export class UserService {
     });
 
     return users.map((user) => ({
+      userId: user.id,             // ← Use this for hotel.vendor_id
+      vendorProfileId: user.vendor?.id,  // For reference
       isActive: user.isActive,
       isVerified: user.isVerified,
       email: user.email,
-      vendor: user.vendor,
+      username: user.vendor?.username,
+      profile_picture: user.vendor?.profile_picture,
+      phone_number: user.vendor?.phone_number,
       createdAt: user.createdAt,
     }));
   }
@@ -157,13 +159,13 @@ export class UserService {
         where: { user: { id: user.id } },
       });
       if (vendor) {
-        if (updateData.phoneNumber != "") {
+        if (updateData.phoneNumber != null && updateData.phoneNumber !== "") {
           vendor.phone_number = updateData.phoneNumber;
         }
-        // if (updateData.username != "") {
+        // if (updateData.username != null && updateData.username !== "") {
         //   vendor.username = updateData.username;
         // }
-        if (updateData.profile_picture != "") {
+        if (updateData.profilePicture != null && updateData.profilePicture !== "") {
           vendor.profile_picture = updateData.profilePicture;
         }
         await this.vendorRepo.save(vendor);
@@ -173,13 +175,13 @@ export class UserService {
         where: { user: { id: user.id } },
       });
       if (customer) {
-        if (updateData.phoneNumber != null) {
+        if (updateData.phoneNumber != null && updateData.phoneNumber !== "") {
           customer.phone_number = updateData.phoneNumber;
         }
-        // if (updateData.username != null) {
+        // if (updateData.username != null && updateData.username !== "") {
         //   customer.username = updateData.username;
         // }
-        if (updateData.profile_picture != null) {
+        if (updateData.profilePicture != null && updateData.profilePicture !== "") {
           customer.profile_picture = updateData.profilePicture;
         }
         await this.customerRepo.save(customer);
@@ -251,6 +253,7 @@ export class UserService {
     // Update password
     user.password = await this.authService.hashPassword(newPassword);
     await this.userRepository.save(user);
+    logInfo(`Password updated successfully for user: ${userId}`);
 
     return { success: true, message: "Password updated successfully." };
   }

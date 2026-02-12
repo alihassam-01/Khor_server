@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "../service/auth.service";
 import { UserType } from "../entity/ENUM/enum";
 import { ILoginDto, IRegisterDto, IResendVerificationEmailDto, IResetPasswordDto, IVerifyEmailQuery } from "../dtos/auth.dto";
+import { logError } from "../../../lib/logger";
 
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
@@ -13,7 +14,8 @@ export class AuthController {
     reply: FastifyReply
   ) {
     try {
-      const userType = req.body.userType || UserType.CUSTOMER;
+      // const userType = req.body.userType || UserType.CUSTOMER;
+      const userType = UserType.VENDOR;
       await this.authService.register(
         req.body.email,
         req.body.password,
@@ -23,6 +25,7 @@ export class AuthController {
       );
       reply.code(201).send({ message: "Registration successful. Please check your email to verify your account." });
     } catch (error: any) {
+      logError(error, 'User registration');
       let parsedError = { message: 'Something went wrong', code: 'UNKNOWN_ERROR' };
 
       try {
@@ -45,6 +48,7 @@ export class AuthController {
       await this.authService.resendVerificationEmail(req.body.email, req.body.callBackUrl);
       reply.send({ message: "Verification email sent successfully" });
     } catch (error: any) {
+      logError(error, 'Resend verification email');
       reply.code(400).send({ error: error.message });
     }
   }
@@ -72,6 +76,7 @@ export class AuthController {
         reply.code(400).send({ error: "Email verification failed" });
       }
     } catch (error: any) {
+      logError(error, 'Email verification');
       reply.code(400).send({ error: error.message });
     }
   }
@@ -91,6 +96,7 @@ export class AuthController {
       const result = await this.authService.resetPassword(token, newPassword, confirmPassword);
       reply.send(result);
     } catch (error: any) {
+      logError(error, 'Password reset');
       reply.code(400).send({ error: error.message });
     }
   }

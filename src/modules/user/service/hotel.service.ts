@@ -1,16 +1,21 @@
 import { AppDataSource } from "../../../config/ormconfig";
 import { Hotel, HotelReview, HotelRoomType } from "../entity/ads";
 import { Location } from "../entity/location";
+import { User } from "../entity/user";
+import { Vendor } from "../entity";
 import {
     IHotelDTO,
     ICreateHotelDTO,
     IUpdateHotelDTO,
 } from "../dtos/hotel.dto";
 import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { logError, logInfo } from "../../../lib/logger";
 
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
     private locationRepository = AppDataSource.getRepository(Location);
+    private userRepository = AppDataSource.getRepository(User);
+    private vendorRepository = AppDataSource.getRepository(Vendor);
 
 
     private toHotelDTO(hotel: Hotel): IHotelDTO {
@@ -63,7 +68,52 @@ export class HotelService {
             });
 
             if (!location) {
-                throw new Error("Location not found");
+                logError(new Error(`Location not found: ${hotelData.location_id}`), 'Hotel creation');
+                throw new Error(`Location with id ${hotelData.location_id} not found. Please select a valid location.`);
+            }
+
+            // Verify vendor exists if vendor_id is provided
+            let actualVendorUserId: string | undefined = undefined;
+            
+            if (hotelData.vendor_id) {
+                // First, try to find it as a vendor profile ID
+                const vendorProfile = await this.vendorRepository.findOne({
+                    where: { id: hotelData.vendor_id },
+                    relations: ['user'],
+                });
+
+                if (vendorProfile) {
+                    // vendor_id was the vendor profile ID, use the associated user ID
+                    actualVendorUserId = vendorProfile.user.id;
+                    logInfo('Resolved vendor profile ID to user ID', { 
+                        vendorProfileId: hotelData.vendor_id, 
+                        userId: actualVendorUserId 
+                    });
+                } else {
+                    // Try to find it as a user ID directly
+                    const vendor = await this.userRepository.findOne({
+                        where: { id: hotelData.vendor_id },
+                        relations: ['vendor'],
+                    });
+
+                    if (!vendor) {
+                        logError(new Error(`Neither vendor profile nor user found: ${hotelData.vendor_id}`), 'Hotel creation');
+                        throw new Error(
+                            `Vendor with id ${hotelData.vendor_id} not found. ` +
+                            `Please provide either a valid vendor profile ID or user ID.`
+                        );
+                    }
+
+                    // Check if user is actually a vendor
+                    if (!vendor.vendor) {
+                        logError(new Error(`User is not a vendor: ${hotelData.vendor_id}`), 'Hotel creation');
+                        throw new Error(
+                            `User ${hotelData.vendor_id} is not a vendor. Only vendors can create hotels.`
+                        );
+                    }
+
+                    actualVendorUserId = vendor.id;
+                }
             }
 
             // Create hotel
@@ -87,8 +137,8 @@ export class HotelService {
             hotel.location_id = hotelData.location_id;
             hotel.is_active = hotelData.is_active !== undefined ? hotelData.is_active : true;
 
-            // Handle subscription and vendor
-            hotel.vendor_id = hotelData.vendor_id;
+            // Handle subscription and vendor - use the resolved user ID
+            hotel.vendor_id = actualVendorUserId;
 
             // Default to FREE if not specified
             const subscriptionType = hotelData.subscription_type || SubscriptionType.FREE;
@@ -140,9 +190,22 @@ export class HotelService {
             }
 
             await queryRunner.commitTransaction();
+            logInfo('Hotel created successfully', { id: savedHotel.id, name: savedHotel.name });
             return this.toHotelDTO(savedHotel);
-        } catch (error) {
+        } catch (error: any) {
             await queryRunner.rollbackTransaction();
+            logError(error, 'Hotel creation - Database transaction');
+            
+            // Provide more specific error messages
+            if (error.code === '23503') {  // Foreign key violation
+                if (error.constraint === 'FK_c45177ca22887745a108560e181') {
+                    throw new Error(`Invalid vendor_id. The vendor does not exist in the system.`);
+                } else if (error.constraint === 'FK_3bdbe60c176cce275628292a8df') {
+                    throw new Error(`Invalid location_id. The location does not exist.`);
+                }
+                throw new Error(`Foreign key constraint violation: ${error.detail || error.message}`);
+            }
+            
             throw error;
         } finally {
             await queryRunner.release();
