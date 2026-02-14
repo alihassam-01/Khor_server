@@ -9,6 +9,7 @@ import {
     IUpdateHotelDTO,
 } from "../dtos/hotel.dto";
 import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { RoomTypeEnum } from "../entity/ENUM/ad.enum";
 import { logError, logInfo } from "../../../lib/logger";
 
 export class HotelService {
@@ -16,6 +17,24 @@ export class HotelService {
     private locationRepository = AppDataSource.getRepository(Location);
     private userRepository = AppDataSource.getRepository(User);
     private vendorRepository = AppDataSource.getRepository(Vendor);
+
+    /**
+     * Validate that a room type is a valid enum value
+     */
+    private validateRoomType(type: any): RoomTypeEnum {
+        if (!type) throw new Error("Room type is required");
+        
+        const normalizedType = String(type).toLowerCase();
+        const validTypes = Object.values(RoomTypeEnum);
+        
+        if (!validTypes.includes(normalizedType as RoomTypeEnum)) {
+            throw new Error(
+                `Invalid room type: "${type}". Allowed types are: ${validTypes.join(", ")}`
+            );
+        }
+        
+        return normalizedType as RoomTypeEnum;
+    }
 
 
     private toHotelDTO(hotel: Hotel): IHotelDTO {
@@ -177,7 +196,7 @@ export class HotelService {
             if (hotelData.roomTypes && hotelData.roomTypes.length > 0) {
                 const roomTypes = hotelData.roomTypes.map((roomTypeData) => {
                     const roomType = new HotelRoomType();
-                    roomType.type = roomTypeData.type;
+                    roomType.type = this.validateRoomType(roomTypeData.type); // Validate against enum
                     roomType.price = roomTypeData.price;
                     roomType.amenities = roomTypeData.amenities;
                     roomType.capacity = roomTypeData.capacity;
@@ -288,6 +307,21 @@ export class HotelService {
         if (hotelData.whatsapp !== undefined) hotel.whatsapp = hotelData.whatsapp;
         if (hotelData.is_active !== undefined)
             hotel.is_active = hotelData.is_active;
+        if (hotelData.roomTypes !== undefined) {
+            if (hotel.room_types && hotel.room_types.length > 0) {
+                await this.hotelRepository
+                    .createQueryBuilder()
+                    .delete()
+                    .from("hotel_room_types")
+                    .where("hotel_id = :hotelId", { hotelId: id })
+                    .execute();
+            }
+            hotel.room_types = hotelData.roomTypes.map((rt: any) => ({
+                ...rt,
+                type: this.validateRoomType(rt.type), // Validate against enum
+                hotel_id: id,
+            }));
+        }
 
         // Update location if changed
         if (
@@ -304,6 +338,7 @@ export class HotelService {
         }
 
         const updatedHotel = await this.hotelRepository.save(hotel);
+        console.log("updated hotel: ", updatedHotel)
         return this.toHotelDTO(updatedHotel);
     }
 

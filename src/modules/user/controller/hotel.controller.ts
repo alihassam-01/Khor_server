@@ -3,6 +3,7 @@ import { HotelService } from "../service/hotel.service";
 import { ICreateHotelDTO, IUpdateHotelDTO } from "../dtos/hotel.dto";
 import { R2ClientService } from "../service/r2client.service";
 import { logError, logInfo } from "../../../lib/logger";
+import { extractMultipartFields, isMultipartRequest } from "../../../common/utils/multipart.util";
 
 export class HotelController {
     private hotelService = new HotelService();
@@ -186,10 +187,27 @@ export class HotelController {
     async updateHotel(req: FastifyRequest, reply: FastifyReply) {
         try {
             const { id } = req.params as { id: string };
-            const hotelData = req.body as IUpdateHotelDTO;
+            let hotelData: IUpdateHotelDTO;
+            
+            if (isMultipartRequest(req.headers['content-type'])) {
+                hotelData = extractMultipartFields<IUpdateHotelDTO>(req.body, {
+                    price: 'number',
+                    location_id: 'number',
+                    rating: 'number',
+                    reviews: 'number',
+                    verified: 'boolean',
+                    is_active: 'boolean',
+                    amenities: 'array',
+                    roomTypes: 'json',
+                });
+            } else {
+                hotelData = req.body as IUpdateHotelDTO;
+            }
+            
             const hotel = await this.hotelService.updateHotel(id, hotelData);
             reply.send(hotel);
         } catch (error: any) {
+            logError(error, 'Hotel update');
             reply
                 .code(400)
                 .send({ message: error.message || "Failed to update hotel" });

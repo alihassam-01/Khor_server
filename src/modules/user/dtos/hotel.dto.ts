@@ -89,4 +89,5 @@ export interface IUpdateHotelDTO {
     vendor_id?: string;
     subscription_type?: SubscriptionType;
     is_featured?: boolean;
+    roomTypes?: IRoomTypeDTO[];
 }
