@@ -161,9 +161,10 @@ export class RestaurantController {
         }
     }
 
-    async getFeaturedAds(_req: FastifyRequest, reply: FastifyReply) {
+    async getFeaturedAds(req: FastifyRequest, reply: FastifyReply) {
         try {
-            const restaurants = await this.restaurantService.getFeaturedAds();
+            const { locationId } = req.params as {locationId: string}
+            const restaurants = await this.restaurantService.getFeaturedAds(locationId);
             reply.send(restaurants);
         } catch (error: any) {
             reply

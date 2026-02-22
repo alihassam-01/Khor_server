@@ -197,13 +197,13 @@ export class HotelController {
                     reviews: 'number',
                     verified: 'boolean',
                     is_active: 'boolean',
+                    is_featured: 'boolean',
                     amenities: 'array',
                     roomTypes: 'json',
                 });
             } else {
                 hotelData = req.body as IUpdateHotelDTO;
             }
-            
             const hotel = await this.hotelService.updateHotel(id, hotelData);
             reply.send(hotel);
         } catch (error: any) {
@@ -301,9 +301,10 @@ export class HotelController {
         }
     }
 
-    async getFeaturedAds(_req: FastifyRequest, reply: FastifyReply) {
+    async getFeaturedAds(req: FastifyRequest, reply: FastifyReply) {
         try {
-            const hotels = await this.hotelService.getFeaturedAds();
+            const {locationId} = req.params as {locationId: string}
+            const hotels = await this.hotelService.getFeaturedAds(locationId);
             reply.send(hotels);
         } catch (error: any) {
             reply

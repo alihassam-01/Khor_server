@@ -72,6 +72,11 @@ export class HotelService {
                     amenities: roomType.amenities,
                     capacity: roomType.capacity,
                 })) || [],
+            vendor_id: hotel.vendor_id,
+            expires_at: hotel.expires_at,
+            subscription_type: hotel.subscription_type,
+            is_paid: hotel.is_paid,
+            is_featured: hotel.is_featured,
         };
     }
 
@@ -307,6 +312,8 @@ export class HotelService {
         if (hotelData.whatsapp !== undefined) hotel.whatsapp = hotelData.whatsapp;
         if (hotelData.is_active !== undefined)
             hotel.is_active = hotelData.is_active;
+        if (hotelData.is_featured !== undefined)
+            hotel.is_featured = hotelData.is_featured;
         if (hotelData.roomTypes !== undefined) {
             if (hotel.room_types && hotel.room_types.length > 0) {
                 await this.hotelRepository
@@ -338,7 +345,6 @@ export class HotelService {
         }
 
         const updatedHotel = await this.hotelRepository.save(hotel);
-        console.log("updated hotel: ", updatedHotel)
         return this.toHotelDTO(updatedHotel);
     }
 
@@ -449,9 +455,9 @@ export class HotelService {
         return hotels.map((hotel) => this.toHotelDTO(hotel));
     }
 
-    async getFeaturedAds(): Promise<IHotelDTO[]> {
+    async getFeaturedAds(locationId: string): Promise<IHotelDTO[]> {
         const hotels = await this.hotelRepository.find({
-            where: { is_featured: true, is_active: true },
+            where: { is_featured: true, is_active: true, location_id: Number(locationId) },
             relations: ["location", "detailed_reviews", "room_types"],
             order: { created_at: "DESC" },
         });

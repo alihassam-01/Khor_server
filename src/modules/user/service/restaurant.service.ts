@@ -337,9 +337,9 @@ export class RestaurantService {
         return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
     }
 
-    async getFeaturedAds(): Promise<IRestaurantDTO[]> {
+    async getFeaturedAds(locationId: string): Promise<IRestaurantDTO[]> {
         const restaurants = await this.restaurantRepository.find({
-            where: { is_featured: true, is_active: true },
+            where: { is_featured: true, is_active: true, location_id: Number(locationId) },
             relations: ["location", "detailed_reviews"],
             order: { created_at: "DESC" },
         });

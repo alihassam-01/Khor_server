@@ -39,12 +39,12 @@ export async function hotelRoutes(fastify: FastifyInstance) {
         preHandler: authenticate 
     }, hotelController.getExpiredAds.bind(hotelController));
     
-    fastify.get("/admin/hotels/featured", { 
-        preHandler: authenticate 
+    fastify.get("/hotels/featured/:locationId", { 
+        // preHandler: authenticate 
     }, hotelController.getFeaturedAds.bind(hotelController));
     
-    fastify.get("/admin/hotels/premium", { 
-        preHandler: authenticate 
+    fastify.get("/hotels/premium", { 
+        // preHandler: authenticate 
     }, hotelController.getPremiumAds.bind(hotelController));
     
     fastify.get("/admin/hotels/vendor/:vendorId", { 

@@ -30,8 +30,8 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
     fastify.post("/admin/restaurants/:id/toggle-status", restaurantController.toggleAdStatus.bind(restaurantController));
     fastify.post("/admin/restaurants/:id/renew", restaurantController.renewAd.bind(restaurantController));
     fastify.get("/admin/restaurants/expired", restaurantController.getExpiredAds.bind(restaurantController));
-    fastify.get("/admin/restaurants/featured", restaurantController.getFeaturedAds.bind(restaurantController));
-    fastify.get("/admin/restaurants/premium", restaurantController.getPremiumAds.bind(restaurantController));
+    fastify.get("/restaurants/featured/:locationId", restaurantController.getFeaturedAds.bind(restaurantController));
+    fastify.get("/restaurants/premium/:locationId", restaurantController.getPremiumAds.bind(restaurantController));
     fastify.get("/admin/restaurants/vendor/:vendorId", restaurantController.getAdsByVendor.bind(restaurantController));
     fastify.post("/admin/restaurants/:id/featured", restaurantController.setFeaturedStatus.bind(restaurantController));
 
