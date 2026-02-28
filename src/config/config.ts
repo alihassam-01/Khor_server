@@ -32,7 +32,7 @@ export const CONFIG = {
     url: process.env.WEB_DOMAIN,
   },
   server: {
-    port: Number(process.env.PORT) || 3008,
+    port: Number(process.env.PORT) || 5000,
     host: process.env.SERVER_HOST || "localhost",
   },
   r2: {

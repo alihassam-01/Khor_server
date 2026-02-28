@@ -77,6 +77,8 @@ export class HotelService {
             subscription_type: hotel.subscription_type,
             is_paid: hotel.is_paid,
             is_featured: hotel.is_featured,
+            is_active: hotel.is_active,
+            location_id: hotel.location_id,
         };
     }
 
@@ -310,6 +312,11 @@ export class HotelService {
         if (hotelData.verified !== undefined) hotel.verified = hotelData.verified;
         if (hotelData.phone !== undefined) hotel.phone = hotelData.phone;
         if (hotelData.whatsapp !== undefined) hotel.whatsapp = hotelData.whatsapp;
+        if (hotelData.facebook !== undefined) hotel.facebook = hotelData.facebook;
+        if (hotelData.instagram !== undefined) hotel.instagram = hotelData.instagram;
+        if (hotelData.website !== undefined) hotel.website = hotelData.website;
+        if (hotelData.vendor_id !== undefined) hotel.vendor_id = hotelData.vendor_id;
+        if (hotelData.subscription_type !== undefined) hotel.subscription_type = hotelData.subscription_type;
         if (hotelData.is_active !== undefined)
             hotel.is_active = hotelData.is_active;
         if (hotelData.is_featured !== undefined)

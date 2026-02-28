@@ -39,6 +39,13 @@ export class RestaurantService {
                     comment: review.comment,
                     date: review.date,
                 })) || [],
+            vendor_id: restaurant.vendor_id,
+            subscription_type: restaurant.subscription_type,
+            is_paid: restaurant.is_paid,
+            is_featured: restaurant.is_featured,
+            is_active: restaurant.is_active,
+            location_id: restaurant.location_id,
+            expires_at: restaurant.expires_at,
         };
     }
 
@@ -80,6 +87,10 @@ export class RestaurantService {
                 restaurantData.is_active !== undefined
                     ? restaurantData.is_active
                     : true;
+            restaurant.is_featured =
+                restaurantData.is_featured !== undefined
+                    ? restaurantData.is_featured
+                    : false;
 
             // Handle subscription and vendor
             restaurant.vendor_id = restaurantData.vendor_id;
@@ -210,6 +221,18 @@ export class RestaurantService {
             restaurant.menu_images = restaurantData.menu_images;
         if (restaurantData.is_active !== undefined)
             restaurant.is_active = restaurantData.is_active;
+        if (restaurantData.is_featured !== undefined)
+            restaurant.is_featured = restaurantData.is_featured;
+        if (restaurantData.facebook !== undefined)
+            restaurant.facebook = restaurantData.facebook;
+        if (restaurantData.instagram !== undefined)
+            restaurant.instagram = restaurantData.instagram;
+        if (restaurantData.website !== undefined)
+            restaurant.website = restaurantData.website;
+        if (restaurantData.vendor_id !== undefined)
+            restaurant.vendor_id = restaurantData.vendor_id;
+        if (restaurantData.subscription_type !== undefined)
+            restaurant.subscription_type = restaurantData.subscription_type;
 
         // Update location if changed
         if (

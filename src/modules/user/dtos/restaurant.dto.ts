@@ -25,6 +25,8 @@ export interface IRestaurantDTO {
     subscription_type?: SubscriptionType;
     is_paid?: boolean;
     is_featured?: boolean;
+    is_active?: boolean;
+    location_id?: number;
 }
 
 export interface ICreateRestaurantDTO {
@@ -43,6 +45,7 @@ export interface ICreateRestaurantDTO {
     menu_images?: string[];
     location_id: number;
     is_active?: boolean;
+    is_featured?: boolean;
     detailed_reviews?: IReviewDTO[];
     vendor_id?: string;
     subscription_type?: SubscriptionType;

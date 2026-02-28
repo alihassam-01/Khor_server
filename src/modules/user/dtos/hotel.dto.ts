@@ -42,6 +42,8 @@ export interface IHotelDTO {
     subscription_type?: SubscriptionType;
     is_paid?: boolean;
     is_featured?: boolean;
+    is_active?: boolean;
+    location_id?: number;
 }
 
 export interface ICreateHotelDTO {

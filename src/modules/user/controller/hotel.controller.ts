@@ -74,7 +74,6 @@ export class HotelController {
                 // handle file upload for image field
                 let imageUrl: string | undefined = undefined;
                 if (body.image && typeof body.image !== 'string') {
-                    // fastify-multipart file object supports toBuffer()
                     const file: any = body.image;
                     const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
                     const originalName = file.filename || 'upload';
@@ -83,6 +82,17 @@ export class HotelController {
                     imageUrl = res.url;
                 } else if (body.image && typeof body.image === 'string') {
                     imageUrl = body.image;
+                }
+
+                // handle logo file upload
+                let logoUrl: string | undefined = undefined;
+                if (body.logo && typeof body.logo !== 'string') {
+                    const logoFile: any = body.logo;
+                    const buffer: Buffer = logoFile.toBuffer ? await logoFile.toBuffer() : Buffer.from([]);
+                    const res = await this.r2Client.uploadFileToR2(buffer, logoFile.filename || 'logo', logoFile.mimetype || 'application/octet-stream');
+                    logoUrl = res.url;
+                } else if (body.logo && typeof body.logo === 'string') {
+                    logoUrl = body.logo;
                 }
 
                 const parseArrayField = (val: any) => {
@@ -101,7 +111,7 @@ export class HotelController {
                     location_id: parseNumber(extractedBody.location_id, 'location_id', true)!,
                     rating: parseNumber(extractedBody.rating, 'rating'),
                     reviews: parseNumber(extractedBody.reviews, 'reviews'),
-                    logo: extractedBody.logo || undefined,
+                    logo: logoUrl || undefined,
                     verified: extractedBody.verified === 'true' || extractedBody.verified === true,
                     phone: extractedBody.phone || undefined,
                     whatsapp: extractedBody.whatsapp || undefined,
@@ -190,7 +200,8 @@ export class HotelController {
             let hotelData: IUpdateHotelDTO;
             
             if (isMultipartRequest(req.headers['content-type'])) {
-                hotelData = extractMultipartFields<IUpdateHotelDTO>(req.body, {
+                const body: any = req.body as any;
+                hotelData = extractMultipartFields<IUpdateHotelDTO>(body, {
                     price: 'number',
                     location_id: 'number',
                     rating: 'number',
@@ -201,6 +212,20 @@ export class HotelController {
                     amenities: 'array',
                     roomTypes: 'json',
                 });
+                // Handle image file upload
+                if (body.image && typeof body.image !== 'string') {
+                    const file: any = body.image;
+                    const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
+                    const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
+                    hotelData.image = res.url;
+                }
+                // Handle logo file upload
+                if (body.logo && typeof body.logo !== 'string') {
+                    const logoFile: any = body.logo;
+                    const buffer: Buffer = logoFile.toBuffer ? await logoFile.toBuffer() : Buffer.from([]);
+                    const res = await this.r2Client.uploadFileToR2(buffer, logoFile.filename || 'logo', logoFile.mimetype || 'application/octet-stream');
+                    hotelData.logo = res.url;
+                }
             } else {
                 hotelData = req.body as IUpdateHotelDTO;
             }
