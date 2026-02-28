@@ -7,15 +7,15 @@ const isProduction = process.env.NODE_ENV === "production";
 // For production, we need to use the compiled JS files
 const entities = isProduction
   ? [
-    join(__dirname, "../../src/modules/user/entity/user/*.js"),
-    join(__dirname, "../../src/modules/user/entity/article/*.js"),
-    join(__dirname, "../../src/modules/user/entity/location/*.js"),
-    join(__dirname, "../../src/modules/user/entity/media/*.js"),
-    join(__dirname, "../../src/modules/user/entity/address/*.js"),
-    join(__dirname, "../../src/modules/user/entity/images/*.js"),
-    join(__dirname, "../../src/modules/user/entity/business/*.js"),
-    join(__dirname, "../../src/modules/user/entity/ads/*.js"),
-    join(__dirname, "../../src/modules/user/entity/subscription-plan.entity.js"),
+    join(__dirname, "../modules/user/entity/user/*.js"),
+    join(__dirname, "../modules/user/entity/article/*.js"),
+    join(__dirname, "../modules/user/entity/location/*.js"),
+    join(__dirname, "../modules/user/entity/media/*.js"),
+    join(__dirname, "../modules/user/entity/address/*.js"),
+    join(__dirname, "../modules/user/entity/images/*.js"),
+    join(__dirname, "../modules/user/entity/business/*.js"),
+    join(__dirname, "../modules/user/entity/ads/*.js"),
+    join(__dirname, "../modules/user/entity/subscription-plan.entity.js"),
   ]
   : [
     // Development: use TypeScript files with relative paths
@@ -31,13 +31,15 @@ const entities = isProduction
   ];
 
 
+const shouldSynchronize = process.env.DB_SYNCHRONIZE === "true";
+
 export const AppDataSource = new DataSource(
   CONFIG.db.url
     ? {
       type: "postgres",
       url: CONFIG.db.url,
       entities: entities,
-      synchronize: false,
+      synchronize: shouldSynchronize,
       migrations: ["src/migrations/**/*.ts"],
       logging: false,
     }
@@ -49,7 +51,7 @@ export const AppDataSource = new DataSource(
       password: CONFIG.db.password,
       database: CONFIG.db.database,
       entities: entities,
-      synchronize: false,
+      synchronize: shouldSynchronize,
       migrations: ["src/migrations/**/*.ts"],
       logging: false,
     }

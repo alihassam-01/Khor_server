@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner, TableColumn, Table, TableForeignKey } from "typeorm";
 
-export class AddAdManagementFields1737193000000 implements MigrationInterface {
+export class AddAdManagementFields1768752000000 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Add new columns to hotels table
         await queryRunner.addColumns("hotels", [
