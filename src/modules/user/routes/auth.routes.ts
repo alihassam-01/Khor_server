@@ -6,7 +6,7 @@ import "fastify"; // important!
 import { Repository } from "typeorm";
 import { User, CustomerProfile, Vendor } from "../entity";
 import { AppDataSource } from "../../../config/ormconfig";
-import { loginSchema, registerSchema, resendVerificationEmailSchema, resetPasswordSchema, verifyEmailSchema } from "../schemas/auth.schema";
+import { loginSchema, registerSchema, resendVerificationEmailSchema, resetPasswordSchema, verifyEmailSchema, googleVerifySchema } from "../schemas/auth.schema";
 
 
 declare module "fastify" {
@@ -53,5 +53,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
     "/auth/reset-password",
     { schema: resetPasswordSchema },
     authController.resetPassword.bind(authController)
+  );
+
+  // Google OAuth — verify ID token from frontend and return JWT
+  fastify.post(
+    "/auth/google/verify",
+    { schema: googleVerifySchema },
+    authController.handleGoogleVerify.bind(authController)
   );
 }

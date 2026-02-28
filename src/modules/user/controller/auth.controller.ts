@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "../service/auth.service";
 import { UserType } from "../entity/ENUM/enum";
-import { ILoginDto, IRegisterDto, IResendVerificationEmailDto, IResetPasswordDto, IVerifyEmailQuery } from "../dtos/auth.dto";
+import { ILoginDto, IRegisterDto, IResendVerificationEmailDto, IResetPasswordDto, IVerifyEmailQuery, IGoogleVerifyDto } from "../dtos/auth.dto";
 import { logError } from "../../../lib/logger";
 
 export class AuthController {
@@ -98,6 +98,24 @@ export class AuthController {
     } catch (error: any) {
       logError(error, 'Password reset');
       reply.code(400).send({ error: error.message });
+    }
+  }
+
+  async handleGoogleVerify(
+    req: FastifyRequest<{
+      Body: IGoogleVerifyDto;
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const { accessToken, userType } = req.body;
+      const { UserType } = await import('../entity/ENUM/enum');
+      const preferredType = userType === 'customer' ? UserType.CUSTOMER : UserType.VENDOR;
+      const result = await this.authService.googleLoginOrRegister(accessToken, preferredType);
+      reply.send(result);
+    } catch (error: any) {
+      logError(error, 'Google OAuth verify');
+      reply.code(401).send({ error: error.message });
     }
   }
 }

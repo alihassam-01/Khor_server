@@ -28,3 +28,8 @@ export interface IResetPasswordDto {
     newPassword: string;
     confirmPassword: string;
 }
+
+export interface IGoogleVerifyDto {
+    accessToken: string;
+    userType?: 'vendor' | 'customer';
+}

@@ -201,7 +201,20 @@ export class AuthService {
       where: { email },
       relations: ["vendor", "customerProfile"],
     });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!user) {
+      logError(new Error(`Login failed for email: ${email}`), 'User login');
+      throw new AppError("Invalid email or password", 401, ErrorCodes.INVALID_CREDENTIALS);
+    }
+
+    if (user.authProvider !== 'local' || !user.password) {
+      throw new AppError(
+        "This account uses Google sign-in. Please sign in with Google.",
+        401,
+        ErrorCodes.INVALID_CREDENTIALS
+      );
+    }
+
+    if (!(await bcrypt.compare(password, user.password))) {
       logError(new Error(`Login failed for email: ${email}`), 'User login');
       throw new AppError("Invalid email or password", 401, ErrorCodes.INVALID_CREDENTIALS);
     }
@@ -282,5 +295,106 @@ export class AuthService {
     logInfo(`Password reset successfully for user: ${email}`);
 
     return { success: true, message: 'Password has been reset successfully' };
+  }
+
+  // Google OAuth — verify access token via userinfo endpoint and return JWT
+  async googleLoginOrRegister(
+    accessToken: string,
+    preferredUserType: UserType = UserType.VENDOR
+  ): Promise<{ token: string; isNewUser: boolean }> {
+    // Fetch user info from Google userinfo endpoint
+    let googleUser: { sub: string; email: string; name?: string; picture?: string; email_verified?: boolean };
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error(`Google userinfo responded with ${res.status}`);
+      googleUser = await res.json();
+    } catch (err: any) {
+      logError(err, 'Google OAuth - userinfo fetch');
+      throw new AppError('Invalid or expired Google token', 401, ErrorCodes.INVALID_CREDENTIALS);
+    }
+
+    if (!googleUser.email) {
+      throw new AppError('Could not retrieve email from Google account', 400, ErrorCodes.INVALID_CREDENTIALS);
+    }
+
+    const { email, sub: googleId, name: googleName, picture } = googleUser;
+
+    const profileIMAGES = [
+      'https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png',
+      'https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/lion.png',
+      'https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/cat.png',
+    ];
+
+    let existingUser = await this.userRepository.findOne({
+      where: [{ googleId }, { email }],
+      relations: ['vendor', 'customerProfile'],
+    });
+
+    let isNewUser = false;
+
+    if (!existingUser) {
+      // New user — create account
+      isNewUser = true;
+      existingUser = await this.userRepository.manager.transaction(async (em) => {
+        const newUser = this.userRepository.create({
+          email,
+          googleId,
+          authProvider: 'google',
+          userType: preferredUserType,
+          isVerified: true,
+        });
+        await em.save(User, newUser);
+
+        const displayName = googleName || email.split('@')[0];
+        const avatar = picture || profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
+
+        if (preferredUserType === UserType.VENDOR) {
+          const vendor = this.vendorRepository.create({ user: newUser, username: displayName, profile_picture: avatar });
+          await em.save(Vendor, vendor);
+        } else {
+          const profile = this.customerProfileRepository.create({ user: newUser, username: displayName, profile_picture: avatar });
+          await em.save(CustomerProfile, profile);
+        }
+
+        logInfo(`New user registered via Google OAuth: ${email}`);
+        return newUser;
+      });
+
+      // Reload with relations
+      existingUser = (await this.userRepository.findOne({
+        where: { id: existingUser.id },
+        relations: ['vendor', 'customerProfile'],
+      }))!;
+    } else if (!existingUser.googleId) {
+      // Existing email/password user — link Google account
+      existingUser.googleId = googleId;
+      if (!existingUser.isVerified) existingUser.isVerified = true;
+      await this.userRepository.save(existingUser);
+      logInfo(`Google account linked for existing user: ${email}`);
+    }
+
+    if (!CONFIG.jwt.secret) {
+      throw new Error('JWT_SECRET is not configured');
+    }
+
+    const name =
+      existingUser.userType === UserType.VENDOR
+        ? existingUser.vendor?.username ?? googleName ?? 'Unknown'
+        : existingUser.customerProfile?.username ?? googleName ?? 'Unknown';
+
+    const token = jwt.sign(
+      {
+        userId: existingUser.id,
+        userType: existingUser.userType,
+        name,
+        vendorId: existingUser.userType === UserType.VENDOR ? existingUser.vendor?.id : undefined,
+      },
+      CONFIG.jwt.secret as string,
+      { expiresIn: '7d' }
+    );
+
+    return { token, isNewUser };
   }
 }

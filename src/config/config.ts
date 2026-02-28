@@ -31,6 +31,9 @@ export const CONFIG = {
   web_domain: {
     url: process.env.WEB_DOMAIN,
   },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+  },
   server: {
     port: Number(process.env.PORT) || 5000,
     host: process.env.SERVER_HOST || "localhost",

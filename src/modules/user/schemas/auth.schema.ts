@@ -56,3 +56,14 @@ export const resetPasswordSchema = {
         }
     }
 };
+
+export const googleVerifySchema = {
+    body: {
+        type: 'object',
+        required: ['accessToken'],
+        properties: {
+            accessToken: { type: 'string' },
+            userType: { type: 'string', enum: ['vendor', 'customer'] }
+        }
+    }
+};

@@ -230,6 +230,10 @@ export class UserService {
       throw new NotFoundError("User not found.");
     }
 
+    if (!user.password) {
+      throw new ValidationError("This account uses Google sign-in and does not have a password. Use 'Forgot Password' to set one.");
+    }
+
     // Verify current password (assuming passwords are hashed)
     const isMatch = await this.authService.comparePassword(
       currentPassword,

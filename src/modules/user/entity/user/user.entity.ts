@@ -12,8 +12,14 @@ export class User {
   @Column({ unique: true })
   email!: string;
 
-  @Column()
-  password!: string; // Will be hashed
+  @Column({ nullable: true })
+  password?: string; // Will be hashed (null for OAuth users)
+
+  @Column({ nullable: true })
+  googleId?: string;
+
+  @Column({ default: 'local' })
+  authProvider: string = 'local';
 
   @Column({ type: 'enum', enum: UserType })
   userType!: UserType;
