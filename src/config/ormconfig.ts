@@ -31,6 +31,10 @@ const entities = isProduction
   ];
 
 
+const migrations = isProduction
+  ? [join(__dirname, "../migrations/*.js")]
+  : ["src/migrations/**/*.ts"];
+  
 const shouldSynchronize = process.env.DB_SYNCHRONIZE === "true";
 
 export const AppDataSource = new DataSource(
@@ -40,7 +44,7 @@ export const AppDataSource = new DataSource(
       url: CONFIG.db.url,
       entities: entities,
       synchronize: shouldSynchronize,
-      migrations: ["src/migrations/**/*.ts"],
+      migrations: migrations,
       logging: false,
     }
     : {
@@ -52,7 +56,7 @@ export const AppDataSource = new DataSource(
       database: CONFIG.db.database,
       entities: entities,
       synchronize: shouldSynchronize,
-      migrations: ["src/migrations/**/*.ts"],
+      migrations: migrations,
       logging: false,
     }
 );
