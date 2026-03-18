@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ArticleService } from '../service/article.service';
 import { R2ClientService } from '../service/r2client.service';
+import { extractMultipartFields, isMultipartRequest } from '../../../common/utils/multipart.util';
 
 export class ArticleController {
   private r2ClientService: R2ClientService;
@@ -11,56 +12,54 @@ export class ArticleController {
 
   async createArticle(req: FastifyRequest, reply: FastifyReply) {
     try {
-      // Parse form fields and handle multiple image files (up to 3)
-      const fields: any = {};
-      const imageUrls: string[] = [];
-      const parts = req.parts();
+      const contentType = req.headers['content-type'] || '';
+      let articleData: any = {};
 
-      for await (const part of parts) {
-        if (part.type === 'file' && part.fieldname === 'images') {
-          if (imageUrls.length >= 3) {
-            continue; // Skip if we already have 3 images
+      if (isMultipartRequest(contentType as string)) {
+        const body: any = req.body as any;
+        const imageUrls: string[] = [];
+
+        // Extract plain field values from multipart body
+        const fields = extractMultipartFields<any>(body, {
+          location_id: 'number',
+          tags: 'array',
+        });
+
+        // Handle image uploads from multipart body (supports single or multiple files)
+        const imagesRaw = body?.images;
+        if (imagesRaw) {
+          const images = Array.isArray(imagesRaw) ? imagesRaw : [imagesRaw];
+          for (const image of images) {
+            if (imageUrls.length >= 3) break;
+            if (image && typeof image !== 'string' && typeof image.toBuffer === 'function') {
+              const buffer: Buffer = await image.toBuffer();
+              const result = await this.r2ClientService.uploadFileToR2(
+                buffer,
+                image.filename || 'image',
+                image.mimetype || 'application/octet-stream'
+              );
+              imageUrls.push(result.url);
+            }
           }
+        }
 
-          // Convert stream to buffer
-          const chunks: Buffer[] = [];
-          for await (const chunk of part.file) {
-            chunks.push(chunk);
+        articleData = {
+          ...fields,
+          image_urls: imageUrls.length > 0 ? imageUrls : undefined,
+        };
+      } else {
+        articleData = req.body as any;
+        if (articleData?.tags && typeof articleData.tags === 'string') {
+          try {
+            articleData.tags = JSON.parse(articleData.tags);
+          } catch {
+            articleData.tags = articleData.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
           }
-          const buffer = Buffer.concat(chunks);
-
-          // Upload to R2
-          const result = await this.r2ClientService.uploadFileToR2(
-            buffer,
-            part.filename,
-            part.mimetype
-          );
-          imageUrls.push(result.url);
-        } else if (part.type === 'field') {
-          // @ts-ignore
-          fields[part.fieldname] = part.value;
+        }
+        if (articleData?.location_id) {
+          articleData.location_id = Number(articleData.location_id);
         }
       }
-
-      // Parse tags if it's a string
-      if (fields.tags && typeof fields.tags === 'string') {
-        try {
-          fields.tags = JSON.parse(fields.tags);
-        } catch {
-          fields.tags = fields.tags.split(',').map((t: string) => t.trim());
-        }
-      }
-
-      // Convert location_id to number
-      if (fields.location_id) {
-        fields.location_id = Number(fields.location_id);
-      }
-
-      // Add uploaded image URLs to article data
-      const articleData = {
-        ...fields,
-        image_urls: imageUrls.length > 0 ? imageUrls : undefined,
-      };
 
       const article = await this.articleService.createArticle(articleData);
       reply.code(201).send(article);
@@ -72,9 +71,7 @@ export class ArticleController {
 
   async getArticleById(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     try {
-      console.log("getArticleById: ", req.params.id)
       const article = await this.articleService.getArticleById(Number(req.params.id));
-      console.log("getArticleByIdafter:")
 
       if (!article) {
         return reply.code(404).send({ message: 'Article not found' });
@@ -105,62 +102,49 @@ export class ArticleController {
     try {
       const articleId = Number(req.params.id);
 
-      // Check if request is multipart (has files)
       const contentType = req.headers['content-type'] || '';
       let articleData: any = {};
-      const imageUrls: string[] = [];
 
-      if (contentType.includes('multipart/form-data')) {
-        // Handle multipart form data with files
-        const parts = req.parts();
+      if (isMultipartRequest(contentType as string)) {
+        const body: any = req.body as any;
+        const imageUrls: string[] = [];
 
-        for await (const part of parts) {
-          if (part.type === 'file' && part.fieldname === 'images') {
-            if (imageUrls.length >= 3) {
-              continue; // Skip if we already have 3 images
+        articleData = extractMultipartFields<any>(body, {
+          location_id: 'number',
+          tags: 'array',
+        });
+
+        const imagesRaw = body?.images;
+        if (imagesRaw) {
+          const images = Array.isArray(imagesRaw) ? imagesRaw : [imagesRaw];
+          for (const image of images) {
+            if (imageUrls.length >= 3) break;
+            if (image && typeof image !== 'string' && typeof image.toBuffer === 'function') {
+              const buffer: Buffer = await image.toBuffer();
+              const result = await this.r2ClientService.uploadFileToR2(
+                buffer,
+                image.filename || 'image',
+                image.mimetype || 'application/octet-stream'
+              );
+              imageUrls.push(result.url);
             }
-
-            // Convert stream to buffer
-            const chunks: Buffer[] = [];
-            for await (const chunk of part.file) {
-              chunks.push(chunk);
-            }
-            const buffer = Buffer.concat(chunks);
-
-            // Upload to R2
-            const result = await this.r2ClientService.uploadFileToR2(
-              buffer,
-              part.filename,
-              part.mimetype
-            );
-            imageUrls.push(result.url);
-          } else if (part.type === 'field') {
-            // @ts-ignore
-            articleData[part.fieldname] = part.value;
           }
         }
 
-        // Parse tags if it's a string
-        if (articleData.tags && typeof articleData.tags === 'string') {
-          try {
-            articleData.tags = JSON.parse(articleData.tags);
-          } catch {
-            articleData.tags = articleData.tags.split(',').map((t: string) => t.trim());
-          }
-        }
-
-        // Convert location_id to number
-        if (articleData.location_id) {
-          articleData.location_id = Number(articleData.location_id);
-        }
-
-        // Add uploaded image URLs if any
-        if (imageUrls.length > 0) {
-          articleData.image_urls = imageUrls;
-        }
+        if (imageUrls.length > 0) articleData.image_urls = imageUrls;
       } else {
         // Handle regular JSON body
         articleData = req.body;
+        if (articleData?.tags && typeof articleData.tags === 'string') {
+          try {
+            articleData.tags = JSON.parse(articleData.tags);
+          } catch {
+            articleData.tags = articleData.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+          }
+        }
+        if (articleData?.location_id) {
+          articleData.location_id = Number(articleData.location_id);
+        }
       }
 
       const article = await this.articleService.updateArticle(articleId, articleData);

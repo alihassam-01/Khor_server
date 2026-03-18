@@ -37,6 +37,9 @@ export class ArticleService {
     };
   }
   async createArticle(articleData: any): Promise<IArticleDTO> {
+    if (!articleData || !articleData.title) {
+      throw new Error('Article title is required');
+    }
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -343,6 +346,7 @@ export class ArticleService {
   }
 
   private generateSlug(text: string): string {
+    if (!text || typeof text !== 'string') return '';
     return text
       .toLowerCase()
       .replace(/[^\w\s-]/g, "") // Remove non-word chars

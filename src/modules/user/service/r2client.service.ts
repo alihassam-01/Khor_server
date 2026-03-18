@@ -52,13 +52,37 @@ export class R2ClientService {
     originalName: string,
     mimetype: string
   ) => {
-    const extension = path.extname(originalName);
+    // If image, process to WebP and resize; otherwise upload as-is
+    let outBuffer = fileBuffer;
+    let outMimetype = mimetype;
+    let extension = path.extname(originalName) || '';
+
+    if (mimetype && mimetype.startsWith('image/')) {
+      try {
+        // load sharp dynamically so TS doesn't fail if dependency isn't installed yet
+        const sharpModule = await import('sharp');
+        const sharpFn = (sharpModule && (sharpModule.default || sharpModule)) as any;
+        outBuffer = await sharpFn(fileBuffer)
+          .resize({ width: 1600, withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toBuffer();
+        outMimetype = 'image/webp';
+        extension = '.webp';
+      } catch (err) {
+        // If processing fails or `sharp` isn't installed, fall back to original buffer
+        console.warn('[R2] Image processing failed or sharp not installed — uploading original', err);
+        outBuffer = fileBuffer;
+        outMimetype = mimetype;
+        extension = path.extname(originalName) || '';
+      }
+    }
+
     const key = `uploads/${uuidv4()}${extension}`;
     const command = new PutObjectCommand({
       Bucket: this.getBucketName(),
       Key: key,
-      Body: fileBuffer,
-      ContentType: mimetype,
+      Body: outBuffer,
+      ContentType: outMimetype,
     });
     await this.r2Client.send(command);
     const url = `${this.getBucketUrl()}/${key}`;
