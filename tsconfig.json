@@ -29,6 +29,6 @@
       "noImplicitReturns": true,           // Require explicit returns
       "noFallthroughCasesInSwitch": true   // Prevent switch case fallthrough
     },
-    "include": ["src/**/*.ts", "src/config/ormconfig.js"],            // Files to compile
+    "include": ["src/**/*.ts", "src/**/*.d.ts", "src/config/ormconfig.js"],            // Files to compile
     "exclude": ["node_modules", "tests"]   // Excluded directories
   }
