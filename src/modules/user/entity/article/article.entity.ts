@@ -6,7 +6,6 @@ import {
   UpdateDateColumn,
   OneToOne,
   JoinColumn,
-  Index,
   OneToMany,
   BeforeInsert,
   BeforeUpdate,
@@ -68,8 +67,10 @@ export class Article {
   location_id!: number | null;
 
   @Column("text", { select: false })
-  @Index("fulltext_index", { fulltext: true })
   fulltext_index!: string;
+
+  @Column("tsvector", { nullable: true, select: false })
+  search_vector!: string | null;
 
   @BeforeInsert()
   @BeforeUpdate()

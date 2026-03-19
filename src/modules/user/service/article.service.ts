@@ -3,7 +3,6 @@ import { Article, Tag, ArticleTag } from "../entity/article";
 import { Location } from "../entity/location";
 import { IArticleDTO } from "../dtos/article.dto";
 import { LocationHelperService } from "./helper/location-helper.service";
-import { ILike } from "typeorm";
 // import { LocationCategory } from "../entity/location-category.entity";
 // import { In } from 'typeorm';
 // import {Media} from '../entity/media.entity';
@@ -320,23 +319,31 @@ export class ArticleService {
   }
 
   /**
-   * Search articles by title, excerpt, or content
+   * Search articles using PostgreSQL full-text search and rank by relevance.
    */
   async searchArticles(term: string): Promise<Article[]> {
-    const articles = await this.articleRepository.find({
-      where: [
-        { title: ILike(`%${term}%`) },
-        { excerpt: ILike(`%${term}%`) },
-        { content: ILike(`%${term}%`) },
-      ],
-      relations: [
-        "articleTags",
-        "location",
-        "location.categoryMappings",
-        "location.attributes",
-      ],
-      order: { published_at: "DESC" },
-    });
+    const normalizedTerm = (term || "").trim();
+    if (!normalizedTerm) {
+      return [];
+    }
+
+    const articles = await this.articleRepository
+      .createQueryBuilder("article")
+      .leftJoinAndSelect("article.articleTags", "articleTags")
+      .leftJoinAndSelect("article.location", "location")
+      .leftJoinAndSelect("location.categoryMappings", "locationCategoryMappings")
+      .leftJoinAndSelect("location.attributes", "locationAttributes")
+      .addSelect(
+        `ts_rank_cd(article.search_vector, websearch_to_tsquery('english', :term))`,
+        "rank"
+      )
+      .where(
+        `article.search_vector @@ websearch_to_tsquery('english', :term)`,
+        { term: normalizedTerm }
+      )
+      .orderBy("rank", "DESC")
+      .addOrderBy("article.published_at", "DESC")
+      .getMany();
 
     // Enrich articles with location data
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
