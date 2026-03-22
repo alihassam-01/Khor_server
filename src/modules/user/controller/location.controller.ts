@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { LocationService } from "../service/location.service";
-import { ICreateCityDto, ICreateLocationDto } from "../dtos/location.dto";
+import { ICreateLocationDto } from "../dtos/location.dto";
+import { LocationType } from "../entity/ENUM/enum";
 
 export class LocationController {
   constructor(
@@ -19,22 +20,23 @@ export class LocationController {
     }
   }
 
-  async createCity(
-    req: FastifyRequest<{ Body: ICreateCityDto }>,
-    reply: FastifyReply
-  ) {
+  async getAllCities(_: FastifyRequest, reply: FastifyReply) {
     try {
-      const city = await this.locationService.createCity(req.body);
-      reply.code(201).send(city);
+      const cities = await this.locationService.getAllCities();
+      reply.send(cities);
     } catch (error: any) {
       this.handleError(error, reply);
     }
   }
 
-  async getAllCities(_: FastifyRequest, reply: FastifyReply) {
+  async getLocationsByType(
+    req: FastifyRequest<{ Params: { type: string } }>,
+    reply: FastifyReply
+  ) {
     try {
-      const cities = await this.locationService.getAllCities();
-      reply.send(cities);
+      const type = req.params.type as LocationType;
+      const locations = await this.locationService.getLocationsByType(type);
+      reply.send(locations);
     } catch (error: any) {
       this.handleError(error, reply);
     }
@@ -85,7 +87,6 @@ export class LocationController {
     reply: FastifyReply
   ) {
     try {
-      console.log("update location: ", req.body);
       const updated = await this.locationService.updateLocation(
         Number(req.params.id),
         req.body

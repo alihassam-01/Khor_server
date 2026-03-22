@@ -118,4 +118,14 @@ export class AuthController {
       reply.code(401).send({ error: error.message });
     }
   }
+
+  async me(req: FastifyRequest, reply: FastifyReply) {
+    try {
+      const user = await this.authService.getCurrentUser(req.user.userId);
+      reply.send(user);
+    } catch (error: any) {
+      logError(error, 'Get current user');
+      reply.code(error.statusCode || 400).send({ error: error.message });
+    }
+  }
 }

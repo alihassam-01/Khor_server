@@ -397,4 +397,28 @@ export class AuthService {
 
     return { token, isNewUser };
   }
+
+  async getCurrentUser(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ["vendor", "customerProfile"],
+    });
+
+    if (!user) {
+      throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
+    }
+
+    const username =
+      user.userType === UserType.VENDOR
+        ? user.vendor?.username
+        : user.customerProfile?.username;
+
+    return {
+      userId: user.id,
+      email: user.email,
+      username: username ?? "Unknown",
+      userType: user.userType,
+      vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
+    };
+  }
 }

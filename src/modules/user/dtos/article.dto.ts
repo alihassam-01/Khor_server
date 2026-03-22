@@ -13,5 +13,15 @@ export interface IArticleDTO {
         location_id: number;
         name: string;
     };
+    city?: {
+        location_id: number;
+        name: string;
+        type?: string;
+    } | null;
+    locality?: {
+        location_id: number;
+        name: string;
+        type?: string;
+    } | null;
     tags: string[];
 }

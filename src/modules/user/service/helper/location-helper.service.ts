@@ -1,15 +1,12 @@
 import { AppDataSource } from "../../../../config/ormconfig";
-import { City } from "../../entity/address";
-import { In, Repository } from "typeorm";
 import { LocationService } from "../../../user/service";
 import { Location } from "../../entity/location";
+import { LocationType } from "../../entity/ENUM/enum";
 
 export class LocationHelperService {
-  private cityRepository: Repository<City>;
   private locationService: LocationService;
 
   constructor() {
-    this.cityRepository = AppDataSource.getRepository(City);
     this.locationService = new LocationService(AppDataSource);
   }
 
@@ -32,7 +29,7 @@ export class LocationHelperService {
     const hierarchy = await this.locationService.getLocationHierarchy(
       entity.address.location
     );
-    const city = await this.findCityInHierarchy(hierarchy);
+    const city = this.findCityInHierarchy(hierarchy);
     const locality = this.findLocalityInHierarchy(hierarchy, city);
 
     return {
@@ -61,10 +58,7 @@ export class LocationHelperService {
       // Skip if already cached
       if (cityCache.has(locationId)) {
         const cachedCity = cityCache.get(locationId);
-        if (
-          cachedCity &&
-          !cities.some((c) => c.city_id === cachedCity.city_id)
-        ) {
+        if (cachedCity && !cities.some((c) => c.location_id === cachedCity.location_id)) {
           cities.push(cachedCity);
         }
         continue;
@@ -79,7 +73,7 @@ export class LocationHelperService {
       const city = await this.findCityInHierarchy(hierarchy);
       if (city) {
         cityCache.set(locationId, city);
-        if (!cities.some((c) => c.city_id === city.city_id)) {
+        if (!cities.some((c) => c.location_id === city.location_id)) {
           cities.push(city);
         }
       } else {
@@ -170,17 +164,12 @@ export class LocationHelperService {
       );
     });
 
-    // 4. Batch fetch cities for all these locations
-    const cities = await this.cityRepository.find({
-      where: { location: { location_id: In(Array.from(allLocationIdsInHierarchies)) } },
-      relations: ["location"],
-    });
 
-    const cityMap = new Map<number, City>(); // location_id -> City
-    cities.forEach((city) => {
-      if (city.location) {
-        cityMap.set(city.location.location_id, city);
-      }
+    // For each hierarchy, find the city node
+    const cityMapByHierarchy = new Map<number, Location | null>();
+    hierarchyMap.forEach((hierarchy, id) => {
+      const cityNode = hierarchy.find((n: Location) => n.location_type === LocationType.CITY) || null;
+      cityMapByHierarchy.set(id, cityNode);
     });
 
     // 5. Enrich properties using in-memory data
@@ -192,31 +181,20 @@ export class LocationHelperService {
       const locationId = property.address.location.location_id;
       const hierarchy = hierarchyMap.get(locationId) || [];
 
-      // Find city in hierarchy
-      let city = null;
-      for (const node of hierarchy) {
-        if (cityMap.has(node.location_id)) {
-          city = { ...cityMap.get(node.location_id), type: "city" };
-          break;
-        }
-      }
+      const cityNode = cityMapByHierarchy.get(locationId) || null;
+      const city = cityNode ? { ...cityNode, type: "city" } : null;
 
-      // Find locality
       let locality = null;
       if (city) {
         const cityIndex = hierarchy.findIndex(
-          (node) => node.location_id === city.location?.location_id
+          (node: Location) => node.location_id === cityNode?.location_id
         );
         if (cityIndex !== -1 && hierarchy[cityIndex + 1]) {
           locality = { ...hierarchy[cityIndex + 1], type: "locality" };
         }
       }
 
-      return {
-        ...property,
-        city,
-        locality,
-      };
+      return { ...property, city, locality };
     });
   }
 
@@ -262,26 +240,17 @@ export class LocationHelperService {
         h.forEach((node) => allHierarchyIds.add(node.location_id))
       );
 
-      // 4. Fetch cities
-      const cities = await this.cityRepository.find({
-        where: { location: { location_id: In(Array.from(allHierarchyIds)) } },
-        relations: ["location"],
-      });
-      const cityMap = new Map<number, City>();
-      cities.forEach((c) => {
-        if (c.location) cityMap.set(c.location.location_id, c);
+      // 4. Find cities using location_type
+      const cityMapBatch = new Map<number, Location | null>();
+      hierarchyMap.forEach((hierarchy, locationId) => {
+        const cityNode = hierarchy.find((n: Location) => n.location_type === LocationType.CITY) || null;
+        cityMapBatch.set(locationId, cityNode);
       });
 
       // 5. Update cache
-      hierarchyMap.forEach((hierarchy, locationId) => {
-        let city = null;
-        for (const node of hierarchy) {
-          if (cityMap.has(node.location_id)) {
-            city = { ...cityMap.get(node.location_id), type: "city" };
-            break;
-          }
-        }
-        cityCache.set(locationId, city);
+      hierarchyMap.forEach((_hierarchy, locationId) => {
+        const cityNode = cityMapBatch.get(locationId) || null;
+        cityCache.set(locationId, cityNode ? { ...cityNode, type: "city" } : null);
       });
     }
 
@@ -305,16 +274,12 @@ export class LocationHelperService {
    * @param hierarchy The location hierarchy array
    * @returns City information if found, otherwise null
    */
-  private async findCityInHierarchy(hierarchy: any[]): Promise<any | null> {
-    for (const node of hierarchy) {
-      const foundCity = await this.cityRepository.findOne({
-        where: { location_id: node.location_id },
-      });
-      if (foundCity) {
-        return { ...foundCity, type: "city" };
-      }
-    }
-    return null;
+  /**
+   * Finds the city in a location hierarchy using location_type
+   */
+  private findCityInHierarchy(hierarchy: Location[]): Location | null {
+    const cityNode = hierarchy.find((node) => node.location_type === LocationType.CITY);
+    return cityNode ? { ...cityNode, type: "city" } as any : null;
   }
 
   /**
@@ -323,10 +288,7 @@ export class LocationHelperService {
    * @param city The city object found in the hierarchy
    * @returns Locality information if found, otherwise null
    */
-  private findLocalityInHierarchy(
-    hierarchy: any[],
-    city: any | null
-  ): any | null {
+  private findLocalityInHierarchy(hierarchy: any[], city: any | null): any | null {
     if (!city) return null;
 
     const cityIndex = hierarchy.findIndex(
@@ -354,7 +316,7 @@ export class LocationHelperService {
     }
 
     const hierarchy = await this.locationService.getLocationHierarchy(location);
-    const city = await this.findCityInHierarchy(hierarchy);
+    const city = this.findCityInHierarchy(hierarchy);
     const locality = this.findLocalityInHierarchy(hierarchy, city);
 
     return {
@@ -379,7 +341,7 @@ export class LocationHelperService {
     }
 
     const hierarchy = await this.locationService.getLocationHierarchy(location);
-    const city = await this.findCityInHierarchy(hierarchy);
+    const city = this.findCityInHierarchy(hierarchy);
     const locality = this.findLocalityInHierarchy(hierarchy, city);
 
     return { city, locality };

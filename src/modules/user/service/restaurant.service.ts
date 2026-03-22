@@ -7,6 +7,8 @@ import {
     IUpdateRestaurantDTO,
 } from "../dtos/restaurant.dto";
 import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { R2ClientService } from "./r2client.service";
+import { logError } from "../../../lib/logger";
 
 export class RestaurantService {
     private restaurantRepository = AppDataSource.getRepository(Restaurant);
@@ -209,16 +211,26 @@ export class RestaurantService {
             restaurant.rating = restaurantData.rating;
         if (restaurantData.reviews !== undefined)
             restaurant.reviews = restaurantData.reviews;
-        if (restaurantData.image !== undefined)
+        const r2Client = new R2ClientService();
+        const imagesToDelete: string[] = [];
+
+        if (restaurantData.image !== undefined && restaurantData.image !== restaurant.image) {
+            if (restaurant.image) imagesToDelete.push(restaurant.image);
             restaurant.image = restaurantData.image;
+        }
         if (restaurantData.phone !== undefined)
             restaurant.phone = restaurantData.phone;
         if (restaurantData.whatsapp !== undefined)
             restaurant.whatsapp = restaurantData.whatsapp;
         if (restaurantData.description !== undefined)
             restaurant.description = restaurantData.description;
-        if (restaurantData.menu_images !== undefined)
-            restaurant.menu_images = restaurantData.menu_images;
+        if (restaurantData.menu_images !== undefined) {
+            const oldImages = restaurant.menu_images || [];
+            const newImages = restaurantData.menu_images || [];
+            const removedMenuImages = oldImages.filter(img => !newImages.includes(img));
+            imagesToDelete.push(...removedMenuImages);
+            restaurant.menu_images = newImages;
+        }
         if (restaurantData.is_active !== undefined)
             restaurant.is_active = restaurantData.is_active;
         if (restaurantData.is_featured !== undefined)
@@ -249,6 +261,11 @@ export class RestaurantService {
         }
 
         const updatedRestaurant = await this.restaurantRepository.save(restaurant);
+
+        if (imagesToDelete.length > 0) {
+            r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Restaurant image cleanup on update'));
+        }
+
         return this.toRestaurantDTO(updatedRestaurant);
     }
 
@@ -261,7 +278,18 @@ export class RestaurantService {
             throw new Error("Restaurant not found");
         }
 
+        const imagesToDelete: string[] = [];
+        if (restaurant.image) imagesToDelete.push(restaurant.image);
+        if (restaurant.menu_images && restaurant.menu_images.length > 0) {
+            imagesToDelete.push(...restaurant.menu_images);
+        }
+
         await this.restaurantRepository.remove(restaurant);
+
+        if (imagesToDelete.length > 0) {
+            const r2Client = new R2ClientService();
+            r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Restaurant image cleanup on delete'));
+        }
     }
 
     // ========== ADMIN METHODS ==========

@@ -15,7 +15,7 @@ export class City {
   @Column({ name: 'location_id', nullable: true })
   location_id!: number;
 
-  @OneToOne(() => Location, { nullable: true })
+  @OneToOne(() => Location, { nullable: true, eager: false })
   @JoinColumn({ name: 'location_id' })
   location!: Location;
 }

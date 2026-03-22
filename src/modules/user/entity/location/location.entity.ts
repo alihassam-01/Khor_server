@@ -7,11 +7,10 @@ import {
   OneToMany,
   ManyToOne,
   JoinColumn,
-  OneToOne,
 } from "typeorm";
 import { LocationAttributes, LocationCategoryMapping } from "../location";
-// import { PackageLocation } from "../package";
-import { Address, City } from "../address";
+import { LocationType } from "../ENUM/enum";
+import { Address } from "../address";
 
 @Entity("location")
 export class Location {
@@ -32,6 +31,13 @@ export class Location {
 
   @Column("boolean", { default: false })
   is_deleted!: boolean;
+
+  @Column({
+    type: "enum",
+    enum: LocationType,
+    default: LocationType.PLACE,
+  })
+  location_type!: LocationType;
 
   @CreateDateColumn({ type: "timestamp" })
   created_at!: Date;
@@ -62,7 +68,4 @@ export class Location {
 
   @OneToMany(() => Address, (address) => address.location)
   addresses!: Address[];
-
-  @OneToOne(() => City, (city) => city.location)
-  city!: City;
 }

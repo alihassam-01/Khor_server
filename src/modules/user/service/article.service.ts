@@ -3,6 +3,8 @@ import { Article, Tag, ArticleTag } from "../entity/article";
 import { Location } from "../entity/location";
 import { IArticleDTO } from "../dtos/article.dto";
 import { LocationHelperService } from "./helper/location-helper.service";
+import { R2ClientService } from "./r2client.service";
+import { logError } from "../../../lib/logger";
 // import { LocationCategory } from "../entity/location-category.entity";
 // import { In } from 'typeorm';
 // import {Media} from '../entity/media.entity';
@@ -12,6 +14,7 @@ export class ArticleService {
   private locationRepository = AppDataSource.getRepository(Location);
   private tagRepository = AppDataSource.getRepository(Tag);
   private locationHelper = new LocationHelperService();
+  private r2ClientService = new R2ClientService();
   // private categoryRepository = AppDataSource.getRepository(LocationCategory);
   // private mediaRepository = AppDataSource.getRepository(Media);
 
@@ -120,7 +123,7 @@ export class ArticleService {
     }
   }
 
-  async getArticleById(articleId: number): Promise<Article | null> {
+  async getArticleById(articleId: number): Promise<any | null> {
     const article = await this.articleRepository.findOne({
       where: { article_id: articleId },
       relations: [
@@ -130,13 +133,14 @@ export class ArticleService {
         "location.categoryMappings",
       ],
     });
+    if (!article) return null;
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
       [article]
     );
     return enrichedArticles[0] || null;
   }
 
-  async getArticleBySlug(slug: string): Promise<Article | null> {
+  async getArticleBySlug(slug: string): Promise<any | null> {
     const article = await this.articleRepository.findOne({
       where: { slug },
       relations: [
@@ -146,6 +150,7 @@ export class ArticleService {
         "location.categoryMappings",
       ],
     });
+    if (!article) return null;
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
       [article]
     );
@@ -225,10 +230,20 @@ export class ArticleService {
 
       // Support updating image(s) in update flow if provided
       if (articleData.image_urls || articleData.image_url) {
+        const oldImages = article.image_urls || [];
+        let newImages: string[] = [];
+
         if (Array.isArray(articleData.image_urls)) {
-          article.image_urls = articleData.image_urls;
+          newImages = articleData.image_urls;
         } else if (typeof articleData.image_url === 'string') {
-          article.image_urls = [articleData.image_url];
+          newImages = [articleData.image_url];
+        }
+
+        const imagesToDelete = oldImages.filter(img => !newImages.includes(img));
+        article.image_urls = newImages;
+
+        if (imagesToDelete.length > 0) {
+          this.r2ClientService.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Article image cleanup on update'));
         }
       }
 
@@ -255,7 +270,13 @@ export class ArticleService {
       throw new Error("Article not found");
     }
 
+    const imagesToDelete = article.image_urls || [];
+    
     await this.articleRepository.remove(article);
+
+    if (imagesToDelete.length > 0) {
+      this.r2ClientService.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Article image cleanup on delete'));
+    }
   }
 
   async listArticles(options: {
@@ -265,7 +286,7 @@ export class ArticleService {
     placeId?: number;
     categoryId?: number;
     tag?: string;
-  }): Promise<{ articles: Article[]; count: number }> {
+  }): Promise<{ articles: any[]; count: number }> {
     const { page = 1, limit = 10, status, placeId, tag } = options;
     const skip = (page - 1) * limit;
 
@@ -297,11 +318,15 @@ export class ArticleService {
 
     const [articles, count] = await query.getManyAndCount();
 
-    return { articles, count };
+    const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
+      articles
+    );
+
+    return { articles: enrichedArticles, count };
   }
 
   // get all articles
-  async getAllArticles(): Promise<Article[]> {
+  async getAllArticles(): Promise<any[]> {
     const articles = await this.articleRepository.find({
       relations: [
         "articleTags",
@@ -321,7 +346,7 @@ export class ArticleService {
   /**
    * Search articles using PostgreSQL full-text search and rank by relevance.
    */
-  async searchArticles(term: string): Promise<Article[]> {
+  async searchArticles(term: string): Promise<any[]> {
     const normalizedTerm = (term || "").trim();
     if (!normalizedTerm) {
       return [];

@@ -46,7 +46,5 @@ export function getEnabledFeatures(): string[] {
  * Log enabled features on startup
  */
 export function logEnabledFeatures(): void {
-    const enabled = getEnabledFeatures();
-    console.log('🚀 Enabled features:', enabled.join(', '));
-    console.log('📝 Running in Phase 1 mode (Ads + Articles + Locations + Tags)');
+    // Enabled features logging removed as requested
 }

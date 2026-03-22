@@ -7,6 +7,7 @@ import { Repository } from "typeorm";
 import { User, CustomerProfile, Vendor } from "../entity";
 import { AppDataSource } from "../../../config/ormconfig";
 import { loginSchema, registerSchema, resendVerificationEmailSchema, resetPasswordSchema, verifyEmailSchema, googleVerifySchema } from "../schemas/auth.schema";
+import { authenticate } from "../../../middlewares/authenticate";
 
 
 declare module "fastify" {
@@ -60,5 +61,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
     "/auth/google/verify",
     { schema: googleVerifySchema },
     authController.handleGoogleVerify.bind(authController)
+  );
+
+  // Get current user info
+  fastify.get(
+    "/auth/me",
+    { preHandler: [authenticate] },
+    authController.me.bind(authController)
   );
 }

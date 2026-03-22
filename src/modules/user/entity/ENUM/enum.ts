@@ -49,4 +49,11 @@ export enum PackageStatus {
     RUNNING = 'running',
     PAUSED = 'paused'
   }
+
+  export enum LocationType {
+    REGION = 'region',
+    CITY = 'city',
+    LOCALITY = 'locality',
+    PLACE = 'place',
+  }
   

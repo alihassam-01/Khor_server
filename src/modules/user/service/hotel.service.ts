@@ -11,6 +11,7 @@ import {
 import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
 import { RoomTypeEnum } from "../entity/ENUM/ad.enum";
 import { logError, logInfo } from "../../../lib/logger";
+import { R2ClientService } from "./r2client.service";
 
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
@@ -303,12 +304,25 @@ export class HotelService {
         if (hotelData.price !== undefined) hotel.price = hotelData.price;
         if (hotelData.location_name !== undefined)
             hotel.location_name = hotelData.location_name;
-        if (hotelData.image !== undefined) hotel.image = hotelData.image;
+
+        // Image cleanup logic
+        const r2Client = new R2ClientService();
+        const imagesToDelete: string[] = [];
+
+        if (hotelData.image !== undefined && hotelData.image !== hotel.image) {
+            if (hotel.image) imagesToDelete.push(hotel.image);
+            hotel.image = hotelData.image;
+        }
+
         if (hotelData.description !== undefined)
             hotel.description = hotelData.description;
         if (hotelData.amenities !== undefined)
             hotel.amenities = hotelData.amenities;
-        if (hotelData.logo !== undefined) hotel.logo = hotelData.logo;
+
+        if (hotelData.logo !== undefined && hotelData.logo !== hotel.logo) {
+            if (hotel.logo) imagesToDelete.push(hotel.logo);
+            hotel.logo = hotelData.logo;
+        }
         if (hotelData.verified !== undefined) hotel.verified = hotelData.verified;
         if (hotelData.phone !== undefined) hotel.phone = hotelData.phone;
         if (hotelData.whatsapp !== undefined) hotel.whatsapp = hotelData.whatsapp;
@@ -352,6 +366,11 @@ export class HotelService {
         }
 
         const updatedHotel = await this.hotelRepository.save(hotel);
+
+        if (imagesToDelete.length > 0) {
+            r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Hotel image cleanup on update'));
+        }
+
         return this.toHotelDTO(updatedHotel);
     }
 
@@ -362,7 +381,16 @@ export class HotelService {
             throw new Error("Hotel not found");
         }
 
+        const imagesToDelete: string[] = [];
+        if (hotel.image) imagesToDelete.push(hotel.image);
+        if (hotel.logo) imagesToDelete.push(hotel.logo);
+
         await this.hotelRepository.remove(hotel);
+
+        if (imagesToDelete.length > 0) {
+            const r2Client = new R2ClientService();
+            r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Hotel image cleanup on delete'));
+        }
     }
 
     // ========== ADMIN METHODS ==========
