@@ -10,6 +10,8 @@ export interface IRestaurantDTO {
     rating: number;
     reviews: number;
     image: string;
+    images: string[];
+    active: boolean;
     links: {
         phone: string | null;
         whatsapp: string | null;
@@ -36,6 +38,7 @@ export interface ICreateRestaurantDTO {
     rating?: number;
     reviews?: number;
     image: string;
+    images?: string[];
     phone?: string | null;
     whatsapp?: string | null;
     facebook?: string | null;

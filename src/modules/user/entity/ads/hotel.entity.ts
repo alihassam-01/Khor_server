@@ -14,7 +14,7 @@ import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 
 @Entity("hotels")
 export class Hotel {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn("uuid")
     id!: string;
 
     @Column("varchar", { length: 255 })

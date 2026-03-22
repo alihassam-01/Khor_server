@@ -13,6 +13,7 @@ import { restaurantRoutes } from "./restaurant.routes";
 import { adsRoutes } from "./ads.routes";
 import { adPaymentRoutes } from "./ad-payment.routes";
 import { subscriptionPlanRoutes } from "./subscription-plan.routes";
+import propertyRoutes from "./property.routes";
 
 
 // Core routes - always enabled
@@ -26,6 +27,7 @@ const routes = [
   adsRoutes, // Public ads endpoint
   adPaymentRoutes, // Admin payment management
   subscriptionPlanRoutes, // Public subscription plans
+  propertyRoutes, // Generic property routes
 ];
 
 

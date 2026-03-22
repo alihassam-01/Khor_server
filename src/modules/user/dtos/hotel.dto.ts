@@ -24,6 +24,8 @@ export interface IHotelDTO {
     price: number;
     location: string;
     image: string;
+    images: string[];
+    active: boolean;
     description: string;
     amenities: string[];
     logo: string | null;
@@ -53,6 +55,7 @@ export interface ICreateHotelDTO {
     price: number;
     location_name: string;
     image: string;
+    images?: string[];
     description: string;
     amenities: string[];
     logo?: string | null;
@@ -64,6 +67,7 @@ export interface ICreateHotelDTO {
     website?: string | null;
     location_id: number;
     is_active?: boolean;
+    is_featured?: boolean;
     detailed_reviews?: IReviewDTO[];
     roomTypes?: IRoomTypeDTO[];
     vendor_id?: string;

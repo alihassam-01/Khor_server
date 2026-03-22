@@ -60,6 +60,37 @@ export class AdPaymentService {
         }
 
         if (updateData.payment_status !== undefined) {
+            if (updateData.payment_status === PaymentStatus.COMPLETED && payment.payment_status !== PaymentStatus.COMPLETED) {
+                const { Hotel } = await import("@modules/user/entity/ads/hotel.entity");
+                const { Restaurant } = await import("@modules/user/entity/ads/restaurant.entity");
+                const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
+                
+                if (payment.ad_type === AdType.HOTEL) {
+                    const hotelRepo = AppDataSource.getRepository(Hotel);
+                    const hotel = await hotelRepo.findOne({ where: { id: payment.ad_id }});
+                    if (hotel) {
+                        const durationKey = hotel.subscription_type.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+                        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30; // fallback
+                        const now = new Date();
+                        hotel.is_active = true;
+                        hotel.is_paid = true;
+                        hotel.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                        await hotelRepo.save(hotel);
+                    }
+                } else if (payment.ad_type === AdType.RESTAURANT) {
+                    const restRepo = AppDataSource.getRepository(Restaurant);
+                    const rest = await restRepo.findOne({ where: { id: payment.ad_id }});
+                    if (rest) {
+                        const durationKey = rest.subscription_type.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+                        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+                        const now = new Date();
+                        rest.is_active = true;
+                        rest.is_paid = true;
+                        rest.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                        await restRepo.save(rest);
+                    }
+                }
+            }
             payment.payment_status = updateData.payment_status;
         }
         if (updateData.payment_method !== undefined) {

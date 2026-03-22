@@ -13,6 +13,13 @@ export class RestaurantController {
 
     async createRestaurant(req: FastifyRequest, reply: FastifyReply) {
         try {
+            const authUserId = req.user?.id || req.user?.userId;
+            if (!authUserId) {
+                return reply.code(401).send({
+                    message: "Authentication required. Please log in.",
+                });
+            }
+
             const contentType = (req.headers['content-type'] || '') as string;
             let restaurantData: ICreateRestaurantDTO;
 
@@ -89,6 +96,9 @@ export class RestaurantController {
             } else {
                 restaurantData = req.body as ICreateRestaurantDTO;
             }
+
+            // Do not accept vendor_id from client payload; store authenticated user id.
+            restaurantData.vendor_id = authUserId;
 
             const restaurant = await this.restaurantService.createRestaurant(
                 restaurantData
@@ -243,7 +253,9 @@ export class RestaurantController {
     async getAdsByVendor(req: FastifyRequest, reply: FastifyReply) {
         try {
             const { vendorId } = req.params as { vendorId: string };
-            const restaurants = await this.restaurantService.getAdsByVendor(vendorId);
+            const authUserId = req.user?.id || req.user?.userId;
+            const effectiveVendorId = authUserId || vendorId;
+            const restaurants = await this.restaurantService.getAdsByVendor(effectiveVendorId);
             reply.send(restaurants);
         } catch (error: any) {
             reply

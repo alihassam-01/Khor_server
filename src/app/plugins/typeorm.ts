@@ -12,6 +12,5 @@ export default fp(async () => {
     logError(err, "TypeORM Data Source initialization");
     process.exit(1);
   });
-  await AppDataSource.synchronize();
 
 });

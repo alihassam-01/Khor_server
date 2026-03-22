@@ -75,4 +75,14 @@ export class AdsService {
             },
         };
     }
+
+    async getAdsByVendor(vendorId: string): Promise<any[]> {
+        const [hotels, restaurants] = await Promise.all([
+            this.hotelService.getAdsByVendor(vendorId),
+            this.restaurantService.getAdsByVendor(vendorId),
+        ]);
+
+        // Merge and return as a single array of properties
+        return [...hotels, ...restaurants];
+    }
 }

@@ -48,4 +48,18 @@ export class AdsController {
                 .send({ message: error.message || "Failed to fetch ads" });
         }
     }
+
+    async getAdsByVendor(req: FastifyRequest, reply: FastifyReply) {
+        try {
+            const { vendorId } = req.params as { vendorId: string };
+            const authUserId = req.user?.id || req.user?.userId;
+            const effectiveVendorId = authUserId || vendorId;
+            const ads = await this.adsService.getAdsByVendor(effectiveVendorId);
+            reply.send(ads);
+        } catch (error: any) {
+            reply
+                .code(500)
+                .send({ message: error.message || "Failed to fetch vendor ads" });
+        }
+    }
 }

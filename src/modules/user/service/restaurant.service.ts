@@ -1,5 +1,6 @@
 import { AppDataSource } from "@config/ormconfig";
 import { Restaurant, RestaurantReview } from "@modules/user/entity/ads";
+import { Vendor } from "@modules/user/entity/business/vendor-entity";
 import { Location } from "@modules/user/entity/location";
 import {
     IRestaurantDTO,
@@ -8,11 +9,31 @@ import {
 } from "../dtos/restaurant.dto";
 import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 import { R2ClientService } from "./r2client.service";
-import { logError } from "@lib/logger";
+import { logError, logInfo } from "@lib/logger";
 
 export class RestaurantService {
     private restaurantRepository = AppDataSource.getRepository(Restaurant);
     private locationRepository = AppDataSource.getRepository(Location);
+    private vendorRepository = AppDataSource.getRepository(Vendor);
+
+    // DB FK expects restaurants.vendor_id -> user.id. Accept either user id or legacy vendor profile id.
+    private async resolveVendorUserId(candidateId?: string): Promise<string | undefined> {
+        if (!candidateId) return undefined;
+
+        const vendor = await this.vendorRepository.findOne({
+            where: [{ id: candidateId }, { user: { id: candidateId } }],
+            relations: ["user"],
+        });
+
+        if (!vendor) {
+            logInfo("No vendor profile found for provided vendor_id, using value as user id", {
+                providedId: candidateId,
+            });
+            return candidateId;
+        }
+
+        return vendor.user?.id;
+    }
 
 
     private toRestaurantDTO(restaurant: Restaurant): IRestaurantDTO {
@@ -25,6 +46,8 @@ export class RestaurantService {
             rating: Number(restaurant.rating),
             reviews: restaurant.reviews,
             image: restaurant.image,
+            images: restaurant.image ? [restaurant.image] : [],
+            active: restaurant.is_active,
             links: {
                 phone: restaurant.phone,
                 whatsapp: restaurant.whatsapp,
@@ -76,6 +99,9 @@ export class RestaurantService {
             restaurant.rating = restaurantData.rating || 0;
             restaurant.reviews = restaurantData.reviews || 0;
             restaurant.image = restaurantData.image;
+
+            restaurant.vendor_id = await this.resolveVendorUserId(restaurantData.vendor_id);
+
             restaurant.phone = restaurantData.phone || null;
             restaurant.whatsapp = restaurantData.whatsapp || null;
             restaurant.facebook = restaurantData.facebook || null;
@@ -94,25 +120,60 @@ export class RestaurantService {
                     ? restaurantData.is_featured
                     : false;
 
-            // Handle subscription and vendor
-            restaurant.vendor_id = restaurantData.vendor_id;
+            // Preserve resolved user id for subscription/payment ownership.
 
             // Default to FREE if not specified
             const subscriptionType = restaurantData.subscription_type || SubscriptionType.FREE;
             restaurant.subscription_type = subscriptionType;
 
-            // Set is_paid based on subscription type
-            restaurant.is_paid = subscriptionType !== SubscriptionType.FREE;
+            if (subscriptionType === SubscriptionType.FREE && !restaurantData.is_featured) {
+                restaurant.is_paid = false;
+                restaurant.is_active = restaurantData.is_active !== undefined ? restaurantData.is_active : true;
 
-            // Calculate expiration date
-            const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
-            const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-            const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey];
+                const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
+                const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+                const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
-            const now = new Date();
-            restaurant.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                const now = new Date();
+                restaurant.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+            } else {
+                restaurant.is_paid = false;
+                restaurant.is_active = false;
+                restaurant.expires_at = null as any;
+            }
 
             const savedRestaurant = await queryRunner.manager.save(restaurant);
+
+            // Generate Payment Intent for non-free ads
+            const vendorId = restaurant.vendor_id;
+            if ((subscriptionType !== SubscriptionType.FREE || restaurant.is_featured) && vendorId) {
+                const { SubscriptionPlanService } = await import("./subscription-plan.service");
+                const planService = new SubscriptionPlanService();
+                const plan = await planService.getPlanByType(subscriptionType);
+                let totalAmount = plan ? plan.price : 0;
+                
+                if (restaurant.is_featured) {
+                    const featuredPlan = await planService.getPlanByType("featured" as any);
+                    totalAmount += featuredPlan ? featuredPlan.price : 1000;
+                }
+                
+                if (totalAmount > 0) {
+                    const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
+                    const { AdType, PaymentStatus, PaymentMethod } = await import("@modules/user/entity/ENUM/ad-payment.enum");
+                    
+                    const payment = new AdPayment();
+                    payment.ad_id = savedRestaurant.id;
+                    payment.ad_type = AdType.RESTAURANT;
+                    payment.vendor_id = vendorId;
+                    payment.amount = totalAmount;
+                    payment.payment_method = PaymentMethod.BANK_TRANSFER;
+                    payment.transaction_id = "PENDING_APPROVAL";
+                    payment.notes = `Auto-generated payment intent for Restaurant: ${restaurantData.name}`;
+                    payment.payment_status = PaymentStatus.PENDING;
+                    
+                    await queryRunner.manager.save(AdPayment, payment);
+                }
+            }
 
             // Create reviews if provided
             if (
@@ -355,8 +416,13 @@ export class RestaurantService {
     }
 
     async getAdsByVendor(vendorId: string): Promise<IRestaurantDTO[]> {
+        const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
+        if (!resolvedVendorUserId) {
+            return [];
+        }
+
         const restaurants = await this.restaurantRepository.find({
-            where: { vendor_id: vendorId },
+            where: { vendor_id: resolvedVendorUserId },
             relations: ["location", "detailed_reviews"],
             order: { created_at: "DESC" },
         });

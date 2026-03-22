@@ -12,7 +12,7 @@ export class HotelController {
     async createHotel(req: FastifyRequest, reply: FastifyReply) {
         try {
             // const userType = req.user?.userType;
-            const userId = req.user?.userId;
+            const userId = req.user?.id || req.user?.userId;
 
             if (!userId) {
                 logError(new Error('Unauthenticated hotel creation attempt'), 'Hotel creation');
@@ -145,6 +145,9 @@ export class HotelController {
                 
                 hotelData = body as ICreateHotelDTO;
             }
+
+            // Never trust vendor_id from payload; always use authenticated user id.
+            hotelData.vendor_id = userId;
 
             logInfo('Creating hotel', { name: hotelData.name, location_id: hotelData.location_id });
             const hotel = await this.hotelService.createHotel(hotelData);
@@ -293,7 +296,9 @@ export class HotelController {
     async getAdsByVendor(req: FastifyRequest, reply: FastifyReply) {
         try {
             const { vendorId } = req.params as { vendorId: string };
-            const hotels = await this.hotelService.getAdsByVendor(vendorId);
+            const authUserId = req.user?.id || req.user?.userId;
+            const effectiveVendorId = authUserId || vendorId;
+            const hotels = await this.hotelService.getAdsByVendor(effectiveVendorId);
             reply.send(hotels);
         } catch (error: any) {
             reply

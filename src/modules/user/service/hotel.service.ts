@@ -1,8 +1,7 @@
 import { AppDataSource } from "@config/ormconfig";
 import { Hotel, HotelReview, HotelRoomType } from "@modules/user/entity/ads";
+import { Vendor } from "@modules/user/entity/business/vendor-entity";
 import { Location } from "@modules/user/entity/location";
-import { User } from "@modules/user/entity/user";
-import { Vendor } from "@modules/user/entity";
 import {
     IHotelDTO,
     ICreateHotelDTO,
@@ -16,8 +15,26 @@ import { R2ClientService } from "./r2client.service";
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
     private locationRepository = AppDataSource.getRepository(Location);
-    private userRepository = AppDataSource.getRepository(User);
     private vendorRepository = AppDataSource.getRepository(Vendor);
+
+    // DB FK expects hotels.vendor_id -> user.id. Accept either user id or legacy vendor profile id.
+    private async resolveVendorUserId(candidateId?: string): Promise<string | undefined> {
+        if (!candidateId) return undefined;
+
+        const vendor = await this.vendorRepository.findOne({
+            where: [{ id: candidateId }, { user: { id: candidateId } }],
+            relations: ["user"],
+        });
+
+        if (!vendor) {
+            logInfo("No vendor profile found for provided vendor_id, using value as user id", {
+                providedId: candidateId,
+            });
+            return candidateId;
+        }
+
+        return vendor.user?.id;
+    }
 
     /**
      * Validate that a room type is a valid enum value
@@ -48,6 +65,8 @@ export class HotelService {
             price: Number(hotel.price),
             location: hotel.location_name,
             image: hotel.image,
+            images: hotel.image ? [hotel.image] : [],
+            active: hotel.is_active,
             description: hotel.description,
             amenities: hotel.amenities,
             logo: hotel.logo,
@@ -99,90 +118,83 @@ export class HotelService {
                 throw new Error(`Location with id ${hotelData.location_id} not found. Please select a valid location.`);
             }
 
-            // Verify vendor exists if vendor_id is provided
-            let actualVendorUserId: string | undefined = undefined;
-            
-            if (hotelData.vendor_id) {
-                // First, try to find it as a vendor profile ID
-                const vendorProfile = await this.vendorRepository.findOne({
-                    where: { id: hotelData.vendor_id },
-                    relations: ['user'],
-                });
-
-                if (vendorProfile) {
-                    // vendor_id was the vendor profile ID, use the associated user ID
-                    actualVendorUserId = vendorProfile.user.id;
-                    logInfo('Resolved vendor profile ID to user ID', { 
-                        vendorProfileId: hotelData.vendor_id, 
-                        userId: actualVendorUserId 
-                    });
-                } else {
-                    // Try to find it as a user ID directly
-                    const vendor = await this.userRepository.findOne({
-                        where: { id: hotelData.vendor_id },
-                        relations: ['vendor'],
-                    });
-
-                    if (!vendor) {
-                        logError(new Error(`Neither vendor profile nor user found: ${hotelData.vendor_id}`), 'Hotel creation');
-                        throw new Error(
-                            `Vendor with id ${hotelData.vendor_id} not found. ` +
-                            `Please provide either a valid vendor profile ID or user ID.`
-                        );
-                    }
-
-                    // Check if user is actually a vendor
-                    if (!vendor.vendor) {
-                        logError(new Error(`User is not a vendor: ${hotelData.vendor_id}`), 'Hotel creation');
-                        throw new Error(
-                            `User ${hotelData.vendor_id} is not a vendor. Only vendors can create hotels.`
-                        );
-                    }
-
-                    actualVendorUserId = vendor.id;
-                }
-            }
-
-            // Create hotel
+            // Create hotel entity
             const hotel = new Hotel();
             hotel.name = hotelData.name;
-            hotel.rating = hotelData.rating || 0;
-            hotel.reviews = hotelData.reviews || 0;
             hotel.price = hotelData.price;
             hotel.location_name = hotelData.location_name;
-            hotel.image = hotelData.image;
             hotel.description = hotelData.description;
-            hotel.amenities = hotelData.amenities;
+            hotel.image = hotelData.image;
             hotel.logo = hotelData.logo || null;
+            hotel.amenities = hotelData.amenities || [];
+            hotel.location_id = hotelData.location_id;
+            hotel.location = location;
+
+            hotel.vendor_id = await this.resolveVendorUserId(hotelData.vendor_id);
+
+            hotel.rating = hotelData.rating || 0;
+            hotel.reviews = hotelData.reviews || 0;
             hotel.verified = hotelData.verified || false;
             hotel.phone = hotelData.phone || null;
             hotel.whatsapp = hotelData.whatsapp || null;
             hotel.facebook = hotelData.facebook || null;
             hotel.instagram = hotelData.instagram || null;
             hotel.website = hotelData.website || null;
-            hotel.location = location;
-            hotel.location_id = hotelData.location_id;
-            hotel.is_active = hotelData.is_active !== undefined ? hotelData.is_active : true;
+            hotel.is_featured = hotelData.is_featured || false;
 
-            // Handle subscription and vendor - use the resolved user ID
-            hotel.vendor_id = actualVendorUserId;
-
-            // Default to FREE if not specified
+            // Handle subscription logic
             const subscriptionType = hotelData.subscription_type || SubscriptionType.FREE;
             hotel.subscription_type = subscriptionType;
 
-            // Set is_paid based on subscription type
-            hotel.is_paid = subscriptionType !== SubscriptionType.FREE;
+            if (subscriptionType === SubscriptionType.FREE && !hotel.is_featured) {
+                hotel.is_paid = false;
+                hotel.is_active = hotelData.is_active !== undefined ? hotelData.is_active : true;
 
-            // Calculate expiration date
-            const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
-            const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-            const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey];
+                const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
+                const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+                const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
-            const now = new Date();
-            hotel.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                const now = new Date();
+                hotel.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+            } else {
+                hotel.is_paid = false;
+                hotel.is_active = false; // Pending payment/admin approval
+                hotel.expires_at = null as any;
+            }
 
             const savedHotel = await queryRunner.manager.save(hotel);
+
+            // Generate Payment Intent for non-free ads
+            const vendorId = hotel.vendor_id;
+            if ((subscriptionType !== SubscriptionType.FREE || hotel.is_featured) && vendorId) {
+                const { SubscriptionPlanService } = await import("./subscription-plan.service");
+                const planService = new SubscriptionPlanService();
+                const plan = await planService.getPlanByType(subscriptionType);
+                let totalAmount = plan ? plan.price : 0;
+
+                if (hotel.is_featured) {
+                    // Try to get featured plan price, or use a default if FEATURED is not a plan type
+                    const featuredPlan = await planService.getPlanByType("featured" as any);
+                    totalAmount += featuredPlan ? featuredPlan.price : 1000;
+                }
+
+                if (totalAmount > 0) {
+                    const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
+                    const { AdType, PaymentStatus, PaymentMethod } = await import("@modules/user/entity/ENUM/ad-payment.enum");
+
+                    const payment = new AdPayment();
+                    payment.ad_id = savedHotel.id;
+                    payment.ad_type = AdType.HOTEL;
+                    payment.vendor_id = vendorId;
+                    payment.amount = totalAmount;
+                    payment.payment_method = PaymentMethod.BANK_TRANSFER;
+                    payment.transaction_id = "PENDING_APPROVAL";
+                    payment.notes = `Auto-generated payment intent for Hotel: ${hotelData.name}`;
+                    payment.payment_status = PaymentStatus.PENDING;
+
+                    await queryRunner.manager.save(AdPayment, payment);
+                }
+            }
 
             // Create reviews if provided
             if (hotelData.detailed_reviews && hotelData.detailed_reviews.length > 0) {
@@ -204,7 +216,7 @@ export class HotelService {
             if (hotelData.roomTypes && hotelData.roomTypes.length > 0) {
                 const roomTypes = hotelData.roomTypes.map((roomTypeData) => {
                     const roomType = new HotelRoomType();
-                    roomType.type = this.validateRoomType(roomTypeData.type); // Validate against enum
+                    roomType.type = this.validateRoomType(roomTypeData.type);
                     roomType.price = roomTypeData.price;
                     roomType.amenities = roomTypeData.amenities;
                     roomType.capacity = roomTypeData.capacity;
@@ -222,17 +234,6 @@ export class HotelService {
         } catch (error: any) {
             await queryRunner.rollbackTransaction();
             logError(error, 'Hotel creation - Database transaction');
-            
-            // Provide more specific error messages
-            if (error.code === '23503') {  // Foreign key violation
-                if (error.constraint === 'FK_c45177ca22887745a108560e181') {
-                    throw new Error(`Invalid vendor_id. The vendor does not exist in the system.`);
-                } else if (error.constraint === 'FK_3bdbe60c176cce275628292a8df') {
-                    throw new Error(`Invalid location_id. The location does not exist.`);
-                }
-                throw new Error(`Foreign key constraint violation: ${error.detail || error.message}`);
-            }
-            
             throw error;
         } finally {
             await queryRunner.release();
@@ -457,8 +458,13 @@ export class HotelService {
     }
 
     async getAdsByVendor(vendorId: string): Promise<IHotelDTO[]> {
+        const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
+        if (!resolvedVendorUserId) {
+            return [];
+        }
+
         const hotels = await this.hotelRepository.find({
-            where: { vendor_id: vendorId },
+            where: { vendor_id: resolvedVendorUserId },
             relations: ["location", "detailed_reviews", "room_types"],
             order: { created_at: "DESC" },
         });

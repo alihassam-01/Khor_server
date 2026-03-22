@@ -35,5 +35,5 @@
       "noFallthroughCasesInSwitch": true   // Prevent switch case fallthrough
     },
     "include": ["src/**/*.ts", "src/**/*.d.ts", "src/config/ormconfig.js"],            // Files to compile
-    "exclude": ["node_modules", "tests"]   // Excluded directories
+    "exclude": ["node_modules", "tests", "dist"]   // Excluded directories
   }
