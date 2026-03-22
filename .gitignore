@@ -18,8 +18,6 @@ npm-debug.log*
 *.tsbuildinfo
 
 # Environment variables
-.env
-.env.*
 !.env.example
 
 # Misc
