@@ -1,4 +1,4 @@
-import { PaymentStatus, PaymentMethod, AdType, SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { PaymentStatus, PaymentMethod, AdType, SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 
 export interface ICreateAdPaymentDTO {
     ad_id: string;

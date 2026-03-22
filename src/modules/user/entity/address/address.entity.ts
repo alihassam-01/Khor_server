@@ -6,8 +6,8 @@ import {
   OneToOne,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { Location } from "../location";
-import { User } from "../user";
+import { Location } from "@modules/user/entity/location";
+import { User } from "@modules/user/entity/user";
 
 @Entity("address")
 export class Address {

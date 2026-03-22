@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { R2ClientService } from "../service";
+import { R2ClientService } from "@modules/user/service";
 import * as fs from "fs";
 export class R2ClientController {
   private r2ClientService: R2ClientService;

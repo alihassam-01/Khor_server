@@ -1,5 +1,5 @@
-import { AppDataSource } from "../../../config/ormconfig";
-import { ArticleTag } from "../entity/article";
+import { AppDataSource } from "@config/ormconfig";
+import { ArticleTag } from "@modules/user/entity/article";
 
 export class ArticleTagService {
   private repo = AppDataSource.getRepository(ArticleTag);

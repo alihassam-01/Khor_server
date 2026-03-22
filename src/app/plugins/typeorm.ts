@@ -1,6 +1,6 @@
 import fp from "fastify-plugin";
-import { AppDataSource } from "../../config/ormconfig";
-import { logError, logInfo } from "../../lib/logger";
+import { AppDataSource } from "@config/ormconfig";
+import { logError, logInfo } from "@lib/logger";
 
 export default fp(async () => {
   await AppDataSource.initialize()

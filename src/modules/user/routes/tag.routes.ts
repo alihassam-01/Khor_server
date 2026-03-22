@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { TagController } from "../../user/controller";
-import { TagService } from "../../user/service";
+import { TagController } from "@modules/user/controller";
+import { TagService } from "@modules/user/service";
 
 export async function tagRoutes(app: FastifyInstance) {
   const controller = new TagController(new TagService());

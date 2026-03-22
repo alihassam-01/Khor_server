@@ -1,11 +1,11 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { UserService } from "../service/user.service";
+import { UserService } from "@modules/user/service/user.service";
 import {
   ValidationError,
   NotFoundError,
   UnauthorizedError,
 } from "../../../constant/error";
-import { logError } from "../../../lib/logger";
+import { logError } from "@lib/logger";
 
 export class UserController {
   async forgotPassword(

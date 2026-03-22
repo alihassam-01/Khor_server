@@ -1,5 +1,5 @@
 import { IReviewDTO } from "./hotel.dto";
-import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 
 export interface IRestaurantDTO {
     id: string;

@@ -1,4 +1,4 @@
-import { IEmailBookingData } from "../../../dtos/bookingConfirmation.dto";
+import { IEmailBookingData } from "@modules/user/dtos/bookingConfirmation.dto";
 
 export function bookingConfirmationEmailTemplate(
   bookingInfo: IEmailBookingData

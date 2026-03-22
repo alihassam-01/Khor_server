@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { EmailConfig } from "../../../../../config/emailConfig/emailConfig";
+import { EmailConfig } from "@config/emailConfig/emailConfig";
 
 export async function sendSMTP({
   to,

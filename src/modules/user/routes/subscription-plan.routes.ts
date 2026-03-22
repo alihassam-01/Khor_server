@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { SubscriptionPlanController } from "../controller/subscription-plan.controller";
+import { SubscriptionPlanController } from "@modules/user/controller/subscription-plan.controller";
 
 export async function subscriptionPlanRoutes(fastify: FastifyInstance) {
     const planController = new SubscriptionPlanController();

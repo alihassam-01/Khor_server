@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { AdsController } from "../controller/ads.controller";
+import { AdsController } from "@modules/user/controller/ads.controller";
 
 export async function adsRoutes(fastify: FastifyInstance) {
     const adsController = new AdsController();

@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { UserController } from "../controller/user.controller";
-import { UserService } from "../service/user.service";
+import { UserController } from "@modules/user/controller/user.controller";
+import { UserService } from "@modules/user/service/user.service";
 import { authenticate } from "middlewares/authenticate";
 
 export default async function userRoutes(fastify: FastifyInstance) {

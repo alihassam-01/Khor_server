@@ -7,7 +7,7 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
 } from "typeorm";
-import { User } from "../user";
+import { User } from "@modules/user/entity/user";
 
 /**
  * Minimal Vendor entity for Phase 1

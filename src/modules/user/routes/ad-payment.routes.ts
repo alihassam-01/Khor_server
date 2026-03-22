@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { AdPaymentController } from "../controller/ad-payment.controller";
+import { AdPaymentController } from "@modules/user/controller/ad-payment.controller";
 
 export async function adPaymentRoutes(fastify: FastifyInstance) {
     const paymentController = new AdPaymentController();

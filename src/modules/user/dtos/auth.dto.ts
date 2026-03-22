@@ -1,4 +1,4 @@
-import { UserType } from "../entity/ENUM/enum";
+import { UserType } from "@modules/user/entity/ENUM/enum";
 
 export interface IRegisterDto {
     email: string;

@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { SendEmail } from "../service/email/sendEmail";
+import { SendEmail } from "@modules/user/service/email/sendEmail";
 
 export class ContactController {
     private sendEmailService: SendEmail;

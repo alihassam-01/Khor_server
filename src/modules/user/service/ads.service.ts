@@ -1,8 +1,8 @@
 import { HotelService } from "./hotel.service";
 import { RestaurantService } from "./restaurant.service";
-import { IAdsResponseDTO } from "../dtos/ads.dto";
-import { IHotelDTO } from "../dtos/hotel.dto";
-import { IRestaurantDTO } from "../dtos/restaurant.dto";
+import { IAdsResponseDTO } from "@modules/user/dtos/ads.dto";
+import { IHotelDTO } from "@modules/user/dtos/hotel.dto";
+import { IRestaurantDTO } from "@modules/user/dtos/restaurant.dto";
 
 export class AdsService {
     private hotelService = new HotelService();

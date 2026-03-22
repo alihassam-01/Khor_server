@@ -1,11 +1,11 @@
-import { AppDataSource } from "../../../config/ormconfig";
-import { AdPayment } from "../entity/ads";
+import { AppDataSource } from "@config/ormconfig";
+import { AdPayment } from "@modules/user/entity/ads";
 import {
     ICreateAdPaymentDTO,
     IUpdateAdPaymentDTO,
     IAdPaymentDTO,
 } from "../dtos/ad-payment.dto";
-import { PaymentStatus, AdType } from "../entity/ENUM/ad-payment.enum";
+import { PaymentStatus, AdType } from "@modules/user/entity/ENUM/ad-payment.enum";
 
 export class AdPaymentService {
     private paymentRepository = AppDataSource.getRepository(AdPayment);

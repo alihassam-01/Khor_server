@@ -1,5 +1,5 @@
 // @modules/user/routes/index.ts
-import { FEATURES } from "../../../config/features.config";
+import { FEATURES } from "@config/features.config";
 import authRoutes from "./auth.routes";
 import locationRoutes from "./location.routes";
 import articleRoutes from "./article.routes";

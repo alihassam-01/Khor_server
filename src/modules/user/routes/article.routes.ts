@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { ArticleService } from "../service/article.service";
-import { ArticleController } from "../controller/article.controller";
+import { ArticleService } from "@modules/user/service/article.service";
+import { ArticleController } from "@modules/user/controller/article.controller";
 
 export default async function articleRoutes(fastify: FastifyInstance) {
   const articleService = new ArticleService();

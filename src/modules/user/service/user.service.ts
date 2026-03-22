@@ -1,12 +1,12 @@
 import { IsNull, Not } from "typeorm";
-import { AppDataSource } from "../../../config/ormconfig";
-import { CustomerProfile, User } from "../entity/user";
-import { Vendor } from "../entity";
-import { IPassData } from "../dtos/user.dto";
+import { AppDataSource } from "@config/ormconfig";
+import { CustomerProfile, User } from "@modules/user/entity/user";
+import { Vendor } from "@modules/user/entity";
+import { IPassData } from "@modules/user/dtos/user.dto";
 import { AuthService } from "./auth.service";
 import { forgotPasswordTemplate } from "./email/templates/forgotPassword";
 import * as jwt from "jsonwebtoken";
-import { UserType } from "../entity/ENUM/enum";
+import { UserType } from "@modules/user/entity/ENUM/enum";
 
 import {
   ValidationError,
@@ -14,8 +14,8 @@ import {
   UnauthorizedError,
 } from "../../../constant/error";
 import { sendEmail } from "./email";
-import { CONFIG } from "../../../config/config";
-import { logInfo } from "../../../lib/logger";
+import { CONFIG } from "@config/config";
+import { logInfo } from "@lib/logger";
 export class UserService {
   async forgotPassword(email: string) {
     // Find user by email

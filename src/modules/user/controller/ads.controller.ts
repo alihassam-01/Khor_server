@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { AdsService } from "../service/ads.service";
+import { AdsService } from "@modules/user/service/ads.service";
 
 export class AdsController {
     private adsService = new AdsService();

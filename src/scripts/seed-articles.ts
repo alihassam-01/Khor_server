@@ -1,6 +1,6 @@
-import { AppDataSource } from "../config/ormconfig";
-import { Article } from "../modules/user/entity/article/article.entity";
-import { Location } from "../modules/user/entity/location/location.entity";
+import { AppDataSource } from "@config/ormconfig";
+import { Article } from "@modules/user/entity/article/article.entity";
+import { Location } from "@modules/user/entity/location/location.entity";
 import { gilgitBaltistanArticles } from "./seeds/data/articles-gilgit-baltistan";
 
 async function seedArticles() {

@@ -1,13 +1,13 @@
-import { AppDataSource } from "../../../config/ormconfig";
-import { Article, Tag, ArticleTag } from "../entity/article";
-import { Location } from "../entity/location";
-import { IArticleDTO } from "../dtos/article.dto";
+import { AppDataSource } from "@config/ormconfig";
+import { Article, Tag, ArticleTag } from "@modules/user/entity/article";
+import { Location } from "@modules/user/entity/location";
+import { IArticleDTO } from "@modules/user/dtos/article.dto";
 import { LocationHelperService } from "./helper/location-helper.service";
 import { R2ClientService } from "./r2client.service";
-import { logError } from "../../../lib/logger";
-// import { LocationCategory } from "../entity/location-category.entity";
+import { logError } from "@lib/logger";
+// import { LocationCategory } from "@modules/user/entity/location-category.entity";
 // import { In } from 'typeorm';
-// import {Media} from '../entity/media.entity';
+// import {Media} from '@modules/user/entity/media.entity';
 
 export class ArticleService {
   private articleRepository = AppDataSource.getRepository(Article);

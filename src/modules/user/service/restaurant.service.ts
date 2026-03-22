@@ -1,14 +1,14 @@
-import { AppDataSource } from "../../../config/ormconfig";
-import { Restaurant, RestaurantReview } from "../entity/ads";
-import { Location } from "../entity/location";
+import { AppDataSource } from "@config/ormconfig";
+import { Restaurant, RestaurantReview } from "@modules/user/entity/ads";
+import { Location } from "@modules/user/entity/location";
 import {
     IRestaurantDTO,
     ICreateRestaurantDTO,
     IUpdateRestaurantDTO,
 } from "../dtos/restaurant.dto";
-import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 import { R2ClientService } from "./r2client.service";
-import { logError } from "../../../lib/logger";
+import { logError } from "@lib/logger";
 
 export class RestaurantService {
     private restaurantRepository = AppDataSource.getRepository(Restaurant);

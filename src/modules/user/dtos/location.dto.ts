@@ -1,5 +1,5 @@
-import { LocationAttributes } from "../entity/location";
-import { LocationType } from "../entity/ENUM/enum";
+import { LocationAttributes } from "@modules/user/entity/location";
+import { LocationType } from "@modules/user/entity/ENUM/enum";
 
 export interface ICreateLocationDto {
   name: string;

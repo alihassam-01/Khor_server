@@ -8,9 +8,9 @@ import {
     JoinColumn,
     OneToMany,
 } from "typeorm";
-import { Location } from "../location";
-import { User } from "../user";
-import { SubscriptionType } from "../ENUM/ad-payment.enum";
+import { Location } from "@modules/user/entity/location";
+import { User } from "@modules/user/entity/user";
+import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 
 @Entity("hotels")
 export class Hotel {

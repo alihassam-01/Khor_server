@@ -1,13 +1,13 @@
 import { FastifyInstance } from "fastify";
-import { AuthController } from "../controller/auth.controller";
-import { AuthService } from "../service/auth.service";
+import { AuthController } from "@modules/user/controller/auth.controller";
+import { AuthService } from "@modules/user/service/auth.service";
 
 import "fastify"; // important!
 import { Repository } from "typeorm";
-import { User, CustomerProfile, Vendor } from "../entity";
-import { AppDataSource } from "../../../config/ormconfig";
-import { loginSchema, registerSchema, resendVerificationEmailSchema, resetPasswordSchema, verifyEmailSchema, googleVerifySchema } from "../schemas/auth.schema";
-import { authenticate } from "../../../middlewares/authenticate";
+import { User, CustomerProfile, Vendor } from "@modules/user/entity";
+import { AppDataSource } from "@config/ormconfig";
+import { loginSchema, registerSchema, resendVerificationEmailSchema, resetPasswordSchema, verifyEmailSchema, googleVerifySchema } from "@modules/user/schemas/auth.schema";
+import { authenticate } from "@middlewares/authenticate";
 
 
 declare module "fastify" {

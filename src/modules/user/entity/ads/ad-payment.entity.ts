@@ -7,8 +7,8 @@ import {
     ManyToOne,
     JoinColumn,
 } from "typeorm";
-import { User } from "../user";
-import { PaymentStatus, PaymentMethod, AdType } from "../ENUM/ad-payment.enum";
+import { User } from "@modules/user/entity/user";
+import { PaymentStatus, PaymentMethod, AdType } from "@modules/user/entity/ENUM/ad-payment.enum";
 
 @Entity("ad_payments")
 export class AdPayment {

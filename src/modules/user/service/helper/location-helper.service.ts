@@ -1,7 +1,7 @@
-import { AppDataSource } from "../../../../config/ormconfig";
-import { LocationService } from "../../../user/service";
-import { Location } from "../../entity/location";
-import { LocationType } from "../../entity/ENUM/enum";
+import { AppDataSource } from "@config/ormconfig";
+import { LocationService } from "@modules/user/service";
+import { Location } from "@modules/user/entity/location";
+import { LocationType } from "@modules/user/entity/ENUM/enum";
 
 export class LocationHelperService {
   private locationService: LocationService;

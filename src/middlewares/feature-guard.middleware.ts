@@ -10,7 +10,7 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { FEATURES, IFeatureFlags } from '../config/features.config';
+import { FEATURES, IFeatureFlags } from '@config/features.config';
 
 /**
  * Creates a feature guard middleware for a specific feature

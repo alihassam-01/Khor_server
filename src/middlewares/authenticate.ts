@@ -1,7 +1,7 @@
 // authMiddleware.ts
 import jwt from "jsonwebtoken";
 import { FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
-import { CONFIG } from "../config/config";
+import { CONFIG } from "@config/config";
 
 declare module "fastify" {
   interface FastifyRequest {

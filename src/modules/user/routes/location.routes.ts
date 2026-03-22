@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
-import { LocationService } from "../service/location.service";
-import { LocationController } from "../controller/location.controller";
-import { AppDataSource } from "../../../config/ormconfig";
+import { LocationService } from "@modules/user/service/location.service";
+import { LocationController } from "@modules/user/controller/location.controller";
+import { AppDataSource } from "@config/ormconfig";
 
 export default async function locationRoutes(fastify: FastifyInstance) {
   const locationService = new LocationService(AppDataSource);

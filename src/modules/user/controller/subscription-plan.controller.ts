@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { SubscriptionPlanService } from "../service/subscription-plan.service";
-import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { SubscriptionPlanService } from "@modules/user/service/subscription-plan.service";
+import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 import {
     ICreateSubscriptionPlanDTO,
     IUpdateSubscriptionPlanDTO,

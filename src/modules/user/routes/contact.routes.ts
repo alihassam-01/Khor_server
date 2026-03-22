@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { ContactController } from "../controller/contact.controller";
+import { ContactController } from "@modules/user/controller/contact.controller";
 
 export async function contactRoutes(fastify: FastifyInstance) {
     const contactController = new ContactController();

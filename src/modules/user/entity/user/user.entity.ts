@@ -1,8 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn } from 'typeorm';
 import { CustomerProfile } from './customer-profile.entity';
-import { UserType } from '../ENUM/enum';
-import { Vendor } from '../business';
-import { Address } from '../address';
+import { UserType } from '@modules/user/entity/ENUM/enum';
+import { Vendor } from '@modules/user/entity/business';
+import { Address } from '@modules/user/entity/address';
 
 @Entity()
 export class User {

@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { ArticleService } from '../service/article.service';
-import { R2ClientService } from '../service/r2client.service';
-import { extractMultipartFields, isMultipartRequest } from '../../../common/utils/multipart.util';
+import { ArticleService } from '@modules/user/service/article.service';
+import { R2ClientService } from '@modules/user/service/r2client.service';
+import { extractMultipartFields, isMultipartRequest } from '@common/utils/multipart.util';
 
 export class ArticleController {
   private r2ClientService: R2ClientService;

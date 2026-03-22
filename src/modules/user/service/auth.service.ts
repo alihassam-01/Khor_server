@@ -1,14 +1,14 @@
 import { Repository } from "typeorm";
-import { User, CustomerProfile, Vendor } from "../entity";
+import { User, CustomerProfile, Vendor } from "@modules/user/entity";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
-import { UserType } from "../entity/ENUM/enum";
-import { CONFIG } from "../../../config/config";
+import { UserType } from "@modules/user/entity/ENUM/enum";
+import { CONFIG } from "@config/config";
 import { sendEmail } from "./email";
 import { accountActivationTemplate } from "./email/templates/accountActivation";
-import { AppError } from "../../../common/errors/AppError";
-import { ErrorCodes } from "../../../common/errors/error-codes";
-import { logError, logInfo } from "../../../lib/logger";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
+import { logError, logInfo } from "@lib/logger";
 
 
 export class AuthService {

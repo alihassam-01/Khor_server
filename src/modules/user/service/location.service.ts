@@ -6,9 +6,9 @@ import {
   LocationCategory,
 } from "../entity/location";
 import { DataSource } from "typeorm";
-import { Address } from "../entity/address";
-import { ICreateLocationDto } from "../dtos/location.dto";
-import { LocationType } from "../entity/ENUM/enum";
+import { Address } from "@modules/user/entity/address";
+import { ICreateLocationDto } from "@modules/user/dtos/location.dto";
+import { LocationType } from "@modules/user/entity/ENUM/enum";
 
 export class LocationService {
   private locationRepository: Repository<Location>;

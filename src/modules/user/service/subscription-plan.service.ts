@@ -1,13 +1,13 @@
-import { AppDataSource } from "../../../config/ormconfig";
-import { SubscriptionPlan } from "../entity/subscription-plan.entity";
-import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { AppDataSource } from "@config/ormconfig";
+import { SubscriptionPlan } from "@modules/user/entity/subscription-plan.entity";
+import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 import {
     ISubscriptionPlanDTO,
     ICreateSubscriptionPlanDTO,
     IUpdateSubscriptionPlanDTO,
     IFeaturedPricingDTO,
 } from "../dtos/subscription-plan.dto";
-import { SUBSCRIPTION_PRICES, FEATURED_AD_PRICE } from "../constant/ad-subscription.constant";
+import { SUBSCRIPTION_PRICES, FEATURED_AD_PRICE } from "@modules/user/constant/ad-subscription.constant";
 
 export class SubscriptionPlanService {
     private planRepository = AppDataSource.getRepository(SubscriptionPlan);

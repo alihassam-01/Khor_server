@@ -1,8 +1,8 @@
-import { AppDataSource } from "../config/ormconfig";
-import { Location } from "../modules/user/entity/location/location.entity";
-import { LocationCategory } from "../modules/user/entity/location/location-category.entity";
-import { LocationCategoryMapping } from "../modules/user/entity/location/location-category-mapping.entity";
-import { LocationAttributes } from "../modules/user/entity/location/location-attributes.entity";
+import { AppDataSource } from "@config/ormconfig";
+import { Location } from "@modules/user/entity/location/location.entity";
+import { LocationCategory } from "@modules/user/entity/location/location-category.entity";
+import { LocationCategoryMapping } from "@modules/user/entity/location/location-category-mapping.entity";
+import { LocationAttributes } from "@modules/user/entity/location/location-attributes.entity";
 import { gilgitBaltistanLocations } from "./seeds/data/gilgit-baltistan";
 
 // Simple slugify helper to avoid external dependency

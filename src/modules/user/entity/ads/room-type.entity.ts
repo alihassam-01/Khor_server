@@ -6,7 +6,7 @@ import {
     JoinColumn,
 } from "typeorm";
 import { Hotel } from "./hotel.entity";
-import { RoomTypeEnum } from "../ENUM/ad.enum";
+import { RoomTypeEnum } from "@modules/user/entity/ENUM/ad.enum";
 
 @Entity("hotel_room_types")
 export class HotelRoomType {

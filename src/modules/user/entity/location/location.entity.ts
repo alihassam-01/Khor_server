@@ -8,9 +8,9 @@ import {
   ManyToOne,
   JoinColumn,
 } from "typeorm";
-import { LocationAttributes, LocationCategoryMapping } from "../location";
-import { LocationType } from "../ENUM/enum";
-import { Address } from "../address";
+import { LocationAttributes, LocationCategoryMapping } from "@modules/user/entity/location";
+import { LocationType } from "@modules/user/entity/ENUM/enum";
+import { Address } from "@modules/user/entity/address";
 
 @Entity("location")
 export class Location {

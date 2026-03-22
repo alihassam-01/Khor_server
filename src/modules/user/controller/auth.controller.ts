@@ -1,8 +1,8 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { AuthService } from "../service/auth.service";
-import { UserType } from "../entity/ENUM/enum";
-import { ILoginDto, IRegisterDto, IResendVerificationEmailDto, IResetPasswordDto, IVerifyEmailQuery, IGoogleVerifyDto } from "../dtos/auth.dto";
-import { logError } from "../../../lib/logger";
+import { AuthService } from "@modules/user/service/auth.service";
+import { UserType } from "@modules/user/entity/ENUM/enum";
+import { ILoginDto, IRegisterDto, IResendVerificationEmailDto, IResetPasswordDto, IVerifyEmailQuery, IGoogleVerifyDto } from "@modules/user/dtos/auth.dto";
+import { logError } from "@lib/logger";
 
 export class AuthController {
   constructor(private readonly authService: AuthService) { }

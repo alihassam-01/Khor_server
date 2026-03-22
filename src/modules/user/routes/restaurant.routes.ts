@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { RestaurantController } from "../controller/restaurant.controller";
-import { authenticate } from "../../../middlewares/authenticate";
+import { RestaurantController } from "@modules/user/controller/restaurant.controller";
+import { authenticate } from "@middlewares/authenticate";
 
 export async function restaurantRoutes(fastify: FastifyInstance) {
     const restaurantController = new RestaurantController();

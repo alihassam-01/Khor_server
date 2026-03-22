@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { ArticleTagController } from "../../user/controller";
-import { ArticleTagService } from "../../user/service";
+import { ArticleTagController } from "@modules/user/controller";
+import { ArticleTagService } from "@modules/user/service";
 
 export async function articleTagRoutes(app: FastifyInstance) {
   const controller = new ArticleTagController(new ArticleTagService());

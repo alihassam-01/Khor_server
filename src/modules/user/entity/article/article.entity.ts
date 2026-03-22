@@ -10,7 +10,7 @@ import {
   BeforeInsert,
   BeforeUpdate,
 } from "typeorm";
-import { Location } from "../location";
+import { Location } from "@modules/user/entity/location";
 import { ArticleTag } from "./article-tags.entity";
 // Optional HTML cleaner
 // import { stripHtml } from "string-strip-html";

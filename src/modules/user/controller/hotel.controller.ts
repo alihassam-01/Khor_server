@@ -1,9 +1,9 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { HotelService } from "../service/hotel.service";
-import { ICreateHotelDTO, IUpdateHotelDTO } from "../dtos/hotel.dto";
-import { R2ClientService } from "../service/r2client.service";
-import { logError, logInfo } from "../../../lib/logger";
-import { extractMultipartFields, isMultipartRequest } from "../../../common/utils/multipart.util";
+import { HotelService } from "@modules/user/service/hotel.service";
+import { ICreateHotelDTO, IUpdateHotelDTO } from "@modules/user/dtos/hotel.dto";
+import { R2ClientService } from "@modules/user/service/r2client.service";
+import { logError, logInfo } from "@lib/logger";
+import { extractMultipartFields, isMultipartRequest } from "@common/utils/multipart.util";
 
 export class HotelController {
     private hotelService = new HotelService();

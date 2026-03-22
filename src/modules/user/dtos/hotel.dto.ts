@@ -1,5 +1,5 @@
-import { RoomTypeEnum } from "../entity/ENUM/ad.enum";
-import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
+import { RoomTypeEnum } from "@modules/user/entity/ENUM/ad.enum";
+import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
 
 export interface IReviewDTO {
     user_name: string;

@@ -20,7 +20,12 @@
         "@app/*": ["app/*"],               // Example: import from '@app/plugins'
         "@modules/*": ["modules/*"],
         "@entity/*": ["modules/user/entity/*"],   // Clean imports like '@modules/user'
-        "@config/*": ["config/*"]        // Clean imports like '@modules/user'
+        "@config/*": ["config/*"],       // Clean imports like '@modules/user'
+        "@lib/*": ["lib/*"],
+        "@common/*": ["common/*"],
+        "@middlewares/*": ["middlewares/*"],
+        "@constant/*": ["constant/*"],
+        "@types/*": ["types/*"]
       },
   
       /* Advanced Checks */

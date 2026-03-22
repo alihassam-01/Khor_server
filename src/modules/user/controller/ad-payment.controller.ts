@@ -1,10 +1,10 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { AdPaymentService } from "../service/ad-payment.service";
+import { AdPaymentService } from "@modules/user/service/ad-payment.service";
 import {
     ICreateAdPaymentDTO,
     IUpdateAdPaymentDTO,
 } from "../dtos/ad-payment.dto";
-import { AdType } from "../entity/ENUM/ad-payment.enum";
+import { AdType } from "@modules/user/entity/ENUM/ad-payment.enum";
 
 export class AdPaymentController {
     private paymentService = new AdPaymentService();

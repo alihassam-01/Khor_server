@@ -1,11 +1,11 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { RestaurantService } from "../service/restaurant.service";
+import { RestaurantService } from "@modules/user/service/restaurant.service";
 import {
     ICreateRestaurantDTO,
     IUpdateRestaurantDTO,
 } from "../dtos/restaurant.dto";
-import { R2ClientService } from "../service/r2client.service";
-import { extractMultipartFields, isMultipartRequest } from "../../../common/utils/multipart.util";
+import { R2ClientService } from "@modules/user/service/r2client.service";
+import { extractMultipartFields, isMultipartRequest } from "@common/utils/multipart.util";
 
 export class RestaurantController {
     private restaurantService = new RestaurantService();

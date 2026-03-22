@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { HotelController } from "../controller/hotel.controller";
-import { authenticate } from "../../../middlewares/authenticate";
+import { HotelController } from "@modules/user/controller/hotel.controller";
+import { authenticate } from "@middlewares/authenticate";
 
 export async function hotelRoutes(fastify: FastifyInstance) {
     const hotelController = new HotelController();

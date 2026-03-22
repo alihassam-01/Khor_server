@@ -1,16 +1,16 @@
-import { AppDataSource } from "../../../config/ormconfig";
-import { Hotel, HotelReview, HotelRoomType } from "../entity/ads";
-import { Location } from "../entity/location";
-import { User } from "../entity/user";
-import { Vendor } from "../entity";
+import { AppDataSource } from "@config/ormconfig";
+import { Hotel, HotelReview, HotelRoomType } from "@modules/user/entity/ads";
+import { Location } from "@modules/user/entity/location";
+import { User } from "@modules/user/entity/user";
+import { Vendor } from "@modules/user/entity";
 import {
     IHotelDTO,
     ICreateHotelDTO,
     IUpdateHotelDTO,
 } from "../dtos/hotel.dto";
-import { SubscriptionType } from "../entity/ENUM/ad-payment.enum";
-import { RoomTypeEnum } from "../entity/ENUM/ad.enum";
-import { logError, logInfo } from "../../../lib/logger";
+import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { RoomTypeEnum } from "@modules/user/entity/ENUM/ad.enum";
+import { logError, logInfo } from "@lib/logger";
 import { R2ClientService } from "./r2client.service";
 
 export class HotelService {

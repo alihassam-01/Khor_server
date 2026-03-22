@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { LocationService } from "../service/location.service";
-import { ICreateLocationDto } from "../dtos/location.dto";
-import { LocationType } from "../entity/ENUM/enum";
+import { LocationService } from "@modules/user/service/location.service";
+import { ICreateLocationDto } from "@modules/user/dtos/location.dto";
+import { LocationType } from "@modules/user/entity/ENUM/enum";
 
 export class LocationController {
   constructor(
