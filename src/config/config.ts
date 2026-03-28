@@ -42,5 +42,6 @@ export const CONFIG = {
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
     bucketName: process.env.R2_BUCKET_NAME || "",
     publicUrl: process.env.R2_PUBLIC_URL || "",
+    maxFileSize: Number(process.env.R2_MAX_FILE_SIZE) || 10 * 1024 * 1024,
   },
 };

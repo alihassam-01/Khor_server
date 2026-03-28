@@ -3,12 +3,14 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { CONFIG } from "@config/config";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import { S3ImagesEntity } from "@modules/user/entity/images/s3Images.entity";
 import { AppDataSource } from "@config/ormconfig";
 import { In } from "typeorm";
+import { IPresignedUrlResponseDTO } from "@modules/user/dtos/r2-presigned.dto";
 
 export class R2ClientService {
   private r2Client = new S3Client({
@@ -124,4 +126,64 @@ export class R2ClientService {
     await this.s3Image.update({ key: In(keys) }, { isDeleted: true });
     return { success: true, message: "File deleted successfully" };
   };
+
+  /**
+   * Generate a presigned URL for direct upload to R2
+   */
+  generatePresignedUrl = async (
+    fileName: string,
+    mimeType: string,
+    folder: string = "uploads"
+  ): Promise<IPresignedUrlResponseDTO> => {
+    const extension = path.extname(fileName) || "";
+    const key = `${folder}/${uuidv4()}${extension}`;
+
+    const command = new PutObjectCommand({
+      Bucket: this.getBucketName(),
+      Key: key,
+      ContentType: mimeType,
+    });
+
+    const uploadUrl = await getSignedUrl(this.r2Client, command, {
+      expiresIn: 600, // 10 minutes
+    });
+
+    const publicUrl = `${this.getBucketUrl()}/${key}`;
+
+    // Track the image in the database
+    const imageEntity = this.s3Image.create({
+      key,
+      url: publicUrl,
+      dateUploaded: new Date(),
+      isDeleted: false,
+    });
+    await this.s3Image.save(imageEntity);
+
+    return { uploadUrl, key, publicUrl };
+  };
+
+  /**
+   * Generate multiple presigned URLs for batch upload
+   */
+  generatePresignedUrls = async (
+    files: Array<{ fileName: string; mimeType: string; folder?: string }>
+  ): Promise<IPresignedUrlResponseDTO[]> => {
+    const results: IPresignedUrlResponseDTO[] = [];
+    for (const file of files) {
+      const result = await this.generatePresignedUrl(
+        file.fileName,
+        file.mimeType,
+        file.folder || "uploads"
+      );
+      results.push(result);
+    }
+    return results;
+  };
+
+  /**
+   * Get the max allowed file size
+   */
+  getMaxFileSize(): number {
+    return CONFIG.r2.maxFileSize;
+  }
 }
