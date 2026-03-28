@@ -3,6 +3,7 @@
       /* Basic Options */
       "target": "ES2022",                  // Modern ECMAScript for Node.js 18+
       "module": "CommonJS",                // Default for Node.js
+      "allowJs": false,                      // Avoid compiling accidental JS files in src/
       "outDir": "./dist",                  // Output directory
       "rootDir": "./src",                  // Source directory
       "strict": true,                      // Enable all strict checks
@@ -34,6 +35,6 @@
       "noImplicitReturns": true,           // Require explicit returns
       "noFallthroughCasesInSwitch": true   // Prevent switch case fallthrough
     },
-    "include": ["src/**/*.ts", "src/**/*.d.ts", "src/config/ormconfig.js"],            // Files to compile
+    "include": ["src/**/*.ts", "src/**/*.d.ts"],            // Files to compile
     "exclude": ["node_modules", "tests", "dist"]   // Excluded directories
   }
