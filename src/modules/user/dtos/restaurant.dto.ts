@@ -18,7 +18,10 @@ export interface IRestaurantDTO {
         facebook?: string | null;
         instagram?: string | null;
         website?: string | null;
+        map_link?: string | null;
     };
+    latitude?: number | null;
+    longitude?: number | null;
     description: string;
     menu_images: string[];
     detailed_reviews: IReviewDTO[];
@@ -44,6 +47,9 @@ export interface ICreateRestaurantDTO {
     facebook?: string | null;
     instagram?: string | null;
     website?: string | null;
+    map_link?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     description: string;
     menu_images?: string[];
     location_id: number;
@@ -66,6 +72,9 @@ export interface IUpdateRestaurantDTO {
     facebook?: string | null;
     instagram?: string | null;
     website?: string | null;
+    map_link?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     description?: string;
     menu_images?: string[];
     location_id?: number;

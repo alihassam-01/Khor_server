@@ -34,6 +34,10 @@ export async function hotelRoutes(fastify: FastifyInstance) {
     fastify.post("/admin/hotels/:id/renew", { 
         preHandler: authenticate 
     }, hotelController.renewAd.bind(hotelController));
+
+    fastify.post("/vendor/hotels/:id/renew", {
+        preHandler: authenticate
+    }, hotelController.renewAdByVendor.bind(hotelController));
     
     fastify.get("/admin/hotels/expired", { 
         preHandler: authenticate 

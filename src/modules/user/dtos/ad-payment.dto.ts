@@ -25,6 +25,13 @@ export interface IAdPaymentDTO {
     ad_type: AdType;
     vendor_id: string;
     vendor_name?: string;
+    vendor_email?: string;
+    vendor_phone?: string;
+    ad_name?: string;
+    ad_location?: string;
+    plan?: SubscriptionType;
+    is_featured?: boolean;
+    expires_at?: Date;
     amount: number;
     payment_status: PaymentStatus;
     payment_method?: PaymentMethod;

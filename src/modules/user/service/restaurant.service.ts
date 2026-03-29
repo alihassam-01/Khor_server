@@ -54,7 +54,10 @@ export class RestaurantService {
                 facebook: restaurant.facebook,
                 instagram: restaurant.instagram,
                 website: restaurant.website,
+                map_link: restaurant.map_link,
             },
+            latitude: restaurant.latitude ? Number(restaurant.latitude) : null,
+            longitude: restaurant.longitude ? Number(restaurant.longitude) : null,
             description: restaurant.description,
             menu_images: restaurant.menu_images,
             detailed_reviews:
@@ -107,6 +110,9 @@ export class RestaurantService {
             restaurant.facebook = restaurantData.facebook || null;
             restaurant.instagram = restaurantData.instagram || null;
             restaurant.website = restaurantData.website || null;
+            restaurant.map_link = restaurantData.map_link || null;
+            restaurant.latitude = restaurantData.latitude ?? null;
+            restaurant.longitude = restaurantData.longitude ?? null;
             restaurant.description = restaurantData.description;
             restaurant.menu_images = restaurantData.menu_images || [];
             restaurant.location = location;
@@ -302,6 +308,12 @@ export class RestaurantService {
             restaurant.instagram = restaurantData.instagram;
         if (restaurantData.website !== undefined)
             restaurant.website = restaurantData.website;
+        if (restaurantData.map_link !== undefined)
+            restaurant.map_link = restaurantData.map_link;
+        if (restaurantData.latitude !== undefined)
+            restaurant.latitude = restaurantData.latitude;
+        if (restaurantData.longitude !== undefined)
+            restaurant.longitude = restaurantData.longitude;
         if (restaurantData.vendor_id !== undefined)
             restaurant.vendor_id = restaurantData.vendor_id;
         if (restaurantData.subscription_type !== undefined)
@@ -396,6 +408,64 @@ export class RestaurantService {
         restaurant.subscription_type = subscriptionType;
         restaurant.is_paid = true;
         restaurant.is_active = true;
+
+        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
+        return this.toRestaurantDTO(updatedRestaurant);
+    }
+
+    async renewAdByVendor(
+        id: string,
+        vendorId: string,
+        subscriptionType: import("../entity/ENUM/ad-payment.enum").SubscriptionType
+    ): Promise<IRestaurantDTO> {
+        const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
+        if (!resolvedVendorUserId) {
+            throw new Error("Unauthorized vendor");
+        }
+
+        const restaurant = await this.restaurantRepository.findOne({
+            where: { id, vendor_id: resolvedVendorUserId },
+            relations: ["location", "detailed_reviews"],
+        });
+
+        if (!restaurant) {
+            throw new Error("Restaurant not found or access denied");
+        }
+
+        const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
+        const { SubscriptionPlanService } = await import("./subscription-plan.service");
+        const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
+        const { AdType, PaymentStatus, PaymentMethod, SubscriptionType } = await import("@modules/user/entity/ENUM/ad-payment.enum");
+
+        const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+
+        const now = new Date();
+        const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+
+        restaurant.subscription_type = subscriptionType;
+        restaurant.is_paid = false;
+
+        const planService = new SubscriptionPlanService();
+        const plan = await planService.getPlanByType(subscriptionType as any);
+        const amount = plan ? Number(plan.price) : 0;
+
+        if (subscriptionType === SubscriptionType.FREE || amount <= 0) {
+            restaurant.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+            restaurant.is_active = true;
+        } else {
+            restaurant.is_active = false;
+            const payment = new AdPayment();
+            payment.ad_id = restaurant.id;
+            payment.ad_type = AdType.RESTAURANT;
+            payment.vendor_id = resolvedVendorUserId;
+            payment.amount = amount;
+            payment.payment_method = PaymentMethod.BANK_TRANSFER;
+            payment.transaction_id = "PENDING_APPROVAL";
+            payment.notes = `Renewal payment intent for Restaurant: ${restaurant.name}`;
+            payment.payment_status = PaymentStatus.PENDING;
+            await AppDataSource.getRepository(AdPayment).save(payment);
+        }
 
         const updatedRestaurant = await this.restaurantRepository.save(restaurant);
         return this.toRestaurantDTO(updatedRestaurant);

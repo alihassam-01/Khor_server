@@ -77,7 +77,10 @@ export class HotelService {
                 facebook: hotel.facebook,
                 instagram: hotel.instagram,
                 website: hotel.website,
+                map_link: hotel.map_link,
             },
+            latitude: hotel.latitude ? Number(hotel.latitude) : null,
+            longitude: hotel.longitude ? Number(hotel.longitude) : null,
             detailed_reviews:
                 hotel.detailed_reviews?.map((review) => ({
                     user_name: review.user_name,
@@ -140,6 +143,9 @@ export class HotelService {
             hotel.facebook = hotelData.facebook || null;
             hotel.instagram = hotelData.instagram || null;
             hotel.website = hotelData.website || null;
+            hotel.map_link = hotelData.map_link || null;
+            hotel.latitude = hotelData.latitude ?? null;
+            hotel.longitude = hotelData.longitude ?? null;
             hotel.is_featured = hotelData.is_featured || false;
 
             // Handle subscription logic
@@ -330,6 +336,9 @@ export class HotelService {
         if (hotelData.facebook !== undefined) hotel.facebook = hotelData.facebook;
         if (hotelData.instagram !== undefined) hotel.instagram = hotelData.instagram;
         if (hotelData.website !== undefined) hotel.website = hotelData.website;
+        if (hotelData.map_link !== undefined) hotel.map_link = hotelData.map_link;
+        if (hotelData.latitude !== undefined) hotel.latitude = hotelData.latitude;
+        if (hotelData.longitude !== undefined) hotel.longitude = hotelData.longitude;
         if (hotelData.vendor_id !== undefined) hotel.vendor_id = hotelData.vendor_id;
         if (hotelData.subscription_type !== undefined) hotel.subscription_type = hotelData.subscription_type;
         if (hotelData.is_active !== undefined)
@@ -437,6 +446,64 @@ export class HotelService {
         hotel.subscription_type = subscriptionType;
         hotel.is_paid = true;
         hotel.is_active = true;
+
+        const updatedHotel = await this.hotelRepository.save(hotel);
+        return this.toHotelDTO(updatedHotel);
+    }
+
+    async renewAdByVendor(
+        id: string,
+        vendorId: string,
+        subscriptionType: import("../entity/ENUM/ad-payment.enum").SubscriptionType
+    ): Promise<IHotelDTO> {
+        const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
+        if (!resolvedVendorUserId) {
+            throw new Error("Unauthorized vendor");
+        }
+
+        const hotel = await this.hotelRepository.findOne({
+            where: { id, vendor_id: resolvedVendorUserId },
+            relations: ["location", "detailed_reviews", "room_types"],
+        });
+
+        if (!hotel) {
+            throw new Error("Hotel not found or access denied");
+        }
+
+        const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
+        const { SubscriptionPlanService } = await import("./subscription-plan.service");
+        const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
+        const { AdType, PaymentStatus, PaymentMethod, SubscriptionType } = await import("@modules/user/entity/ENUM/ad-payment.enum");
+
+        const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+
+        const now = new Date();
+        const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
+
+        hotel.subscription_type = subscriptionType;
+        hotel.is_paid = false;
+
+        const planService = new SubscriptionPlanService();
+        const plan = await planService.getPlanByType(subscriptionType as any);
+        const amount = plan ? Number(plan.price) : 0;
+
+        if (subscriptionType === SubscriptionType.FREE || amount <= 0) {
+            hotel.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+            hotel.is_active = true;
+        } else {
+            hotel.is_active = false;
+            const payment = new AdPayment();
+            payment.ad_id = hotel.id;
+            payment.ad_type = AdType.HOTEL;
+            payment.vendor_id = resolvedVendorUserId;
+            payment.amount = amount;
+            payment.payment_method = PaymentMethod.BANK_TRANSFER;
+            payment.transaction_id = "PENDING_APPROVAL";
+            payment.notes = `Renewal payment intent for Hotel: ${hotel.name}`;
+            payment.payment_status = PaymentStatus.PENDING;
+            await AppDataSource.getRepository(AdPayment).save(payment);
+        }
 
         const updatedHotel = await this.hotelRepository.save(hotel);
         return this.toHotelDTO(updatedHotel);

@@ -50,6 +50,15 @@ export class Restaurant {
     @Column("varchar", { length: 255, nullable: true })
     website!: string | null;
 
+    @Column("text", { nullable: true })
+    map_link!: string | null;
+
+    @Column("decimal", { precision: 10, scale: 7, nullable: true })
+    latitude!: number | null;
+
+    @Column("decimal", { precision: 10, scale: 7, nullable: true })
+    longitude!: number | null;
+
     @Column("text")
     description!: string;
 

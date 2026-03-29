@@ -180,15 +180,6 @@ export class SubscriptionPlanService {
     }
 
     async createPlan(planData: ICreateSubscriptionPlanDTO): Promise<ISubscriptionPlanDTO> {
-        // Check if plan type already exists
-        const existing = await this.planRepository.findOne({
-            where: { type: planData.type },
-        });
-
-        if (existing) {
-            throw new Error(`Plan with type '${planData.type}' already exists`);
-        }
-
         const plan = new SubscriptionPlan();
         plan.type = planData.type;
         plan.name = planData.name;

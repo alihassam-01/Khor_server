@@ -35,6 +35,7 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
     // Admin routes for ad management
     fastify.post("/admin/restaurants/:id/toggle-status", { preHandler: authenticate }, restaurantController.toggleAdStatus.bind(restaurantController));
     fastify.post("/admin/restaurants/:id/renew", { preHandler: authenticate }, restaurantController.renewAd.bind(restaurantController));
+    fastify.post("/vendor/restaurants/:id/renew", { preHandler: authenticate }, restaurantController.renewAdByVendor.bind(restaurantController));
     fastify.get("/admin/restaurants/expired", { preHandler: authenticate }, restaurantController.getExpiredAds.bind(restaurantController));
     fastify.get("/restaurants/featured/:locationId", restaurantController.getFeaturedAds.bind(restaurantController));
     fastify.get("/restaurants/premium/:locationId", restaurantController.getPremiumAds.bind(restaurantController));

@@ -10,13 +10,22 @@ import { PaymentStatus, AdType } from "@modules/user/entity/ENUM/ad-payment.enum
 export class AdPaymentService {
     private paymentRepository = AppDataSource.getRepository(AdPayment);
 
-    private toPaymentDTO(payment: AdPayment): IAdPaymentDTO {
+    private async toPaymentDTO(payment: AdPayment, hotel?: any, restaurant?: any): Promise<IAdPaymentDTO> {
+        const ad = payment.ad_type === AdType.HOTEL ? hotel : restaurant;
+        
         return {
             payment_id: payment.payment_id,
             ad_id: payment.ad_id,
             ad_type: payment.ad_type,
             vendor_id: payment.vendor_id,
             vendor_name: payment.vendor?.customerProfile?.username || payment.vendor?.vendor?.username,
+            vendor_email: payment.vendor?.email,
+            vendor_phone: payment.vendor?.vendor?.phone_number || payment.vendor?.customerProfile?.phone_number,
+            ad_name: ad?.name,
+            ad_location: ad?.location_name,
+            plan: ad?.subscription_type,
+            is_featured: ad?.is_featured,
+            expires_at: ad?.expires_at,
             amount: Number(payment.amount),
             payment_status: payment.payment_status,
             payment_method: payment.payment_method,
@@ -43,7 +52,27 @@ export class AdPaymentService {
         payment.payment_status = PaymentStatus.PENDING;
 
         const savedPayment = await this.paymentRepository.save(payment);
-        return this.toPaymentDTO(savedPayment);
+        const savedPaymentWithRelations = await this.paymentRepository.findOne({
+            where: { payment_id: savedPayment.payment_id },
+            relations: ["vendor", "vendor.customerProfile", "vendor.vendor"],
+        });
+
+        // Fetch ad data for enrichment
+        const { Hotel } = await import("@modules/user/entity/ads/hotel.entity");
+        const { Restaurant } = await import("@modules/user/entity/ads/restaurant.entity");
+        
+        let ad = null;
+        if (savedPayment.ad_type === AdType.HOTEL) {
+            ad = await AppDataSource.getRepository(Hotel).findOne({
+                where: { id: savedPayment.ad_id },
+            });
+        } else if (savedPayment.ad_type === AdType.RESTAURANT) {
+            ad = await AppDataSource.getRepository(Restaurant).findOne({
+                where: { id: savedPayment.ad_id },
+            });
+        }
+
+        return this.toPaymentDTO(savedPaymentWithRelations!, ad);
     }
 
     async updatePaymentStatus(
@@ -72,9 +101,10 @@ export class AdPaymentService {
                         const durationKey = hotel.subscription_type.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30; // fallback
                         const now = new Date();
+                        const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
                         hotel.is_active = true;
                         hotel.is_paid = true;
-                        hotel.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                        hotel.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
                         await hotelRepo.save(hotel);
                     }
                 } else if (payment.ad_type === AdType.RESTAURANT) {
@@ -84,9 +114,10 @@ export class AdPaymentService {
                         const durationKey = rest.subscription_type.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
                         const now = new Date();
+                        const currentExpiry = rest.expires_at && rest.expires_at > now ? rest.expires_at : now;
                         rest.is_active = true;
                         rest.is_paid = true;
-                        rest.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                        rest.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
                         await restRepo.save(rest);
                     }
                 }
@@ -107,7 +138,23 @@ export class AdPaymentService {
         }
 
         const updatedPayment = await this.paymentRepository.save(payment);
-        return this.toPaymentDTO(updatedPayment);
+        
+        // Fetch ad data for enrichment
+        const { Hotel } = await import("@modules/user/entity/ads/hotel.entity");
+        const { Restaurant } = await import("@modules/user/entity/ads/restaurant.entity");
+        
+        let ad = null;
+        if (updatedPayment.ad_type === AdType.HOTEL) {
+            ad = await AppDataSource.getRepository(Hotel).findOne({
+                where: { id: updatedPayment.ad_id },
+            });
+        } else if (updatedPayment.ad_type === AdType.RESTAURANT) {
+            ad = await AppDataSource.getRepository(Restaurant).findOne({
+                where: { id: updatedPayment.ad_id },
+            });
+        }
+
+        return this.toPaymentDTO(updatedPayment, ad);
     }
 
     async getPaymentById(paymentId: string): Promise<IAdPaymentDTO | null> {
@@ -120,7 +167,22 @@ export class AdPaymentService {
             return null;
         }
 
-        return this.toPaymentDTO(payment);
+        // Fetch ad data for enrichment
+        const { Hotel } = await import("@modules/user/entity/ads/hotel.entity");
+        const { Restaurant } = await import("@modules/user/entity/ads/restaurant.entity");
+        
+        let ad = null;
+        if (payment.ad_type === AdType.HOTEL) {
+            ad = await AppDataSource.getRepository(Hotel).findOne({
+                where: { id: payment.ad_id },
+            });
+        } else if (payment.ad_type === AdType.RESTAURANT) {
+            ad = await AppDataSource.getRepository(Restaurant).findOne({
+                where: { id: payment.ad_id },
+            });
+        }
+
+        return this.toPaymentDTO(payment, ad);
     }
 
     async getPaymentsByVendor(vendorId: string): Promise<IAdPaymentDTO[]> {
@@ -130,7 +192,22 @@ export class AdPaymentService {
             order: { created_at: "DESC" },
         });
 
-        return payments.map((payment) => this.toPaymentDTO(payment));
+        const { Hotel } = await import("@modules/user/entity/ads/hotel.entity");
+        const { Restaurant } = await import("@modules/user/entity/ads/restaurant.entity");
+
+        return Promise.all(payments.map(async (payment) => {
+            let ad = null;
+            if (payment.ad_type === AdType.HOTEL) {
+                ad = await AppDataSource.getRepository(Hotel).findOne({
+                    where: { id: payment.ad_id },
+                });
+            } else if (payment.ad_type === AdType.RESTAURANT) {
+                ad = await AppDataSource.getRepository(Restaurant).findOne({
+                    where: { id: payment.ad_id },
+                });
+            }
+            return this.toPaymentDTO(payment, ad);
+        }));
     }
 
     async getPaymentsByAd(
@@ -143,7 +220,22 @@ export class AdPaymentService {
             order: { created_at: "DESC" },
         });
 
-        return payments.map((payment) => this.toPaymentDTO(payment));
+        const { Hotel } = await import("@modules/user/entity/ads/hotel.entity");
+        const { Restaurant } = await import("@modules/user/entity/ads/restaurant.entity");
+
+        return Promise.all(payments.map(async (payment) => {
+            let ad = null;
+            if (payment.ad_type === AdType.HOTEL) {
+                ad = await AppDataSource.getRepository(Hotel).findOne({
+                    where: { id: payment.ad_id },
+                });
+            } else if (payment.ad_type === AdType.RESTAURANT) {
+                ad = await AppDataSource.getRepository(Restaurant).findOne({
+                    where: { id: payment.ad_id },
+                });
+            }
+            return this.toPaymentDTO(payment, ad);
+        }));
     }
 
     async getPendingPayments(): Promise<IAdPaymentDTO[]> {
@@ -153,7 +245,22 @@ export class AdPaymentService {
             order: { created_at: "DESC" },
         });
 
-        return payments.map((payment) => this.toPaymentDTO(payment));
+        const { Hotel } = await import("@modules/user/entity/ads/hotel.entity");
+        const { Restaurant } = await import("@modules/user/entity/ads/restaurant.entity");
+
+        return Promise.all(payments.map(async (payment) => {
+            let ad = null;
+            if (payment.ad_type === AdType.HOTEL) {
+                ad = await AppDataSource.getRepository(Hotel).findOne({
+                    where: { id: payment.ad_id },
+                });
+            } else if (payment.ad_type === AdType.RESTAURANT) {
+                ad = await AppDataSource.getRepository(Restaurant).findOne({
+                    where: { id: payment.ad_id },
+                });
+            }
+            return this.toPaymentDTO(payment, ad);
+        }));
     }
 
     async getAllPayments(): Promise<IAdPaymentDTO[]> {
@@ -162,7 +269,22 @@ export class AdPaymentService {
             order: { created_at: "DESC" },
         });
 
-        return payments.map((payment) => this.toPaymentDTO(payment));
+        const { Hotel } = await import("@modules/user/entity/ads/hotel.entity");
+        const { Restaurant } = await import("@modules/user/entity/ads/restaurant.entity");
+
+        return Promise.all(payments.map(async (payment) => {
+            let ad = null;
+            if (payment.ad_type === AdType.HOTEL) {
+                ad = await AppDataSource.getRepository(Hotel).findOne({
+                    where: { id: payment.ad_id },
+                });
+            } else if (payment.ad_type === AdType.RESTAURANT) {
+                ad = await AppDataSource.getRepository(Restaurant).findOne({
+                    where: { id: payment.ad_id },
+                });
+            }
+            return this.toPaymentDTO(payment, ad);
+        }));
     }
 
     async deletePayment(paymentId: string): Promise<void> {

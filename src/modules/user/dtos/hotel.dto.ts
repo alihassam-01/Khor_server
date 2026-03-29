@@ -36,7 +36,10 @@ export interface IHotelDTO {
         facebook?: string | null;
         instagram?: string | null;
         website?: string | null;
+        map_link?: string | null;
     };
+    latitude?: number | null;
+    longitude?: number | null;
     detailed_reviews: IReviewDTO[];
     roomTypes: IRoomTypeDTO[];
     vendor_id?: string;
@@ -65,6 +68,9 @@ export interface ICreateHotelDTO {
     facebook?: string | null;
     instagram?: string | null;
     website?: string | null;
+    map_link?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     location_id: number;
     is_active?: boolean;
     is_featured?: boolean;
@@ -90,6 +96,9 @@ export interface IUpdateHotelDTO {
     facebook?: string | null;
     instagram?: string | null;
     website?: string | null;
+    map_link?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     location_id?: number;
     is_active?: boolean;
     vendor_id?: string;

@@ -123,6 +123,9 @@ export class HotelController {
                     vendor_id: extractedBody.vendor_id || undefined,
                     subscription_type: extractedBody.subscription_type || undefined,
                     is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
+                    map_link: extractedBody.map_link || undefined,
+                    latitude: parseNumber(extractedBody.latitude, 'latitude'),
+                    longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 } as ICreateHotelDTO;
             } else {
                 // JSON request body
@@ -274,6 +277,24 @@ export class HotelController {
             const { id } = req.params as { id: string };
             const { subscription_type } = req.body as { subscription_type: import("../entity/ENUM/ad-payment.enum").SubscriptionType };
             const hotel = await this.hotelService.renewAd(id, subscription_type);
+            reply.send(hotel);
+        } catch (error: any) {
+            reply
+                .code(400)
+                .send({ message: error.message || "Failed to renew ad" });
+        }
+    }
+
+    async renewAdByVendor(req: FastifyRequest, reply: FastifyReply) {
+        try {
+            const { id } = req.params as { id: string };
+            const authUserId = req.user?.id || req.user?.userId;
+            if (!authUserId) {
+                return reply.code(401).send({ message: "Authentication required. Please log in." });
+            }
+
+            const { subscription_type } = req.body as { subscription_type: import("../entity/ENUM/ad-payment.enum").SubscriptionType };
+            const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type);
             reply.send(hotel);
         } catch (error: any) {
             reply

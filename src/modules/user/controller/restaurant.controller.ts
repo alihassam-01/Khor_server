@@ -92,6 +92,9 @@ export class RestaurantController {
                     is_featured: (extractedBody.is_featured === 'true' || extractedBody.is_featured === true) as any,
                     vendor_id: extractedBody.vendor_id || undefined,
                     subscription_type: extractedBody.subscription_type || undefined,
+                    map_link: extractedBody.map_link || undefined,
+                    latitude: parseNumber(extractedBody.latitude) ?? undefined,
+                    longitude: parseNumber(extractedBody.longitude) ?? undefined,
                 } as ICreateRestaurantDTO;
             } else {
                 restaurantData = req.body as ICreateRestaurantDTO;
@@ -231,6 +234,24 @@ export class RestaurantController {
             const { id } = req.params as { id: string };
             const { subscription_type } = req.body as { subscription_type: import("../entity/ENUM/ad-payment.enum").SubscriptionType };
             const restaurant = await this.restaurantService.renewAd(id, subscription_type);
+            reply.send(restaurant);
+        } catch (error: any) {
+            reply
+                .code(400)
+                .send({ message: error.message || "Failed to renew ad" });
+        }
+    }
+
+    async renewAdByVendor(req: FastifyRequest, reply: FastifyReply) {
+        try {
+            const { id } = req.params as { id: string };
+            const authUserId = req.user?.id || req.user?.userId;
+            if (!authUserId) {
+                return reply.code(401).send({ message: "Authentication required. Please log in." });
+            }
+
+            const { subscription_type } = req.body as { subscription_type: import("../entity/ENUM/ad-payment.enum").SubscriptionType };
+            const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type);
             reply.send(restaurant);
         } catch (error: any) {
             reply

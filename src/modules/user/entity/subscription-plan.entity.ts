@@ -15,7 +15,6 @@ export class SubscriptionPlan {
     @Column({
         type: "enum",
         enum: SubscriptionType,
-        unique: true,
     })
     type!: SubscriptionType;
 
