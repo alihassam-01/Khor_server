@@ -14,7 +14,6 @@ import { logError } from "@lib/logger";
 export class ArticleService {
   private articleRepository = AppDataSource.getRepository(Article);
   private locationRepository = AppDataSource.getRepository(Location);
-  private tagRepository = AppDataSource.getRepository(Tag);
   private locationHelper = new LocationHelperService();
   private r2ClientService = new R2ClientService();
   // private categoryRepository = AppDataSource.getRepository(LocationCategory);
@@ -53,14 +52,15 @@ export class ArticleService {
       const tags: Tag[] = [];
 
       for (const tagName of tagNames) {
-        let tag = await this.tagRepository.findOne({
-          where: { name: tagName },
+        const slug = this.generateSlug(tagName);
+        let tag = await queryRunner.manager.findOne(Tag, {
+          where: { slug },
         });
         if (!tag) {
           tag = new Tag();
           tag.name = tagName;
-          tag.slug = this.generateSlug(tagName);
-          await queryRunner.manager.save(tag);
+          tag.slug = slug;
+          tag = await queryRunner.manager.save(tag);
         }
         tags.push(tag);
       }
@@ -212,14 +212,15 @@ export class ArticleService {
         const tags: Tag[] = [];
 
         for (const tagName of tagNames) {
-          let tag = await this.tagRepository.findOne({
-            where: { name: tagName },
+          const slug = this.generateSlug(tagName);
+          let tag = await queryRunner.manager.findOne(Tag, {
+            where: { slug },
           });
           if (!tag) {
             tag = new Tag();
             tag.name = tagName;
-            tag.slug = this.generateSlug(tagName);
-            await queryRunner.manager.save(tag);
+            tag.slug = slug;
+            tag = await queryRunner.manager.save(tag);
           }
           tags.push(tag);
         }
