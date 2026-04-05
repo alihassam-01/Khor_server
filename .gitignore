@@ -19,7 +19,6 @@ npm-debug.log*
 
 # Environment variables
 !.env.example
-.env
 # Misc
 .DS_Store
 
