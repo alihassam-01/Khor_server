@@ -1,6 +1,8 @@
 import { AppDataSource } from "@config/ormconfig";
+import { Not, IsNull } from "typeorm";
 import { Article, Tag, ArticleTag } from "@modules/user/entity/article";
 import { Location } from "@modules/user/entity/location";
+import { ArticleStatus } from "@modules/user/entity/ENUM/enum";
 import { IArticleDTO } from "@modules/user/dtos/article.dto";
 import { LocationHelperService } from "./helper/location-helper.service";
 import { R2ClientService } from "./r2client.service";
@@ -123,9 +125,12 @@ export class ArticleService {
     }
   }
 
-  async getArticleById(articleId: number): Promise<any | null> {
+  async getArticleById(articleId: number, includeAll: boolean = false): Promise<any | null> {
+    const whereClause: any = { article_id: articleId };
+    if (!includeAll) whereClause.published_at = Not(IsNull());
+    
     const article = await this.articleRepository.findOne({
-      where: { article_id: articleId },
+      where: whereClause,
       relations: [
         "location",
         "articleTags",
@@ -140,9 +145,12 @@ export class ArticleService {
     return enrichedArticles[0] || null;
   }
 
-  async getArticleBySlug(slug: string): Promise<any | null> {
+  async getArticleBySlug(slug: string, includeAll: boolean = false): Promise<any | null> {
+    const whereClause: any = { slug };
+    if (!includeAll) whereClause.published_at = Not(IsNull());
+
     const article = await this.articleRepository.findOne({
-      where: { slug },
+      where: whereClause,
       relations: [
         "location",
         "articleTags",
@@ -180,8 +188,8 @@ export class ArticleService {
       if (articleData.slug) article.slug = articleData.slug;
       if (articleData.excerpt) article.excerpt = articleData.excerpt;
       if (articleData.content) article.content = articleData.content;
-      if (articleData.published_at) {
-        article.published_at = new Date(articleData.published_at);
+      if ('published_at' in articleData) {
+        article.published_at = articleData.published_at ? new Date(articleData.published_at) : null;
       }
       if (articleData.seo_title) article.seo_title = articleData.seo_title;
       if (articleData.seo_description)
@@ -298,8 +306,10 @@ export class ArticleService {
       .take(limit)
       .orderBy("article.published_at", "DESC");
 
-    if (status) {
-      query.andWhere("article.status = :status", { status });
+    if (status === ArticleStatus.PUBLISHED) {
+      query.andWhere("article.published_at IS NOT NULL");
+    } else if (status === ArticleStatus.DRAFT) {
+      query.andWhere("article.published_at IS NULL");
     }
 
     if (placeId) {
@@ -326,8 +336,12 @@ export class ArticleService {
   }
 
   // get all articles
-  async getAllArticles(): Promise<any[]> {
+  async getAllArticles(includeAll: boolean = false): Promise<any[]> {
+    const whereClause: any = {};
+    if (!includeAll) whereClause.published_at = Not(IsNull());
+
     const articles = await this.articleRepository.find({
+      where: whereClause,
       relations: [
         "articleTags",
         "location",
@@ -346,13 +360,13 @@ export class ArticleService {
   /**
    * Search articles using PostgreSQL full-text search and rank by relevance.
    */
-  async searchArticles(term: string): Promise<any[]> {
+  async searchArticles(term: string, includeAll: boolean = false): Promise<any[]> {
     const normalizedTerm = (term || "").trim();
     if (!normalizedTerm) {
       return [];
     }
 
-    const articles = await this.articleRepository
+    const query = this.articleRepository
       .createQueryBuilder("article")
       .leftJoinAndSelect("article.articleTags", "articleTags")
       .leftJoinAndSelect("article.location", "location")
@@ -365,7 +379,13 @@ export class ArticleService {
       .where(
         `article.search_vector @@ websearch_to_tsquery('english', :term)`,
         { term: normalizedTerm }
-      )
+      );
+      
+    if (!includeAll) {
+      query.andWhere("article.published_at IS NOT NULL");
+    }
+
+    const articles = await query
       .orderBy("rank", "DESC")
       .addOrderBy("article.published_at", "DESC")
       .getMany();

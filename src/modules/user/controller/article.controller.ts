@@ -69,9 +69,10 @@ export class ArticleController {
     }
   }
 
-  async getArticleById(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+  async getArticleById(req: FastifyRequest<{ Params: { id: string }, Querystring: { all?: string } }>, reply: FastifyReply) {
     try {
-      const article = await this.articleService.getArticleById(Number(req.params.id));
+      const includeAll = req.query.all === 'true';
+      const article = await this.articleService.getArticleById(Number(req.params.id), includeAll);
 
       if (!article) {
         return reply.code(404).send({ message: 'Article not found' });
@@ -84,9 +85,10 @@ export class ArticleController {
     }
   }
 
-  async getArticleBySlug(req: FastifyRequest<{ Params: { slug: string } }>, reply: FastifyReply) {
+  async getArticleBySlug(req: FastifyRequest<{ Params: { slug: string }, Querystring: { all?: string } }>, reply: FastifyReply) {
     try {
-      const article = await this.articleService.getArticleBySlug(req.params.slug);
+      const includeAll = req.query.all === 'true';
+      const article = await this.articleService.getArticleBySlug(req.params.slug, includeAll);
       if (!article) {
         return reply.code(404).send({ message: 'Article not found' });
       }
@@ -173,9 +175,10 @@ export class ArticleController {
     }
   }
 
-  async getAllArticles(_req: FastifyRequest, reply: FastifyReply) {
+  async getAllArticles(req: FastifyRequest<{ Querystring: { all?: string } }>, reply: FastifyReply) {
     try {
-      const articles = await this.articleService.getAllArticles();
+      const includeAll = req.query.all === 'true';
+      const articles = await this.articleService.getAllArticles(includeAll);
 
       // Reviews removed for Phase 1
       reply.send(articles);
@@ -184,9 +187,10 @@ export class ArticleController {
     }
   }
 
-  async searchArticles(req: FastifyRequest<{ Querystring: { term: string } }>, reply: FastifyReply) {
+  async searchArticles(req: FastifyRequest<{ Querystring: { term: string, all?: string } }>, reply: FastifyReply) {
     try {
-      const results = await this.articleService.searchArticles(req.query.term);
+      const includeAll = req.query.all === 'true';
+      const results = await this.articleService.searchArticles(req.query.term, includeAll);
       reply.send(results);
     } catch (error: any) {
       reply.code(500).send({ message: error.message });

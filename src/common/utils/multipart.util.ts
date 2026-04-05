@@ -34,8 +34,18 @@ export function extractMultipartFields<T = any>(
             value = field;
         }
 
-        // Skip undefined/null/empty string values
-        if (value === undefined || value === null || value === '') continue;
+        // Skip undefined/null values
+        if (value === undefined || value === null) continue;
+
+        // Allow empty strings for text fields (like removing published_at, seo fields, etc)
+        if (value === '') {
+            const fieldType = typeConfig?.[key];
+            if (fieldType === 'number' || fieldType === 'boolean') {
+                continue;
+            }
+            result[key] = value;
+            continue;
+        }
 
         // Apply type conversion if configured
         const fieldType = typeConfig?.[key];

@@ -56,4 +56,8 @@ export enum PackageStatus {
     LOCALITY = 'locality',
     PLACE = 'place',
   }
-  
+
+  export enum ArticleStatus {
+    PUBLISHED = 'PUBLISHED',
+    DRAFT = 'DRAFT',
+  }
