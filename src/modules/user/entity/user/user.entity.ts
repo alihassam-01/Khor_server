@@ -27,6 +27,9 @@ export class User {
   @Column({ nullable: true })
   verificationToken?: string;
 
+  @Column({ nullable: true, type: 'timestamp' })
+  otpExpiresAt?: Date;
+
   @Column({ default: false })
   isVerified: boolean = false;
 

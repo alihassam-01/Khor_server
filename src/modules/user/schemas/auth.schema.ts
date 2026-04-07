@@ -1,16 +1,14 @@
 export const registerSchema = {
     body: {
         type: 'object',
-        required: ['email', 'password', 'name', 'callBackUrl'],
+        required: ['email', 'password', 'name'],
         properties: {
             email: { type: 'string', format: 'email' },
             password: { type: 'string', minLength: 6 },
             name: { type: 'string', minLength: 2 },
-            callBackUrl: { type: 'string', format: 'uri' },
-            phoneNumber: { type: 'string', nullable: true },
-            userType: { type: 'string', enum: ['customer', 'vendor'] }
-        }
-    }
+            userType: { type: 'string', enum: ['customer', 'vendor'] },
+        },
+    },
 };
 
 export const loginSchema = {
@@ -19,30 +17,30 @@ export const loginSchema = {
         required: ['email', 'password'],
         properties: {
             email: { type: 'string', format: 'email' },
-            password: { type: 'string' }
-        }
-    }
+            password: { type: 'string' },
+        },
+    },
 };
 
-export const resendVerificationEmailSchema = {
+export const verifyOtpSchema = {
     body: {
         type: 'object',
-        required: ['email', 'callBackUrl'],
+        required: ['email', 'otp'],
         properties: {
             email: { type: 'string', format: 'email' },
-            callBackUrl: { type: 'string', format: 'uri' }
-        }
-    }
+            otp: { type: 'string', minLength: 6, maxLength: 6 },
+        },
+    },
 };
 
-export const verifyEmailSchema = {
-    querystring: {
+export const resendOtpSchema = {
+    body: {
         type: 'object',
-        required: ['token'],
+        required: ['email'],
         properties: {
-            token: { type: 'string' }
-        }
-    }
+            email: { type: 'string', format: 'email' },
+        },
+    },
 };
 
 export const resetPasswordSchema = {
@@ -52,9 +50,9 @@ export const resetPasswordSchema = {
         properties: {
             token: { type: 'string' },
             newPassword: { type: 'string', minLength: 8 },
-            confirmPassword: { type: 'string' }
-        }
-    }
+            confirmPassword: { type: 'string' },
+        },
+    },
 };
 
 export const googleVerifySchema = {
@@ -63,7 +61,7 @@ export const googleVerifySchema = {
         required: ['accessToken'],
         properties: {
             accessToken: { type: 'string' },
-            userType: { type: 'string', enum: ['vendor', 'customer'] }
-        }
-    }
+            userType: { type: 'string', enum: ['vendor', 'customer'] },
+        },
+    },
 };
