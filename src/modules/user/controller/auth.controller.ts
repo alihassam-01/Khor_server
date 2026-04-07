@@ -14,8 +14,7 @@ export class AuthController {
     reply: FastifyReply
   ) {
     try {
-      // const userType = req.body.userType || UserType.CUSTOMER;
-      const userType = UserType.VENDOR;
+      const userType = req.body.userType || UserType.CUSTOMER;
       await this.authService.register(
         req.body.email,
         req.body.password,
