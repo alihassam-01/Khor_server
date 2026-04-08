@@ -5,8 +5,6 @@ export interface IRegisterDto {
     password: string;
     userType?: UserType;
     name: string;
-    callBackUrl: string;
-    phoneNumber?: string;
 }
 
 export interface ILoginDto {
@@ -14,13 +12,13 @@ export interface ILoginDto {
     password: string;
 }
 
-export interface IVerifyEmailQuery {
-    token: string;
+export interface IVerifyOtpDto {
+    email: string;
+    otp: string;
 }
 
-export interface IResendVerificationEmailDto {
+export interface IResendOtpDto {
     email: string;
-    callBackUrl: string;
 }
 
 export interface IResetPasswordDto {

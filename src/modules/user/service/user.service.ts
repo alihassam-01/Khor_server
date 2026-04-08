@@ -96,6 +96,7 @@ export class UserService {
     // get the customer_profile and vendor
 
     return users.map((user) => ({
+      id: user.id,
       isActive: user.isActive,
       isVerified: user.isVerified,
       email: user.email,
@@ -110,6 +111,7 @@ export class UserService {
     const users = await this.userRepository.find({
       where: {
         isActive: true,
+        userType: UserType.CUSTOMER,
         customerProfile: Not(IsNull()),
       },
       relations: {
@@ -117,6 +119,7 @@ export class UserService {
       },
     });
     return users.map((user) => ({
+      id: user.id,
       isActive: user.isActive,
       isVerified: user.isVerified,
       email: user.email,
@@ -129,6 +132,7 @@ export class UserService {
     const users = await this.userRepository.find({
       where: {
         isActive: true,
+        userType: UserType.VENDOR,
         vendor: { id: Not(IsNull()) },
       },
       relations: {
@@ -137,6 +141,7 @@ export class UserService {
     });
 
     return users.map((user) => ({
+      id: user.id,
       userId: user.id,             // ← Use this for hotel.vendor_id
       vendorProfileId: user.vendor?.id,  // For reference
       isActive: user.isActive,
@@ -147,6 +152,57 @@ export class UserService {
       phone_number: user.vendor?.phone_number,
       createdAt: user.createdAt,
     }));
+  }
+
+  async deleteUser(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+    user.isActive = false;
+    await this.userRepository.save(user);
+    logInfo(`User deleted (soft) successfully: ${userId}`);
+    return { success: true, message: "User deleted successfully" };
+  }
+
+  async changeRole(userId: string, newRole: UserType) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ["vendor", "customerProfile"],
+    });
+
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+
+    if (user.userType === newRole) {
+      return { success: true, message: "User is already assigned this role." };
+    }
+
+    // Auto-create Vendor profile if transitioning to Vendor
+    if (newRole === UserType.VENDOR && !user.vendor) {
+      const vendor = this.vendorRepo.create({
+        user,
+        username: user.customerProfile?.username || "New Vendor",
+        profile_picture: user.customerProfile?.profile_picture || undefined,
+      });
+      await this.vendorRepo.save(vendor);
+    } 
+    // Auto-create Customer profile if transitioning to Customer
+    else if (newRole === UserType.CUSTOMER && !user.customerProfile) {
+      const customer = this.customerRepo.create({
+        user,
+        username: user.vendor?.username || "New Customer",
+        profile_picture: user.vendor?.profile_picture || undefined,
+      });
+      await this.customerRepo.save(customer);
+    }
+
+    user.userType = newRole;
+    await this.userRepository.save(user);
+
+    logInfo(`User role updated successfully for ${userId} to ${newRole}`);
+    return this.getUserById(user.id);
   }
 
   async updateUser(userId: string, updateData: any) {

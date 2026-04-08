@@ -78,6 +78,7 @@ export interface ICreateHotelDTO {
     roomTypes?: IRoomTypeDTO[];
     vendor_id?: string;
     subscription_type?: SubscriptionType;
+    plan_id?: string;
 }
 
 export interface IUpdateHotelDTO {
@@ -104,5 +105,6 @@ export interface IUpdateHotelDTO {
     vendor_id?: string;
     subscription_type?: SubscriptionType;
     is_featured?: boolean;
+    plan_id?: string;
     roomTypes?: IRoomTypeDTO[];
 }
