@@ -4,3 +4,4 @@ export { HotelReview } from "./hotel-review.entity";
 export { RestaurantReview } from "./restaurant-review.entity";
 export { HotelRoomType } from "./room-type.entity";
 export { AdPayment } from "./ad-payment.entity";
+export { PaymentSetting } from "./payment-setting.entity";

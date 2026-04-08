@@ -58,6 +58,7 @@ export interface ICreateRestaurantDTO {
     detailed_reviews?: IReviewDTO[];
     vendor_id?: string;
     subscription_type?: SubscriptionType;
+    plan_id?: string;
 }
 
 export interface IUpdateRestaurantDTO {
@@ -82,4 +83,5 @@ export interface IUpdateRestaurantDTO {
     vendor_id?: string;
     subscription_type?: SubscriptionType;
     is_featured?: boolean;
+    plan_id?: string;
 }

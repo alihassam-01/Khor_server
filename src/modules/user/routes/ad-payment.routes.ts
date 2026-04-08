@@ -1,8 +1,17 @@
 import { FastifyInstance } from "fastify";
 import { AdPaymentController } from "@modules/user/controller/ad-payment.controller";
 
+import { authenticate } from "middlewares/authenticate";
+
 export async function adPaymentRoutes(fastify: FastifyInstance) {
     const paymentController = new AdPaymentController();
+
+    // Vendor routes
+    fastify.get(
+        "/vendor/payments",
+        { preHandler: authenticate },
+        paymentController.getVendorPayments.bind(paymentController)
+    );
 
     // Admin routes for payment management
     fastify.post(

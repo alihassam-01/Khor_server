@@ -155,7 +155,15 @@ export class RestaurantService {
             if ((subscriptionType !== SubscriptionType.FREE || restaurant.is_featured) && vendorId) {
                 const { SubscriptionPlanService } = await import("./subscription-plan.service");
                 const planService = new SubscriptionPlanService();
-                const plan = await planService.getPlanByType(subscriptionType);
+                
+                // Get plan by ID if provided, otherwise fallback to type
+                let plan = null;
+                if (restaurantData.plan_id) {
+                    plan = await planService.getPlanById(restaurantData.plan_id);
+                } else {
+                    plan = await planService.getPlanByType(subscriptionType);
+                }
+                
                 let totalAmount = plan ? plan.price : 0;
                 
                 if (restaurant.is_featured) {
@@ -447,7 +455,15 @@ export class RestaurantService {
         restaurant.is_paid = false;
 
         const planService = new SubscriptionPlanService();
-        const plan = await planService.getPlanByType(subscriptionType as any);
+        
+        // Get plan by ID if provided, otherwise fallback to type
+        let plan = null;
+        if (subscriptionType.length > 20) { // Checking if it looks like a UUID
+            plan = await planService.getPlanById(subscriptionType as string);
+        } else {
+            plan = await planService.getPlanByType(subscriptionType as any);
+        }
+        
         const amount = plan ? Number(plan.price) : 0;
 
         if (subscriptionType === SubscriptionType.FREE || amount <= 0) {
