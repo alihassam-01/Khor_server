@@ -2,423 +2,419 @@ import { Repository } from "typeorm";
 import { User, CustomerProfile, Vendor } from "@modules/user/entity";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
+import * as crypto from "crypto";
 import { UserType } from "@modules/user/entity/ENUM/enum";
 import { CONFIG } from "@config/config";
 import { sendEmail } from "./email";
-import { accountActivationTemplate } from "./email/templates/accountActivation";
+import { otpVerificationTemplate } from "./email/templates/otpVerification";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { logError, logInfo } from "@lib/logger";
+import { OTP_LENGTH, OTP_EXPIRY_MINUTES } from "@modules/user/constant/otp.constant";
 
+const PROFILE_IMAGES = [
+    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png",
+    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/lion.png",
+    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/cat.png",
+    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/chick.png",
+    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/penguin.png",
+    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/bear.png",
+];
 
 export class AuthService {
-  constructor(
-    private userRepository: Repository<User>,
-    // private agencyProfileRepository: Repository<TravelAgencyProfile>,
-    private vendorRepository: Repository<Vendor>,
-    private customerProfileRepository: Repository<CustomerProfile>
-  ) { }
+    constructor(
+        private userRepository: Repository<User>,
+        private vendorRepository: Repository<Vendor>,
+        private customerProfileRepository: Repository<CustomerProfile>
+    ) {}
 
-  // Validate if email already exists
-  private async validateRegistration(email: string): Promise<void> {
-    const existingUser = await this.userRepository.findOneBy({ email });
-    if (existingUser) {
-      throw new Error(
-        JSON.stringify({
-          message: "Email already in use",
-          code: "EMAIL_IN_USE",
-        })
-      );
-    }
-  }
-
-  // Hash password
-  public async hashPassword(password: string): Promise<string> {
-    return bcrypt.hash(password, 10);
-  }
-
-  // Compare password with hash
-  public async comparePassword(
-    password: string,
-    hash: string
-  ): Promise<boolean> {
-    return bcrypt.compare(password, hash);
-  }
-
-  // Generate verification token
-  private generateVerificationToken(email: string): string {
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET is not configured");
-    }
-    return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: "24h" });
-  }
-
-  // Registration logic
-  async register(
-    email: string,
-    password: string,
-    userType: UserType,
-    name: string,
-    callBackUrl: string
-  ): Promise<User> {
-    const profileIMAGES = [
-      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png",
-      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/lion.png",
-      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/cat.png",
-      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/chick.png",
-      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/penguin.png",
-      "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/bear.png",
-    ];
-
-    return await this.userRepository.manager.transaction(
-      async (transactionalEntityManager) => {
-        try {
-          await this.validateRegistration(email);
-        } catch (error: any) {
-          if (error?.message?.includes("EMAIL_IN_USE")) {
-            logError(error, 'User registration - Email already in use');
-            throw new Error("User already exists");
-          }
-          logError(error, 'User registration - Validation');
-          throw error;
+    private async validateEmailAvailable(email: string): Promise<void> {
+        const existingUser = await this.userRepository.findOneBy({ email });
+        if (existingUser) {
+            throw new AppError("Email already in use", 400, ErrorCodes.VALIDATION_ERROR);
         }
-        const hashedPassword = await this.hashPassword(password);
-        const verificationToken = this.generateVerificationToken(email);
+    }
 
-        // Send verification email
+    public async hashPassword(password: string): Promise<string> {
+        return bcrypt.hash(password, 10);
+    }
+
+    public async comparePassword(password: string, hash: string): Promise<boolean> {
+        return bcrypt.compare(password, hash);
+    }
+
+    private generateOtp(): string {
+        return crypto.randomInt(10 ** (OTP_LENGTH - 1), 10 ** OTP_LENGTH).toString();
+    }
+
+    private async hashOtp(otp: string): Promise<string> {
+        return bcrypt.hash(otp, 10);
+    }
+
+    private randomProfileImage(): string {
+        return PROFILE_IMAGES[Math.floor(Math.random() * PROFILE_IMAGES.length)];
+    }
+
+    async register(
+        email: string,
+        password: string,
+        userType: UserType,
+        name: string
+    ): Promise<User> {
+        return this.userRepository.manager.transaction(async (transactionalEntityManager) => {
+            await this.validateEmailAvailable(email);
+
+            const hashedPassword = await this.hashPassword(password);
+            const otp = this.generateOtp();
+            console.log(`[AUTH] Generated OTP for ${email}: ${otp}`);
+            const hashedOtp = await this.hashOtp(otp);
+            const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+            await sendEmail({
+                to: email,
+                subject: "Your Khor Verification Code",
+                html: otpVerificationTemplate(name, otp, OTP_EXPIRY_MINUTES),
+            });
+
+            logInfo(`OTP email sent to ${email}`);
+
+            const user = this.userRepository.create({
+                email,
+                password: hashedPassword,
+                userType,
+                verificationToken: hashedOtp,
+                otpExpiresAt,
+                isVerified: false,
+            });
+            await transactionalEntityManager.save(User, user);
+
+            if (userType === UserType.VENDOR) {
+                const vendor = this.vendorRepository.create({
+                    user,
+                    username: name,
+                    profile_picture: this.randomProfileImage(),
+                });
+                await transactionalEntityManager.save(Vendor, vendor);
+            } else {
+                const customerProfile = this.customerProfileRepository.create({
+                    username: name,
+                    user,
+                    profile_picture: this.randomProfileImage(),
+                });
+                await transactionalEntityManager.save(CustomerProfile, customerProfile);
+            }
+
+            logInfo(`User registered successfully: ${email}, Type: ${userType}`);
+            return user;
+        });
+    }
+
+    async verifyOtp(email: string, otp: string): Promise<boolean> {
+        const user = await this.userRepository.findOneBy({ email });
+        if (!user) {
+            throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        if (user.isVerified) {
+            throw new AppError("Email is already verified", 400, ErrorCodes.OTP_ALREADY_VERIFIED);
+        }
+
+        if (!user.otpExpiresAt || new Date() > user.otpExpiresAt) {
+            throw new AppError("OTP has expired", 400, ErrorCodes.OTP_EXPIRED);
+        }
+
+        if (!user.verificationToken) {
+            throw new AppError("Invalid OTP", 400, ErrorCodes.OTP_INVALID);
+        }
+
+        const isMatch = await bcrypt.compare(otp, user.verificationToken);
+        if (!isMatch) {
+            throw new AppError("Invalid OTP", 400, ErrorCodes.OTP_INVALID);
+        }
+
+        user.isVerified = true;
+        user.verificationToken = undefined;
+        user.otpExpiresAt = undefined;
+        await this.userRepository.save(user);
+
+        logInfo(`OTP verified successfully for user: ${email}`);
+        return true;
+    }
+
+    async resendOtp(email: string): Promise<void> {
+        const user = await this.userRepository.findOne({
+            where: { email },
+            relations: ["vendor", "customerProfile"],
+        });
+
+        if (!user) {
+            throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        if (user.isVerified) {
+            throw new AppError("Email is already verified", 400, ErrorCodes.OTP_ALREADY_VERIFIED);
+        }
+
+        const otp = this.generateOtp();
+        console.log(`[AUTH] Resent OTP for ${email}: ${otp}`);
+        const hashedOtp = await this.hashOtp(otp);
+        const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+        user.verificationToken = hashedOtp;
+        user.otpExpiresAt = otpExpiresAt;
+        await this.userRepository.save(user);
+
+        const username =
+            user.userType === UserType.VENDOR
+                ? user.vendor?.username ?? email
+                : user.customerProfile?.username ?? email;
+
         await sendEmail({
-          to: email,
-          subject: "Account Activation ",
-          html: accountActivationTemplate(name, verificationToken, callBackUrl),
+            to: email,
+            subject: "Your New Khor Verification Code",
+            html: otpVerificationTemplate(username, otp, OTP_EXPIRY_MINUTES),
         });
-        logInfo(`Verification email sent to ${email}`);
 
-        const user = this.userRepository.create({
-          email,
-          password: hashedPassword,
-          userType,
-          verificationToken,
-          isVerified: false,
+        logInfo(`OTP resent to ${email}`);
+    }
+
+    async login(email: string, password: string): Promise<{ token: string }> {
+        const user = await this.userRepository.findOne({
+            where: { email },
+            relations: ["vendor", "customerProfile"],
         });
-        await transactionalEntityManager.save(User, user);
 
-        if (userType === UserType.VENDOR) {
-          const vendor = this.vendorRepository.create({
-            user,
-            username: name,
-          });
-          vendor.profile_picture =
-            profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
-          await transactionalEntityManager.save(Vendor, vendor);
-        } else {
-          const customerProfile = this.customerProfileRepository.create({
-            username: name,
-            user,
-            profile_picture:
-              profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)],
-          });
-          await transactionalEntityManager.save(
-            CustomerProfile,
-            customerProfile
-          );
+        if (!user) {
+            logError(new Error(`Login failed for email: ${email}`), "User login");
+            throw new AppError("Invalid email or password", 401, ErrorCodes.INVALID_CREDENTIALS);
         }
 
-        logInfo(`User registered successfully: ${email}, Type: ${userType}`);
-        return user;
-      }
-    );
-  }
-
-  // Email verification logic
-  async verifyEmail(token: string): Promise<boolean> {
-    try {
-      if (!process.env.JWT_SECRET) {
-        throw new Error("JWT_SECRET is not configured");
-      }
-
-      const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
-        email: string;
-      };
-      const user = await this.userRepository.findOneBy({
-        email: decoded.email,
-      });
-      if (!user || user.verificationToken !== token) {
-        throw new Error("Invalid verification token");
-      }
-      user.isVerified = true;
-      user.verificationToken = undefined;
-      await this.userRepository.save(user);
-      logInfo(`Email verified successfully for user: ${decoded.email}`);
-
-      return true;
-    } catch (error: any) {
-      logError(error, 'Email verification');
-      throw new Error(`Email verification failed: ${error.message}`);
-    }
-  }
-
-  async resendVerificationEmail(email: string, callBackUrl: string): Promise<void> {
-    const user = await this.userRepository.findOne({
-      where: { email },
-      relations: ["vendor", "customerProfile"],
-    });
-
-    if (!user) {
-      logError(new Error(`User not found: ${email}`), 'Resend verification email');
-      throw new Error("User not found");
-    }
-
-    if (user.isVerified) {
-      logError(new Error(`Email already verified: ${email}`), 'Resend verification email');
-      throw new Error("Email is already verified");
-    }
-
-    const newToken = this.generateVerificationToken(email);
-    user.verificationToken = newToken;
-
-    await this.userRepository.save(user);
-
-    const username =
-      user.userType === "vendor"
-        ? user.vendor?.username
-        : user.customerProfile?.username;
-    await sendEmail({
-      to: email,
-      subject: "Account Activation",
-      html: accountActivationTemplate(username as string, newToken, callBackUrl),
-    });
-    logInfo(`Verification email resent to ${email}`);
-  }
-
-  // Login logic
-  async login(
-    email: string,
-    password: string
-  ): Promise<{
-    token: string;
-  }> {
-    const user = await this.userRepository.findOne({
-      where: { email },
-      relations: ["vendor", "customerProfile"],
-    });
-    if (!user) {
-      logError(new Error(`Login failed for email: ${email}`), 'User login');
-      throw new AppError("Invalid email or password", 401, ErrorCodes.INVALID_CREDENTIALS);
-    }
-
-    if (user.authProvider !== 'local' || !user.password) {
-      throw new AppError(
-        "This account uses Google sign-in. Please sign in with Google.",
-        401,
-        ErrorCodes.INVALID_CREDENTIALS
-      );
-    }
-
-    if (!(await bcrypt.compare(password, user.password))) {
-      logError(new Error(`Login failed for email: ${email}`), 'User login');
-      throw new AppError("Invalid email or password", 401, ErrorCodes.INVALID_CREDENTIALS);
-    }
-
-    if (!user.isVerified) {
-      logError(new Error(`Unverified email login attempt: ${email}`), 'User login');
-      throw new AppError("Please verify your email before logging in", 401, ErrorCodes.EMAIL_NOT_VERIFIED);
-    }
-
-    if (!CONFIG.jwt.secret) {
-      throw new Error("JWT_SECRET is not configured");
-    }
-
-    const name =
-      user.userType === UserType.VENDOR
-        ? user.vendor?.username ?? "Unknown"
-        : user.customerProfile?.username;
-
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        userType: user.userType,
-        name: name ?? "Unknown",
-        vendorId:
-          user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
-      },
-      CONFIG.jwt.secret as string,
-      { expiresIn: "7d" }
-    );
-    logInfo(`User logged in successfully: ${email}`);
-    return {
-      token,
-    };
-  }
-
-  // Reset password using token sent to user's email
-  async resetPassword(token: string, newPassword: string, confirmPassword: string) {
-    if (!token) {
-      logError(new Error('Reset token missing'), 'Password reset');
-      throw new Error('Reset token is required');
-    }
-    if (!newPassword || !confirmPassword) {
-      throw new Error('New password and confirm password are required');
-    }
-    if (newPassword !== confirmPassword) {
-      throw new Error('Passwords do not match');
-    }
-    if (newPassword.length < 8) {
-      throw new Error('New password must be at least 8 characters long');
-    }
-
-    let payload: any;
-    try {
-      if (!CONFIG.jwt.secret) {
-        throw new Error('JWT secret is not configured');
-      }
-      payload = jwt.verify(token, CONFIG.jwt.secret as string) as any;
-    } catch (err: any) {
-      logError(err, 'Password reset - Invalid token');
-      throw new Error('Invalid or expired reset token');
-    }
-
-    const email = payload?.email;
-    if (!email) {
-      throw new Error('Invalid token payload');
-    }
-
-    const user = await this.userRepository.findOneBy({ email });
-    if (!user) {
-      logError(new Error(`User not found for password reset: ${email}`), 'Password reset');
-      throw new Error('User not found');
-    }
-
-    // Update password
-    user.password = await this.hashPassword(newPassword);
-    user.isVerified = true;
-    await this.userRepository.save(user);
-    logInfo(`Password reset successfully for user: ${email}`);
-
-    return { success: true, message: 'Password has been reset successfully' };
-  }
-
-  // Google OAuth — verify access token via userinfo endpoint and return JWT
-  async googleLoginOrRegister(
-    accessToken: string,
-    preferredUserType: UserType = UserType.VENDOR
-  ): Promise<{ token: string; isNewUser: boolean }> {
-    // Fetch user info from Google userinfo endpoint
-    let googleUser: { sub: string; email: string; name?: string; picture?: string; email_verified?: boolean };
-    try {
-      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) throw new Error(`Google userinfo responded with ${res.status}`);
-      googleUser = await res.json();
-    } catch (err: any) {
-      logError(err, 'Google OAuth - userinfo fetch');
-      throw new AppError('Invalid or expired Google token', 401, ErrorCodes.INVALID_CREDENTIALS);
-    }
-
-    if (!googleUser.email) {
-      throw new AppError('Could not retrieve email from Google account', 400, ErrorCodes.INVALID_CREDENTIALS);
-    }
-
-    const { email, sub: googleId, name: googleName, picture } = googleUser;
-
-    const profileIMAGES = [
-      'https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png',
-      'https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/lion.png',
-      'https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/cat.png',
-    ];
-
-    let existingUser = await this.userRepository.findOne({
-      where: [{ googleId }, { email }],
-      relations: ['vendor', 'customerProfile'],
-    });
-
-    let isNewUser = false;
-
-    if (!existingUser) {
-      // New user — create account
-      isNewUser = true;
-      existingUser = await this.userRepository.manager.transaction(async (em) => {
-        const newUser = this.userRepository.create({
-          email,
-          googleId,
-          authProvider: 'google',
-          userType: preferredUserType,
-          isVerified: true,
-        });
-        await em.save(User, newUser);
-
-        const displayName = googleName || email.split('@')[0];
-        const avatar = picture || profileIMAGES[Math.floor(Math.random() * profileIMAGES.length)];
-
-        if (preferredUserType === UserType.VENDOR) {
-          const vendor = this.vendorRepository.create({ user: newUser, username: displayName, profile_picture: avatar });
-          await em.save(Vendor, vendor);
-        } else {
-          const profile = this.customerProfileRepository.create({ user: newUser, username: displayName, profile_picture: avatar });
-          await em.save(CustomerProfile, profile);
+        if (user.authProvider !== "local" || !user.password) {
+            throw new AppError(
+                "This account uses Google sign-in. Please sign in with Google.",
+                401,
+                ErrorCodes.INVALID_CREDENTIALS
+            );
         }
 
-        logInfo(`New user registered via Google OAuth: ${email}`);
-        return newUser;
-      });
+        if (!(await bcrypt.compare(password, user.password))) {
+            logError(new Error(`Login failed for email: ${email}`), "User login");
+            throw new AppError("Invalid email or password", 401, ErrorCodes.INVALID_CREDENTIALS);
+        }
 
-      // Reload with relations
-      existingUser = (await this.userRepository.findOne({
-        where: { id: existingUser.id },
-        relations: ['vendor', 'customerProfile'],
-      }))!;
-    } else if (!existingUser.googleId) {
-      // Existing email/password user — link Google account
-      existingUser.googleId = googleId;
-      if (!existingUser.isVerified) existingUser.isVerified = true;
-      await this.userRepository.save(existingUser);
-      logInfo(`Google account linked for existing user: ${email}`);
+        if (!user.isVerified) {
+            logError(new Error(`Unverified email login attempt: ${email}`), "User login");
+            throw new AppError(
+                "Please verify your email before logging in",
+                401,
+                ErrorCodes.EMAIL_NOT_VERIFIED
+            );
+        }
+
+        if (!CONFIG.jwt.secret) {
+            throw new Error("JWT_SECRET is not configured");
+        }
+
+        const name =
+            user.userType === UserType.VENDOR
+                ? user.vendor?.username ?? "Unknown"
+                : user.customerProfile?.username;
+
+        const token = jwt.sign(
+            {
+                userId: user.id,
+                userType: user.userType,
+                name: name ?? "Unknown",
+                vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
+            },
+            CONFIG.jwt.secret as string,
+            { expiresIn: "7d" }
+        );
+
+        logInfo(`User logged in successfully: ${email}`);
+        return { token };
     }
 
-    if (!CONFIG.jwt.secret) {
-      throw new Error('JWT_SECRET is not configured');
+    async resetPassword(token: string, newPassword: string, confirmPassword: string) {
+        if (!token) {
+            logError(new Error("Reset token missing"), "Password reset");
+            throw new AppError("Reset token is required", 400, ErrorCodes.BAD_REQUEST);
+        }
+        if (!newPassword || !confirmPassword) {
+            throw new AppError(
+                "New password and confirm password are required",
+                400,
+                ErrorCodes.BAD_REQUEST
+            );
+        }
+        if (newPassword !== confirmPassword) {
+            throw new AppError("Passwords do not match", 400, ErrorCodes.BAD_REQUEST);
+        }
+        if (newPassword.length < 8) {
+            throw new AppError(
+                "New password must be at least 8 characters long",
+                400,
+                ErrorCodes.BAD_REQUEST
+            );
+        }
+
+        let email: string;
+        try {
+            if (!CONFIG.jwt.secret) {
+                throw new Error("JWT secret is not configured");
+            }
+            const payload = jwt.verify(token, CONFIG.jwt.secret as string) as { email: string };
+            email = payload.email;
+        } catch (err) {
+            logError(err as Error, "Password reset - Invalid token");
+            throw new AppError("Invalid or expired reset token", 400, ErrorCodes.BAD_REQUEST);
+        }
+
+        const user = await this.userRepository.findOneBy({ email });
+        if (!user) {
+            logError(new Error(`User not found for password reset: ${email}`), "Password reset");
+            throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        user.password = await this.hashPassword(newPassword);
+        user.isVerified = true;
+        await this.userRepository.save(user);
+        logInfo(`Password reset successfully for user: ${email}`);
+
+        return { success: true };
     }
 
-    const name =
-      existingUser.userType === UserType.VENDOR
-        ? existingUser.vendor?.username ?? googleName ?? 'Unknown'
-        : existingUser.customerProfile?.username ?? googleName ?? 'Unknown';
+    async googleLoginOrRegister(
+        accessToken: string,
+        preferredUserType: UserType = UserType.VENDOR
+    ): Promise<{ token: string; isNewUser: boolean }> {
+        let googleUser: {
+            sub: string;
+            email: string;
+            name?: string;
+            picture?: string;
+            email_verified?: boolean;
+        };
 
-    const token = jwt.sign(
-      {
-        userId: existingUser.id,
-        userType: existingUser.userType,
-        name,
-        vendorId: existingUser.userType === UserType.VENDOR ? existingUser.vendor?.id : undefined,
-      },
-      CONFIG.jwt.secret as string,
-      { expiresIn: '7d' }
-    );
+        try {
+            const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (!res.ok) throw new Error(`Google userinfo responded with ${res.status}`);
+            googleUser = (await res.json()) as typeof googleUser;
+        } catch (err) {
+            logError(err as Error, "Google OAuth - userinfo fetch");
+            throw new AppError("Invalid or expired Google token", 401, ErrorCodes.INVALID_CREDENTIALS);
+        }
 
-    return { token, isNewUser };
-  }
+        if (!googleUser.email) {
+            throw new AppError(
+                "Could not retrieve email from Google account",
+                400,
+                ErrorCodes.INVALID_CREDENTIALS
+            );
+        }
 
-  async getCurrentUser(userId: string) {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      relations: ["vendor", "customerProfile"],
-    });
+        const { email, sub: googleId, name: googleName, picture } = googleUser;
 
-    if (!user) {
-      throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
+        let existingUser = await this.userRepository.findOne({
+            where: [{ googleId }, { email }],
+            relations: ["vendor", "customerProfile"],
+        });
+
+        let isNewUser = false;
+
+        if (!existingUser) {
+            isNewUser = true;
+            existingUser = await this.userRepository.manager.transaction(async (em) => {
+                const newUser = this.userRepository.create({
+                    email,
+                    googleId,
+                    authProvider: "google",
+                    userType: preferredUserType,
+                    isVerified: true,
+                });
+                await em.save(User, newUser);
+
+                const displayName = googleName ?? email.split("@")[0];
+                const avatar = picture ?? this.randomProfileImage();
+
+                if (preferredUserType === UserType.VENDOR) {
+                    const vendor = this.vendorRepository.create({
+                        user: newUser,
+                        username: displayName,
+                        profile_picture: avatar,
+                    });
+                    await em.save(Vendor, vendor);
+                } else {
+                    const profile = this.customerProfileRepository.create({
+                        user: newUser,
+                        username: displayName,
+                        profile_picture: avatar,
+                    });
+                    await em.save(CustomerProfile, profile);
+                }
+
+                logInfo(`New user registered via Google OAuth: ${email}`);
+                return newUser;
+            });
+
+            existingUser = (await this.userRepository.findOne({
+                where: { id: existingUser.id },
+                relations: ["vendor", "customerProfile"],
+            }))!;
+        } else if (!existingUser.googleId) {
+            existingUser.googleId = googleId;
+            if (!existingUser.isVerified) existingUser.isVerified = true;
+            await this.userRepository.save(existingUser);
+            logInfo(`Google account linked for existing user: ${email}`);
+        }
+
+        if (!CONFIG.jwt.secret) {
+            throw new Error("JWT_SECRET is not configured");
+        }
+
+        const name =
+            existingUser.userType === UserType.VENDOR
+                ? existingUser.vendor?.username ?? googleName ?? "Unknown"
+                : existingUser.customerProfile?.username ?? googleName ?? "Unknown";
+
+        const token = jwt.sign(
+            {
+                userId: existingUser.id,
+                userType: existingUser.userType,
+                name,
+                vendorId:
+                    existingUser.userType === UserType.VENDOR ? existingUser.vendor?.id : undefined,
+            },
+            CONFIG.jwt.secret as string,
+            { expiresIn: "7d" }
+        );
+
+        return { token, isNewUser };
     }
 
-    const username =
-      user.userType === UserType.VENDOR
-        ? user.vendor?.username
-        : user.customerProfile?.username;
+    async getCurrentUser(userId: string) {
+        const user = await this.userRepository.findOne({
+            where: { id: userId },
+            relations: ["vendor", "customerProfile"],
+        });
 
-    return {
-      userId: user.id,
-      email: user.email,
-      username: username ?? "Unknown",
-      userType: user.userType,
-      vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
-    };
-  }
+        if (!user) {
+            throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        const username =
+            user.userType === UserType.VENDOR
+                ? user.vendor?.username
+                : user.customerProfile?.username;
+
+        return {
+            userId: user.id,
+            email: user.email,
+            username: username ?? "Unknown",
+            userType: user.userType,
+            vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
+        };
+    }
 }

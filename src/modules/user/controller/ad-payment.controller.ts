@@ -104,6 +104,23 @@ export class AdPaymentController {
         }
     }
 
+    async getVendorPayments(req: FastifyRequest, reply: FastifyReply) {
+        try {
+            const userId = (req.user as any).userId;
+            if (!userId) {
+                reply.code(403).send({ message: "Vendor User ID not found" });
+                return;
+            }
+            console.log(`[PAYMENT] Fetching payments for user: ${userId}`);
+            const payments = await this.paymentService.getPaymentsByVendor(userId);
+            reply.send(payments);
+        } catch (error: any) {
+            reply
+                .code(500)
+                .send({ message: error.message || "Failed to fetch vendor payments" });
+        }
+    }
+
     async deletePayment(req: FastifyRequest, reply: FastifyReply) {
         try {
             const { id } = req.params as { id: string };

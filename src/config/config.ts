@@ -44,4 +44,8 @@ export const CONFIG = {
     publicUrl: process.env.R2_PUBLIC_URL || "",
     maxFileSize: Number(process.env.R2_MAX_FILE_SIZE) || 10 * 1024 * 1024,
   },
+  otp: {
+    expiryMinutes: Number(process.env.OTP_EXPIRY_MINUTES) || 10,
+    resendCooldownSeconds: Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60,
+  },
 };

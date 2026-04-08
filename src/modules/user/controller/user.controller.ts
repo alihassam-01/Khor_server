@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { UserService } from "@modules/user/service/user.service";
+import { UserType } from "@modules/user/entity/ENUM/enum";
 import {
   ValidationError,
   NotFoundError,
@@ -46,6 +47,43 @@ export class UserController {
   async getVendors(_req: FastifyRequest, reply: FastifyReply) {
     const vendors = await this.userService.getVendors();
     reply.send(vendors);
+  }
+
+  async deleteUser(
+    req: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const result = await this.userService.deleteUser(req.params.id);
+      reply.send(result);
+    } catch (error: any) {
+      logError(error, 'Delete user');
+      reply.status(error instanceof NotFoundError ? 404 : 500).send({
+        success: false,
+        message: error.message || "Failed to delete user",
+      });
+    }
+  }
+
+  async changeRole(
+    req: FastifyRequest<{ Params: { id: string }; Body: { role: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const newRole = req.body.role as UserType;
+      if (!Object.values(UserType).includes(newRole)) {
+        return reply.status(400).send({ success: false, message: "Invalid role provided." });
+      }
+
+      const updatedUser = await this.userService.changeRole(req.params.id, newRole);
+      reply.send(updatedUser);
+    } catch (error: any) {
+      logError(error, 'Change user role');
+      reply.status(error instanceof NotFoundError ? 404 : 500).send({
+        success: false,
+        message: error.message || "Failed to change user role",
+      });
+    }
   }
 
   async update(
