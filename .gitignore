@@ -18,6 +18,7 @@ npm-debug.log*
 *.tsbuildinfo
 
 # Environment variables
+.env
 !.env.example
 # Misc
 .DS_Store
