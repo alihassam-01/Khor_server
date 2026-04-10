@@ -1,5 +1,5 @@
-import { RoomTypeEnum } from "@modules/user/entity/ENUM/ad.enum";
-import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { RoomType } from "@common/enums/property.enums";
+import { SubscriptionType } from "@common/enums/subscription.enums";
 
 export interface IReviewDTO {
     user_name: string;
@@ -9,7 +9,7 @@ export interface IReviewDTO {
 }
 
 export interface IRoomTypeDTO {
-    type: RoomTypeEnum;
+    type: RoomType;
     price: number;
     amenities: string[];
     capacity: number;
@@ -107,4 +107,16 @@ export interface IUpdateHotelDTO {
     is_featured?: boolean;
     plan_id?: string;
     roomTypes?: IRoomTypeDTO[];
+}
+
+export interface IPaginatedHotelsResponse {
+    items: IHotelDTO[];
+    total: number;
+    page: number;
+    limit: number;
+}
+
+export interface IHotelStatusResponse {
+    success: boolean;
+    message: string;
 }

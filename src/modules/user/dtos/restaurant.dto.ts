@@ -1,5 +1,5 @@
 import { IReviewDTO } from "./hotel.dto";
-import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { SubscriptionType } from "@common/enums/subscription.enums";
 
 export interface IRestaurantDTO {
     id: string;
@@ -84,4 +84,11 @@ export interface IUpdateRestaurantDTO {
     subscription_type?: SubscriptionType;
     is_featured?: boolean;
     plan_id?: string;
+}
+
+export interface IPaginatedRestaurantsResponse {
+    items: IRestaurantDTO[];
+    total: number;
+    page: number;
+    limit: number;
 }

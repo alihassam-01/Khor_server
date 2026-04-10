@@ -3,332 +3,291 @@ import { RestaurantService } from "@modules/user/service/restaurant.service";
 import {
     ICreateRestaurantDTO,
     IUpdateRestaurantDTO,
-} from "../dtos/restaurant.dto";
+    IPaginatedRestaurantsResponse
+} from "@modules/user/dtos";
 import { R2ClientService } from "@modules/user/service/r2client.service";
 import { extractMultipartFields, isMultipartRequest } from "@common/utils/multipart.util";
+import { PAGINATION_DEFAULTS } from "@common/constants";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
+import { 
+    IRestaurantIdParams, 
+    IGetAllRestaurantsQuery, 
+    IToggleRestaurantAdStatusBody, 
+    IRenewRestaurantAdBody, 
+    ISetRestaurantFeaturedStatusBody,
+    IHotelLocationParams,
+    IVendorIdParams
+} from "@modules/user/types";
 
 export class RestaurantController {
     private restaurantService = new RestaurantService();
     private r2Client = new R2ClientService();
 
-    async createRestaurant(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const authUserId = req.user?.id || req.user?.userId;
-            if (!authUserId) {
-                return reply.code(401).send({
-                    message: "Authentication required. Please log in.",
-                });
+    async createRestaurant(
+        req: FastifyRequest<{ Body: ICreateRestaurantDTO | any }>, 
+        reply: FastifyReply
+    ) {
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        if (!authUserId) {
+            throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
+        }
+
+        const contentType = (req.headers['content-type'] || '') as string;
+        let restaurantData: ICreateRestaurantDTO;
+
+        if (contentType.includes('multipart/form-data')) {
+            const body = req.body as Record<string, any>;
+
+            // Extract plain field values
+            const extractedBody: Record<string, any> = {};
+            for (const key in body) {
+                const field = body[key];
+                if (field && typeof field === 'object' && field.type === 'field' && 'value' in field) {
+                    extractedBody[key] = field.value;
+                } else if (typeof field === 'string') {
+                    extractedBody[key] = field;
+                }
             }
 
-            const contentType = (req.headers['content-type'] || '') as string;
-            let restaurantData: ICreateRestaurantDTO;
+            const parseNumber = (val: any, fieldName?: string): number | undefined => {
+                if (val === undefined || val === null || val === '') return undefined;
+                const parsed = Number(val);
+                if (isNaN(parsed)) {
+                    throw new AppError(`${fieldName || 'Field'} must be a valid number, got: ${val}`, 400, ErrorCodes.VALIDATION_ERROR);
+                }
+                return parsed;
+            };
+            const parseArrayField = (val: any): string[] => {
+                if (!val) return [];
+                if (Array.isArray(val)) return val;
+                try { return JSON.parse(val); } catch { return []; }
+            };
 
-            if (contentType.includes('multipart/form-data')) {
-                const body: any = req.body as any;
+            // Upload main image to R2
+            let imageUrl = '';
+            if (body.image && typeof body.image !== 'string') {
+                const file = body.image;
+                const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
+                const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
+                imageUrl = res.url;
+            } else if (extractedBody.image) {
+                imageUrl = extractedBody.image;
+            }
 
-                // Extract plain field values (skip file objects)
-                const extractedBody: any = {};
-                for (const key in body) {
-                    const field = body[key];
-                    if (field && typeof field === 'object' && field.type === 'field' && 'value' in field) {
-                        extractedBody[key] = field.value;
-                    } else if (typeof field === 'string') {
-                        extractedBody[key] = field;
+            // Upload menu images to R2
+            const menuImageUrls: string[] = [];
+            const menuImagesRaw = body.menu_images;
+            if (menuImagesRaw) {
+                const menuFiles = Array.isArray(menuImagesRaw) ? menuImagesRaw : [menuImagesRaw];
+                for (const mf of menuFiles) {
+                    if (mf && typeof mf !== 'string') {
+                        const buffer: Buffer = mf.toBuffer ? await mf.toBuffer() : Buffer.from([]);
+                        const res = await this.r2Client.uploadFileToR2(buffer, mf.filename || 'menu', mf.mimetype || 'application/octet-stream');
+                        menuImageUrls.push(res.url);
                     }
                 }
-
-                const parseNumber = (val: any): number | undefined => {
-                    if (val === undefined || val === null || val === '') return undefined;
-                    const parsed = Number(val);
-                    return isNaN(parsed) ? undefined : parsed;
-                };
-                const parseArrayField = (val: any): string[] => {
-                    if (!val) return [];
-                    if (Array.isArray(val)) return val;
-                    try { return JSON.parse(val); } catch { return []; }
-                };
-
-                // Upload main image to R2
-                let imageUrl = '';
-                if (body.image && typeof body.image !== 'string') {
-                    const file: any = body.image;
-                    const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
-                    const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
-                    imageUrl = res.url;
-                } else if (extractedBody.image) {
-                    imageUrl = extractedBody.image;
-                }
-
-                // Upload menu images to R2
-                const menuImageUrls: string[] = [];
-                const menuImagesRaw = body.menu_images;
-                if (menuImagesRaw) {
-                    const menuFiles = Array.isArray(menuImagesRaw) ? menuImagesRaw : [menuImagesRaw];
-                    for (const mf of menuFiles) {
-                        if (mf && typeof mf !== 'string') {
-                            const buffer: Buffer = mf.toBuffer ? await mf.toBuffer() : Buffer.from([]);
-                            const res = await this.r2Client.uploadFileToR2(buffer, mf.filename || 'menu', mf.mimetype || 'application/octet-stream');
-                            menuImageUrls.push(res.url);
-                        }
-                    }
-                }
-
-                restaurantData = {
-                    name: extractedBody.name,
-                    location_name: extractedBody.location_name,
-                    price: parseNumber(extractedBody.price) ?? 0,
-                    rating: parseNumber(extractedBody.rating),
-                    reviews: parseNumber(extractedBody.reviews),
-                    image: imageUrl,
-                    phone: extractedBody.phone || undefined,
-                    whatsapp: extractedBody.whatsapp || undefined,
-                    facebook: extractedBody.facebook || undefined,
-                    instagram: extractedBody.instagram || undefined,
-                    website: extractedBody.website || undefined,
-                    description: extractedBody.description,
-                    menu_images: menuImageUrls.length > 0 ? menuImageUrls : parseArrayField(extractedBody.menu_images),
-                    location_id: parseNumber(extractedBody.location_id) ?? 0,
-                    is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
-                    is_featured: (extractedBody.is_featured === 'true' || extractedBody.is_featured === true) as any,
-                    vendor_id: extractedBody.vendor_id || undefined,
-                    subscription_type: extractedBody.subscription_type || undefined,
-                    map_link: extractedBody.map_link || undefined,
-                    latitude: parseNumber(extractedBody.latitude) ?? undefined,
-                    longitude: parseNumber(extractedBody.longitude) ?? undefined,
-                } as ICreateRestaurantDTO;
-            } else {
-                restaurantData = req.body as ICreateRestaurantDTO;
             }
 
-            // Do not accept vendor_id from client payload; store authenticated user id.
-            restaurantData.vendor_id = authUserId;
-
-            const restaurant = await this.restaurantService.createRestaurant(
-                restaurantData
-            );
-            reply.code(201).send(restaurant);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to create restaurant" });
+            restaurantData = {
+                name: extractedBody.name,
+                location_name: extractedBody.location_name,
+                price: parseNumber(extractedBody.price, 'price') ?? 0,
+                rating: parseNumber(extractedBody.rating, 'rating'),
+                reviews: parseNumber(extractedBody.reviews, 'reviews'),
+                image: imageUrl,
+                phone: extractedBody.phone || undefined,
+                whatsapp: extractedBody.whatsapp || undefined,
+                facebook: extractedBody.facebook || undefined,
+                instagram: extractedBody.instagram || undefined,
+                website: extractedBody.website || undefined,
+                description: extractedBody.description || "",
+                menu_images: menuImageUrls.length > 0 ? menuImageUrls : parseArrayField(extractedBody.menu_images),
+                location_id: parseNumber(extractedBody.location_id, 'location_id') ?? 0,
+                is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
+                is_featured: extractedBody.is_featured === 'true' || extractedBody.is_featured === true,
+                subscription_type: extractedBody.subscription_type || undefined,
+                map_link: extractedBody.map_link || undefined,
+                latitude: parseNumber(extractedBody.latitude, 'latitude'),
+                longitude: parseNumber(extractedBody.longitude, 'longitude'),
+                vendor_id: authUserId,
+            };
+        } else {
+            restaurantData = { ...(req.body as ICreateRestaurantDTO), vendor_id: authUserId };
         }
+
+        const restaurant = await this.restaurantService.createRestaurant(restaurantData);
+        reply.code(201).send(restaurant);
     }
 
-    async getRestaurantById(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const restaurant = await this.restaurantService.getRestaurantById(id);
+    async getRestaurantById(
+        req: FastifyRequest<{ Params: IRestaurantIdParams }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const restaurant = await this.restaurantService.getRestaurantById(id);
 
-            if (!restaurant) {
-                reply.code(404).send({ message: "Restaurant not found" });
-                return;
-            }
-
-            reply.send(restaurant);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch restaurant" });
+        if (!restaurant) {
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
+
+        reply.send(restaurant);
     }
 
-    async getAllRestaurants(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { page = 1, limit = 10, searchQuery = "" } = req.query as any;
-            const pageNum = parseInt(page as string, 10) || 1;
-            const limitNum = parseInt(limit as string, 10) || 10;
-            const result = await this.restaurantService.getAllRestaurants({
-                page: pageNum,
-                limit: limitNum,
-                searchQuery: searchQuery as string,
+    async getAllRestaurants(
+        req: FastifyRequest<{ Querystring: IGetAllRestaurantsQuery }>, 
+        reply: FastifyReply
+    ) {
+        const { 
+            page = String(PAGINATION_DEFAULTS.PAGE), 
+            limit = String(PAGINATION_DEFAULTS.LIMIT), 
+            searchQuery = "" 
+        } = req.query;
+        const pageNum = parseInt(page, 10) || PAGINATION_DEFAULTS.PAGE;
+        const limitNum = parseInt(limit, 10) || PAGINATION_DEFAULTS.LIMIT;
+        const result: IPaginatedRestaurantsResponse = await this.restaurantService.getAllRestaurants({
+            page: pageNum,
+            limit: limitNum,
+            searchQuery: searchQuery,
+        });
+        reply.send(result);
+    }
+
+    async updateRestaurant(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantDTO | any }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        let restaurantData: IUpdateRestaurantDTO;
+
+        const contentType = (req.headers['content-type'] || '') as string;
+        if (isMultipartRequest(contentType)) {
+            const body = req.body as Record<string, any>;
+            restaurantData = extractMultipartFields<IUpdateRestaurantDTO>(body, {
+                price: 'number',
+                location_id: 'number',
+                rating: 'number',
+                reviews: 'number',
+                is_active: 'boolean',
+                is_featured: 'boolean',
             });
-            reply.send(result);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch restaurants" });
-        }
-    }
-
-    async updateRestaurant(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            let restaurantData: IUpdateRestaurantDTO;
-
-            if (isMultipartRequest(req.headers['content-type'])) {
-                const body: any = req.body as any;
-                restaurantData = extractMultipartFields<IUpdateRestaurantDTO>(body, {
-                    price: 'number',
-                    location_id: 'number',
-                    rating: 'number',
-                    reviews: 'number',
-                    is_active: 'boolean',
-                    is_featured: 'boolean',
-                });
-                // Handle main image file upload
-                if (body.image && typeof body.image !== 'string') {
-                    const file: any = body.image;
-                    const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
-                    const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
-                    restaurantData.image = res.url;
-                }
-                // Handle menu images file uploads
-                const menuImagesRaw = body.menu_images;
-                if (menuImagesRaw) {
-                    const menuFiles = Array.isArray(menuImagesRaw) ? menuImagesRaw : [menuImagesRaw];
-                    const menuImageUrls: string[] = [];
-                    for (const mf of menuFiles) {
-                        if (mf && typeof mf !== 'string') {
-                            const buffer: Buffer = mf.toBuffer ? await mf.toBuffer() : Buffer.from([]);
-                            const res = await this.r2Client.uploadFileToR2(buffer, mf.filename || 'menu', mf.mimetype || 'application/octet-stream');
-                            menuImageUrls.push(res.url);
-                        }
-                    }
-                    if (menuImageUrls.length > 0) restaurantData.menu_images = menuImageUrls;
-                }
-            } else {
-                restaurantData = req.body as IUpdateRestaurantDTO;
+            // Handle main image file upload
+            if (body.image && typeof body.image !== 'string') {
+                const file = body.image;
+                const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
+                const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
+                restaurantData.image = res.url;
             }
-
-            const restaurant = await this.restaurantService.updateRestaurant(
-                id,
-                restaurantData
-            );
-            reply.send(restaurant);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to update restaurant" });
+            // Handle menu images file uploads
+            const menuImagesRaw = body.menu_images;
+            if (menuImagesRaw) {
+                const menuFiles = Array.isArray(menuImagesRaw) ? menuImagesRaw : [menuImagesRaw];
+                const menuImageUrls: string[] = [];
+                for (const mf of menuFiles) {
+                    if (mf && typeof mf !== 'string') {
+                        const buffer: Buffer = mf.toBuffer ? await mf.toBuffer() : Buffer.from([]);
+                        const res = await this.r2Client.uploadFileToR2(buffer, mf.filename || 'menu', mf.mimetype || 'application/octet-stream');
+                        menuImageUrls.push(res.url);
+                    }
+                }
+                if (menuImageUrls.length > 0) restaurantData.menu_images = menuImageUrls;
+            }
+        } else {
+            restaurantData = req.body as IUpdateRestaurantDTO;
         }
+
+        const restaurant = await this.restaurantService.updateRestaurant(id, restaurantData);
+        reply.send(restaurant);
     }
 
-    async deleteRestaurant(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            await this.restaurantService.deleteRestaurant(id);
-            reply.code(204).send();
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to delete restaurant" });
-        }
+    async deleteRestaurant(
+        req: FastifyRequest<{ Params: IRestaurantIdParams }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        await this.restaurantService.deleteRestaurant(id);
+        reply.code(204).send();
     }
 
     // ========== ADMIN ENDPOINTS ==========
 
-    async toggleAdStatus(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const { is_active } = req.body as { is_active: boolean };
-            const restaurant = await this.restaurantService.toggleAdStatus(id, is_active);
-            reply.send(restaurant);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to toggle ad status" });
-        }
+    async toggleAdStatus(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IToggleRestaurantAdStatusBody }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const { is_active } = req.body;
+        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active);
+        reply.send(restaurant);
     }
 
-    async renewAd(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const { subscription_type } = req.body as { subscription_type: import("../entity/ENUM/ad-payment.enum").SubscriptionType };
-            const restaurant = await this.restaurantService.renewAd(id, subscription_type);
-            reply.send(restaurant);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to renew ad" });
-        }
+    async renewAd(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const { subscription_type } = req.body;
+        const restaurant = await this.restaurantService.renewAd(id, subscription_type);
+        reply.send(restaurant);
     }
 
-    async renewAdByVendor(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const authUserId = req.user?.id || req.user?.userId;
-            if (!authUserId) {
-                return reply.code(401).send({ message: "Authentication required. Please log in." });
-            }
-
-            const { subscription_type } = req.body as { subscription_type: import("../entity/ENUM/ad-payment.enum").SubscriptionType };
-            const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type);
-            reply.send(restaurant);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to renew ad" });
+    async renewAdByVendor(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        if (!authUserId) {
+            throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
         }
+
+        const { subscription_type } = req.body;
+        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type);
+        reply.send(restaurant);
     }
 
     async getExpiredAds(_req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const restaurants = await this.restaurantService.getExpiredAds();
-            reply.send(restaurants);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch expired ads" });
-        }
+        const restaurants = await this.restaurantService.getExpiredAds();
+        reply.send(restaurants);
     }
 
-    async getAdsByVendor(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { vendorId } = req.params as { vendorId: string };
-            const authUserId = req.user?.id || req.user?.userId;
-            const effectiveVendorId = authUserId || vendorId;
-            const restaurants = await this.restaurantService.getAdsByVendor(effectiveVendorId);
-            reply.send(restaurants);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch vendor ads" });
-        }
+    async getAdsByVendor(
+        req: FastifyRequest<{ Params: IVendorIdParams }>, 
+        reply: FastifyReply
+    ) {
+        const { vendorId } = req.params;
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        const effectiveVendorId = authUserId || vendorId;
+        const restaurants = await this.restaurantService.getAdsByVendor(effectiveVendorId);
+        reply.send(restaurants);
     }
 
-    async setFeaturedStatus(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const { is_featured } = req.body as { is_featured: boolean };
-            const restaurant = await this.restaurantService.setFeaturedStatus(id, is_featured);
-            reply.send(restaurant);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to set featured status" });
-        }
+    async setFeaturedStatus(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: ISetRestaurantFeaturedStatusBody }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const { is_featured } = req.body;
+        const restaurant = await this.restaurantService.setFeaturedStatus(id, is_featured);
+        reply.send(restaurant);
     }
 
     async getAllRestaurantsAdmin(_req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const restaurants = await this.restaurantService.getAllRestaurantsAdmin();
-            reply.send(restaurants);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch restaurants" });
-        }
+        const restaurants = await this.restaurantService.getAllRestaurantsAdmin();
+        reply.send(restaurants);
     }
 
-    async getFeaturedAds(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { locationId } = req.params as {locationId: string}
-            const restaurants = await this.restaurantService.getFeaturedAds(locationId);
-            reply.send(restaurants);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch featured ads" });
-        }
+    async getFeaturedAds(
+        req: FastifyRequest<{ Params: IHotelLocationParams }>, 
+        reply: FastifyReply
+    ) {
+        const { locationId } = req.params;
+        const restaurants = await this.restaurantService.getFeaturedAds(locationId);
+        reply.send(restaurants);
     }
 
     async getPremiumAds(_req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const restaurants = await this.restaurantService.getPremiumAds();
-            reply.send(restaurants);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch premium ads" });
-        }
+        const restaurants = await this.restaurantService.getPremiumAds();
+        reply.send(restaurants);
     }
 }

@@ -1,13 +1,13 @@
 import { AppDataSource } from "@config/ormconfig";
 import { SubscriptionPlan } from "@modules/user/entity/subscription-plan.entity";
-import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { SubscriptionType } from "@common/enums";
 import {
     ISubscriptionPlanDTO,
     ICreateSubscriptionPlanDTO,
     IUpdateSubscriptionPlanDTO,
     IFeaturedPricingDTO,
-} from "../dtos/subscription-plan.dto";
-import { SUBSCRIPTION_PRICES, FEATURED_AD_PRICE } from "@modules/user/constant/ad-subscription.constant";
+} from "@modules/user/dtos";
+import { SUBSCRIPTION_PRICES, FEATURED_AD_PRICE } from "@common/constants";
 
 export class SubscriptionPlanService {
     private planRepository = AppDataSource.getRepository(SubscriptionPlan);
@@ -29,13 +29,13 @@ export class SubscriptionPlanService {
     private toPlanDTO(plan: SubscriptionPlan, monthlyPrice?: number): ISubscriptionPlanDTO {
         const dto: ISubscriptionPlanDTO = {
             plan_id: plan.plan_id,
-            type: plan.type,
+            type: plan.type as SubscriptionType,
             name: plan.name,
             duration_days: plan.duration_days,
             price: Number(plan.price),
             price_per_day: Math.round(Number(plan.price) / plan.duration_days),
-            description: plan.description,
-            features: plan.features,
+            description: plan.description || "",
+            features: plan.features || [],
             is_popular: plan.is_popular,
             is_active: plan.is_active,
             display_order: plan.display_order,
@@ -185,8 +185,8 @@ export class SubscriptionPlanService {
         plan.name = planData.name;
         plan.duration_days = planData.duration_days;
         plan.price = planData.price;
-        plan.description = planData.description;
-        plan.features = planData.features;
+        plan.description = planData.description || "";
+        plan.features = planData.features || [];
         plan.is_popular = planData.is_popular ?? false;
         plan.is_active = planData.is_active ?? true;
         plan.display_order = planData.display_order ?? 0;
@@ -241,7 +241,6 @@ export class SubscriptionPlanService {
     }
 
     async getFeaturedPricing(): Promise<IFeaturedPricingDTO> {
-        // For now, return constant. Could be moved to database later
         return {
             price: FEATURED_AD_PRICE,
             description: "Premium placement at the top of search results",
@@ -258,7 +257,7 @@ export class SubscriptionPlanService {
 
         // Find most popular plan or default to quarterly
         const popularPlan = plans.find((p) => p.is_popular);
-        const recommended = popularPlan ? popularPlan.type : SubscriptionType.QUARTERLY;
+        const recommended = popularPlan ? popularPlan.type as SubscriptionType : SubscriptionType.QUARTERLY;
 
         return {
             plans,

@@ -1,10 +1,15 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { SubscriptionPlanService } from "@modules/user/service/subscription-plan.service";
-import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
-import {
-    ICreateSubscriptionPlanDTO,
-    IUpdateSubscriptionPlanDTO,
-} from "../dtos/subscription-plan.dto";
+import { 
+    ICreateSubscriptionPlanDTO, 
+    IUpdateSubscriptionPlanDTO, 
+    ISubscriptionPlanDTO, 
+    IFeaturedPricingDTO 
+} from "@modules/user/dtos";
+import { 
+    ISubscriptionPlanIdParams, 
+    ISubscriptionPlanTypeParams 
+} from "@modules/user/types";
 
 export class SubscriptionPlanController {
     private planService = new SubscriptionPlanService();
@@ -13,44 +18,47 @@ export class SubscriptionPlanController {
 
     async getAllPlans(_req: FastifyRequest, reply: FastifyReply) {
         try {
-            const plans = await this.planService.getAllPlans();
+            const plans: ISubscriptionPlanDTO[] = await this.planService.getAllPlans();
             reply.send(plans);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch plans" });
+                .send({ message: err.message || "Failed to fetch plans" });
         }
     }
 
-    async getPlanByType(req: FastifyRequest, reply: FastifyReply) {
+    async getPlanByType(
+        req: FastifyRequest<{ Params: ISubscriptionPlanTypeParams }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { type } = req.params as { type: string };
-            const plan = await this.planService.getPlanByType(
-                type as SubscriptionType
-            );
+            const { type } = req.params;
+            const plan: ISubscriptionPlanDTO | null = await this.planService.getPlanByType(type);
 
             if (!plan) {
-                reply.code(404).send({ message: "Plan not found" });
-                return;
+                return reply.code(404).send({ message: "Plan not found" });
             }
 
             reply.send(plan);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch plan" });
+                .send({ message: err.message || "Failed to fetch plan" });
         }
     }
 
     async getFeaturedPricing(_req: FastifyRequest, reply: FastifyReply) {
         try {
-            const pricing = await this.planService.getFeaturedPricing();
+            const pricing: IFeaturedPricingDTO = await this.planService.getFeaturedPricing();
             reply.send(pricing);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
                 .send({
-                    message: error.message || "Failed to fetch featured pricing",
+                    message: err.message || "Failed to fetch featured pricing",
                 });
         }
     }
@@ -59,10 +67,11 @@ export class SubscriptionPlanController {
         try {
             const comparison = await this.planService.comparePlans();
             reply.send(comparison);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to compare plans" });
+                .send({ message: err.message || "Failed to compare plans" });
         }
     }
 
@@ -70,67 +79,83 @@ export class SubscriptionPlanController {
 
     async getAllPlansAdmin(_req: FastifyRequest, reply: FastifyReply) {
         try {
-            const plans = await this.planService.getAllPlans(true); // Include inactive
+            const plans: ISubscriptionPlanDTO[] = await this.planService.getAllPlans(true); // Include inactive
             reply.send(plans);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch plans" });
+                .send({ message: err.message || "Failed to fetch plans" });
         }
     }
 
-    async getPlanById(req: FastifyRequest, reply: FastifyReply) {
+    async getPlanById(
+        req: FastifyRequest<{ Params: ISubscriptionPlanIdParams }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { id } = req.params as { id: string };
-            const plan = await this.planService.getPlanById(id);
+            const { id } = req.params;
+            const plan: ISubscriptionPlanDTO | null = await this.planService.getPlanById(id);
 
             if (!plan) {
-                reply.code(404).send({ message: "Plan not found" });
-                return;
+                return reply.code(404).send({ message: "Plan not found" });
             }
 
             reply.send(plan);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch plan" });
+                .send({ message: err.message || "Failed to fetch plan" });
         }
     }
 
-    async createPlan(req: FastifyRequest, reply: FastifyReply) {
+    async createPlan(
+        req: FastifyRequest<{ Body: ICreateSubscriptionPlanDTO }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const planData = req.body as ICreateSubscriptionPlanDTO;
-            const plan = await this.planService.createPlan(planData);
+            const planData = req.body;
+            const plan: ISubscriptionPlanDTO = await this.planService.createPlan(planData);
             reply.code(201).send(plan);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(400)
-                .send({ message: error.message || "Failed to create plan" });
+                .send({ message: err.message || "Failed to create plan" });
         }
     }
 
-    async updatePlan(req: FastifyRequest, reply: FastifyReply) {
+    async updatePlan(
+        req: FastifyRequest<{ Params: ISubscriptionPlanIdParams; Body: IUpdateSubscriptionPlanDTO }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { id } = req.params as { id: string };
-            const updateData = req.body as IUpdateSubscriptionPlanDTO;
-            const plan = await this.planService.updatePlan(id, updateData);
+            const { id } = req.params;
+            const updateData = req.body;
+            const plan: ISubscriptionPlanDTO = await this.planService.updatePlan(id, updateData);
             reply.send(plan);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(400)
-                .send({ message: error.message || "Failed to update plan" });
+                .send({ message: err.message || "Failed to update plan" });
         }
     }
 
-    async deletePlan(req: FastifyRequest, reply: FastifyReply) {
+    async deletePlan(
+        req: FastifyRequest<{ Params: ISubscriptionPlanIdParams }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { id } = req.params as { id: string };
+            const { id } = req.params;
             await this.planService.deletePlan(id);
             reply.code(204).send();
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(400)
-                .send({ message: error.message || "Failed to delete plan" });
+                .send({ message: err.message || "Failed to delete plan" });
         }
     }
 
@@ -138,10 +163,11 @@ export class SubscriptionPlanController {
         try {
             await this.planService.seedDefaultPlans();
             reply.send({ message: "Default plans seeded successfully" });
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to seed plans" });
+                .send({ message: err.message || "Failed to seed plans" });
         }
     }
 }

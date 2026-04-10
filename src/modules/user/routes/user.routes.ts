@@ -1,8 +1,14 @@
 import { FastifyInstance } from "fastify";
 import { UserController } from "@modules/user/controller/user.controller";
 import { UserService } from "@modules/user/service/user.service";
-import { authenticate } from "middlewares/authenticate";
-import { authorizeAdmin } from "middlewares/authorizeAdmin";
+import { authenticate } from "@middlewares/authenticate";
+import { authorizeAdmin } from "@middlewares/authorizeAdmin";
+import { 
+    IUserIdParams, 
+    IChangeRoleBody, 
+    IUpdateUserBody, 
+    IForgotPasswordBody 
+} from "@modules/user/types";
 
 export default async function userRoutes(fastify: FastifyInstance) {
   const userService = new UserService();
@@ -11,33 +17,35 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.get("/users", userController.getUsers.bind(userController));
   fastify.get("/vendors", userController.getVendors.bind(userController));
   fastify.get("/customers", userController.getCustomers.bind(userController));
-  fastify.post<{ Params: { id: string }; Body: any }>(
+  
+  fastify.post<{ Params: IUserIdParams; Body: IUpdateUserBody }>(
     "/users/:id",
     { preHandler: authenticate },
     userController.update.bind(userController)
   );
   
   // Admin User Management Routes
-  fastify.delete<{ Params: { id: string } }>(
+  fastify.delete<{ Params: IUserIdParams }>(
     "/admin/users/:id",
     { preHandler: [authenticate, authorizeAdmin] },
     userController.deleteUser.bind(userController)
   );
 
-  fastify.patch<{ Params: { id: string }; Body: { role: string } }>(
+  fastify.patch<{ Params: IUserIdParams; Body: IChangeRoleBody }>(
     "/admin/users/:id/role",
     { preHandler: [authenticate, authorizeAdmin] },
     userController.changeRole.bind(userController)
   );
 
   fastify.get("/users/:id", userController.getUserById.bind(userController));
-  fastify.post<{ Body: { currentPassword: string; newPassword: string; confirmPassword: string } }>(
+  
+  fastify.post<{ Body: any }>( // Password data is complex enough to keep as is or define if needed
     "/users/password",
     { preHandler: authenticate },
     userController.updatePassword.bind(userController)
   );
 
-  fastify.post<{ Body: { email: string } }>(
+  fastify.post<{ Body: IForgotPasswordBody }>(
     "/users/forgot-password",
     userController.forgotPassword.bind(userController)
   );

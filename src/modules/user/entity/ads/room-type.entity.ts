@@ -6,7 +6,7 @@ import {
     JoinColumn,
 } from "typeorm";
 import { Hotel } from "./hotel.entity";
-import { RoomTypeEnum } from "@modules/user/entity/ENUM/ad.enum";
+import { RoomType } from "@common/enums/property.enums";
 
 @Entity("hotel_room_types")
 export class HotelRoomType {
@@ -15,9 +15,9 @@ export class HotelRoomType {
 
     @Column({
         type: "enum",
-        enum: RoomTypeEnum,
+        enum: RoomType,
     })
-    type!: RoomTypeEnum;
+    type!: RoomType;
 
     @Column("decimal", { precision: 10, scale: 2 })
     price!: number;

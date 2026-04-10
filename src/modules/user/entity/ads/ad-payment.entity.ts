@@ -8,7 +8,8 @@ import {
     JoinColumn,
 } from "typeorm";
 import { User } from "@modules/user/entity/user";
-import { PaymentStatus, PaymentMethod, AdType } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { PaymentStatus, PaymentMethod } from "@common/enums/payment.enums";
+import { PropertyType } from "@common/enums/property.enums";
 
 @Entity("ad_payments")
 export class AdPayment {
@@ -20,9 +21,9 @@ export class AdPayment {
 
     @Column({
         type: "enum",
-        enum: AdType,
+        enum: PropertyType,
     })
-    ad_type!: AdType;
+    ad_type!: PropertyType;
 
     @Column("uuid")
     vendor_id!: string;

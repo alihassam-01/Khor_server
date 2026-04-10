@@ -3,7 +3,7 @@ import { User, CustomerProfile, Vendor } from "@modules/user/entity";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
 import * as crypto from "crypto";
-import { UserType } from "@modules/user/entity/ENUM/enum";
+import { UserRole } from "@common/enums";
 import { CONFIG } from "@config/config";
 import { sendEmail } from "./email";
 import { otpVerificationTemplate } from "./email/templates/otpVerification";
@@ -11,6 +11,11 @@ import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { logError, logInfo } from "@lib/logger";
 import { OTP_LENGTH, OTP_EXPIRY_MINUTES } from "@modules/user/constant/otp.constant";
+import { 
+    ILoginResponseDto, 
+    IGoogleLoginResponseDto, 
+    ICurrentUserResponseDto 
+} from "@modules/user/dtos";
 
 const PROFILE_IMAGES = [
     "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png",
@@ -58,10 +63,10 @@ export class AuthService {
     async register(
         email: string,
         password: string,
-        userType: UserType,
+        userRole: UserRole,
         name: string
-    ): Promise<User> {
-        return this.userRepository.manager.transaction(async (transactionalEntityManager) => {
+    ): Promise<void> {
+        await this.userRepository.manager.transaction(async (transactionalEntityManager) => {
             await this.validateEmailAvailable(email);
 
             const hashedPassword = await this.hashPassword(password);
@@ -81,14 +86,14 @@ export class AuthService {
             const user = this.userRepository.create({
                 email,
                 password: hashedPassword,
-                userType,
+                userType: userRole,
                 verificationToken: hashedOtp,
                 otpExpiresAt,
                 isVerified: false,
             });
             await transactionalEntityManager.save(User, user);
 
-            if (userType === UserType.VENDOR) {
+            if (userRole === UserRole.VENDOR) {
                 const vendor = this.vendorRepository.create({
                     user,
                     username: name,
@@ -104,8 +109,7 @@ export class AuthService {
                 await transactionalEntityManager.save(CustomerProfile, customerProfile);
             }
 
-            logInfo(`User registered successfully: ${email}, Type: ${userType}`);
-            return user;
+            logInfo(`User registered successfully: ${email}, Role: ${userRole}`);
         });
     }
 
@@ -165,7 +169,7 @@ export class AuthService {
         await this.userRepository.save(user);
 
         const username =
-            user.userType === UserType.VENDOR
+            user.userType === UserRole.VENDOR
                 ? user.vendor?.username ?? email
                 : user.customerProfile?.username ?? email;
 
@@ -178,7 +182,7 @@ export class AuthService {
         logInfo(`OTP resent to ${email}`);
     }
 
-    async login(email: string, password: string): Promise<{ token: string }> {
+    async login(email: string, password: string): Promise<ILoginResponseDto> {
         const user = await this.userRepository.findOne({
             where: { email },
             relations: ["vendor", "customerProfile"],
@@ -216,7 +220,7 @@ export class AuthService {
         }
 
         const name =
-            user.userType === UserType.VENDOR
+            user.userType === UserRole.VENDOR
                 ? user.vendor?.username ?? "Unknown"
                 : user.customerProfile?.username;
 
@@ -225,7 +229,7 @@ export class AuthService {
                 userId: user.id,
                 userType: user.userType,
                 name: name ?? "Unknown",
-                vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
+                vendorId: user.userType === UserRole.VENDOR ? user.vendor?.id : undefined,
             },
             CONFIG.jwt.secret as string,
             { expiresIn: "7d" }
@@ -235,7 +239,7 @@ export class AuthService {
         return { token };
     }
 
-    async resetPassword(token: string, newPassword: string, confirmPassword: string) {
+    async resetPassword(token: string, newPassword: string, confirmPassword: string): Promise<{ success: boolean }> {
         if (!token) {
             logError(new Error("Reset token missing"), "Password reset");
             throw new AppError("Reset token is required", 400, ErrorCodes.BAD_REQUEST);
@@ -286,8 +290,8 @@ export class AuthService {
 
     async googleLoginOrRegister(
         accessToken: string,
-        preferredUserType: UserType = UserType.VENDOR
-    ): Promise<{ token: string; isNewUser: boolean }> {
+        preferredUserRole: UserRole = UserRole.VENDOR
+    ): Promise<IGoogleLoginResponseDto> {
         let googleUser: {
             sub: string;
             email: string;
@@ -331,7 +335,7 @@ export class AuthService {
                     email,
                     googleId,
                     authProvider: "google",
-                    userType: preferredUserType,
+                    userType: preferredUserRole,
                     isVerified: true,
                 });
                 await em.save(User, newUser);
@@ -339,7 +343,7 @@ export class AuthService {
                 const displayName = googleName ?? email.split("@")[0];
                 const avatar = picture ?? this.randomProfileImage();
 
-                if (preferredUserType === UserType.VENDOR) {
+                if (preferredUserRole === UserRole.VENDOR) {
                     const vendor = this.vendorRepository.create({
                         user: newUser,
                         username: displayName,
@@ -375,7 +379,7 @@ export class AuthService {
         }
 
         const name =
-            existingUser.userType === UserType.VENDOR
+            existingUser.userType === UserRole.VENDOR
                 ? existingUser.vendor?.username ?? googleName ?? "Unknown"
                 : existingUser.customerProfile?.username ?? googleName ?? "Unknown";
 
@@ -385,7 +389,7 @@ export class AuthService {
                 userType: existingUser.userType,
                 name,
                 vendorId:
-                    existingUser.userType === UserType.VENDOR ? existingUser.vendor?.id : undefined,
+                    existingUser.userType === UserRole.VENDOR ? existingUser.vendor?.id : undefined,
             },
             CONFIG.jwt.secret as string,
             { expiresIn: "7d" }
@@ -394,7 +398,7 @@ export class AuthService {
         return { token, isNewUser };
     }
 
-    async getCurrentUser(userId: string) {
+    async getCurrentUser(userId: string): Promise<ICurrentUserResponseDto> {
         const user = await this.userRepository.findOne({
             where: { id: userId },
             relations: ["vendor", "customerProfile"],
@@ -405,7 +409,7 @@ export class AuthService {
         }
 
         const username =
-            user.userType === UserType.VENDOR
+            user.userType === UserRole.VENDOR
                 ? user.vendor?.username
                 : user.customerProfile?.username;
 
@@ -414,7 +418,7 @@ export class AuthService {
             email: user.email,
             username: username ?? "Unknown",
             userType: user.userType,
-            vendorId: user.userType === UserType.VENDOR ? user.vendor?.id : undefined,
+            vendorId: user.userType === UserRole.VENDOR ? user.vendor?.id : undefined,
         };
     }
 }

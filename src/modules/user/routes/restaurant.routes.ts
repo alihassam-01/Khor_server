@@ -1,47 +1,101 @@
 import { FastifyInstance } from "fastify";
 import { RestaurantController } from "@modules/user/controller/restaurant.controller";
 import { authenticate } from "@middlewares/authenticate";
+import { 
+    IRestaurantIdParams, 
+    IGetAllRestaurantsQuery, 
+    IToggleRestaurantAdStatusBody, 
+    IRenewRestaurantAdBody, 
+    ISetRestaurantFeaturedStatusBody,
+    IHotelLocationParams,
+    IVendorIdParams
+} from "@modules/user/types";
+import { ICreateRestaurantDTO, IUpdateRestaurantDTO } from "@modules/user/dtos";
 
 export async function restaurantRoutes(fastify: FastifyInstance) {
     const restaurantController = new RestaurantController();
 
     // Admin routes for restaurant management
-    fastify.post(
+    fastify.post<{ Body: ICreateRestaurantDTO | any }>(
         "/admin/restaurants",
         { preHandler: authenticate },
         restaurantController.createRestaurant.bind(restaurantController)
     );
+    
     fastify.get(
         "/admin/restaurants",
         { preHandler: authenticate },
         restaurantController.getAllRestaurantsAdmin.bind(restaurantController)
     );
-    fastify.get(
+    
+    fastify.get<{ Params: IRestaurantIdParams }>(
         "/admin/restaurants/:id",
         { preHandler: authenticate },
         restaurantController.getRestaurantById.bind(restaurantController)
     );
-    fastify.put(
+    
+    fastify.put<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantDTO | any }>(
         "/admin/restaurants/:id",
         { preHandler: authenticate },
         restaurantController.updateRestaurant.bind(restaurantController)
     );
-    fastify.delete(
+    
+    fastify.delete<{ Params: IRestaurantIdParams }>(
         "/admin/restaurants/:id",
         { preHandler: authenticate },
         restaurantController.deleteRestaurant.bind(restaurantController)
     );
 
     // Admin routes for ad management
-    fastify.post("/admin/restaurants/:id/toggle-status", { preHandler: authenticate }, restaurantController.toggleAdStatus.bind(restaurantController));
-    fastify.post("/admin/restaurants/:id/renew", { preHandler: authenticate }, restaurantController.renewAd.bind(restaurantController));
-    fastify.post("/vendor/restaurants/:id/renew", { preHandler: authenticate }, restaurantController.renewAdByVendor.bind(restaurantController));
-    fastify.get("/admin/restaurants/expired", { preHandler: authenticate }, restaurantController.getExpiredAds.bind(restaurantController));
-    fastify.get("/restaurants/featured/:locationId", restaurantController.getFeaturedAds.bind(restaurantController));
-    fastify.get("/restaurants/premium/:locationId", restaurantController.getPremiumAds.bind(restaurantController));
-    fastify.get("/admin/restaurants/vendor/:vendorId", { preHandler: authenticate }, restaurantController.getAdsByVendor.bind(restaurantController));
-    fastify.post("/admin/restaurants/:id/featured", { preHandler: authenticate }, restaurantController.setFeaturedStatus.bind(restaurantController));
+    fastify.post<{ Params: IRestaurantIdParams; Body: IToggleRestaurantAdStatusBody }>(
+        "/admin/restaurants/:id/toggle-status", 
+        { preHandler: authenticate }, 
+        restaurantController.toggleAdStatus.bind(restaurantController)
+    );
+    
+    fastify.post<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>(
+        "/admin/restaurants/:id/renew", 
+        { preHandler: authenticate }, 
+        restaurantController.renewAd.bind(restaurantController)
+    );
+    
+    fastify.post<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>(
+        "/vendor/restaurants/:id/renew", 
+        { preHandler: authenticate }, 
+        restaurantController.renewAdByVendor.bind(restaurantController)
+    );
+    
+    fastify.get(
+        "/admin/restaurants/expired", 
+        { preHandler: authenticate }, 
+        restaurantController.getExpiredAds.bind(restaurantController)
+    );
+    
+    fastify.get<{ Params: IHotelLocationParams }>(
+        "/restaurants/featured/:locationId", 
+        restaurantController.getFeaturedAds.bind(restaurantController)
+    );
+    
+    fastify.get<{ Params: IHotelLocationParams }>(
+        "/restaurants/premium/:locationId", 
+        restaurantController.getPremiumAds.bind(restaurantController)
+    );
+    
+    fastify.get<{ Params: IVendorIdParams }>(
+        "/admin/restaurants/vendor/:vendorId", 
+        { preHandler: authenticate }, 
+        restaurantController.getAdsByVendor.bind(restaurantController)
+    );
+    
+    fastify.post<{ Params: IRestaurantIdParams; Body: ISetRestaurantFeaturedStatusBody }>(
+        "/admin/restaurants/:id/featured", 
+        { preHandler: authenticate }, 
+        restaurantController.setFeaturedStatus.bind(restaurantController)
+    );
 
     // Routes to get restaurants
-    fastify.get("/restaurants", restaurantController.getAllRestaurants.bind(restaurantController));
+    fastify.get<{ Querystring: IGetAllRestaurantsQuery }>(
+        "/restaurants", 
+        restaurantController.getAllRestaurants.bind(restaurantController)
+    );
 }

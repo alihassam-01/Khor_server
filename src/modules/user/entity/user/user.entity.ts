@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn } from 'typeorm';
 import { CustomerProfile } from './customer-profile.entity';
-import { UserType } from '@modules/user/entity/ENUM/enum';
+import { UserRole } from '@common/enums/user.enums';
 import { Vendor } from '@modules/user/entity/business';
 import { Address } from '@modules/user/entity/address';
 
@@ -21,8 +21,8 @@ export class User {
   @Column({ default: 'local' })
   authProvider: string = 'local';
 
-  @Column({ type: 'enum', enum: UserType })
-  userType!: UserType;
+  @Column({ type: 'enum', enum: UserRole })
+  userType!: UserRole;
 
   @Column({ nullable: true })
   verificationToken?: string;

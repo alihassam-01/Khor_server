@@ -1,377 +1,317 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { HotelService } from "@modules/user/service/hotel.service";
-import { ICreateHotelDTO, IUpdateHotelDTO } from "@modules/user/dtos/hotel.dto";
+import { ICreateHotelDTO, IUpdateHotelDTO, IPaginatedHotelsResponse } from "@modules/user/dtos";
 import { R2ClientService } from "@modules/user/service/r2client.service";
-import { logError, logInfo } from "@lib/logger";
+import { logInfo } from "@lib/logger";
 import { extractMultipartFields, isMultipartRequest } from "@common/utils/multipart.util";
+import { PAGINATION_DEFAULTS } from "@common/constants";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
+import { 
+    IHotelIdParams, 
+    IGetAllHotelsQuery, 
+    IToggleAdStatusBody, 
+    IRenewAdBody, 
+    ISetFeaturedStatusBody, 
+    IHotelLocationParams,
+    IVendorIdParams
+} from "@modules/user/types";
 
 export class HotelController {
     private hotelService = new HotelService();
     private r2Client = new R2ClientService();
 
-    async createHotel(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            // const userType = req.user?.userType;
-            const userId = req.user?.id || req.user?.userId;
+    async createHotel(
+        req: FastifyRequest<{ Body: ICreateHotelDTO | any }>, 
+        reply: FastifyReply
+    ) {
+        const userId = (req.user as any)?.id || (req.user as any)?.userId;
 
-            if (!userId) {
-                logError(new Error('Unauthenticated hotel creation attempt'), 'Hotel creation');
-                return reply.code(401).send({ 
-                    message: 'Authentication required. Please log in.' 
-                });
+        if (!userId) {
+            throw new AppError('Authentication required. Please log in.', 401, ErrorCodes.UNAUTHORIZED);
+        }
+
+        const contentType = (req.headers['content-type'] || '') as string;
+        let hotelData: ICreateHotelDTO;
+
+        if (contentType.includes('multipart/form-data')) {
+            const body = req.body as Record<string, any>;
+            const getFieldValue = (field: any): any => {
+                if (!field) return undefined;
+                if (field.type === 'field' && 'value' in field) {
+                    return field.value;
+                }
+                return field;
+            };
+
+            const extractedBody: Record<string, any> = {};
+            for (const key in body) {
+                extractedBody[key] = getFieldValue(body[key]);
             }
 
-            // For admin routes, optionally check if user is admin
-            // Uncomment if you want admin-only access:
-            // if (userType !== 'admin' && userType !== 'vendor') {
-            //     return reply.code(403).send({ 
-            //         message: 'Only admins and vendors can create hotels.' 
-            //     });
-            // }
-
-            const contentType = (req.headers['content-type'] || '') as string;
-            let hotelData: ICreateHotelDTO;
-
-            if (contentType.includes('multipart/form-data')) {
-                const body: any = req.body as any;
-                const getFieldValue = (field: any): any => {
-                    if (!field) return undefined;
-                    if (field.type === 'field' && 'value' in field) {
-                        return field.value;
-                    }
-                    return field;
-                };
-
-                const extractedBody: any = {};
-                for (const key in body) {
-                    extractedBody[key] = getFieldValue(body[key]);
-                }
-
-                const requiredFields = ['name', 'price', 'location_name', 'description', 'location_id'];
-                const missingFields = requiredFields.filter(field => !extractedBody[field]);
-                
-                if (missingFields.length > 0) {
-                    logError(new Error(`Missing required fields: ${missingFields.join(', ')}`), 'Hotel creation');
-                    return reply.code(400).send({ 
-                        message: `Missing required fields: ${missingFields.join(', ')}` 
-                    });
-                }
-
-                const parseNumber = (val: any, fieldName: string, required: boolean = false): number | undefined => {
-                    if (!val && val !== 0) {
-                        if (required) {
-                            throw new Error(`${fieldName} is required`);
-                        }
-                        return undefined;
-                    }
-                    const parsed = Number(val);
-                    if (isNaN(parsed)) {
-                        throw new Error(`${fieldName} must be a valid number, got: ${val}`);
-                    }
-                    return parsed;
-                };
-
-                // handle file upload for image field
-                let imageUrl: string | undefined = undefined;
-                if (body.image && typeof body.image !== 'string') {
-                    const file: any = body.image;
-                    const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
-                    const originalName = file.filename || 'upload';
-                    const mimetype = file.mimetype || 'application/octet-stream';
-                    const res = await this.r2Client.uploadFileToR2(buffer, originalName, mimetype);
-                    imageUrl = res.url;
-                } else if (body.image && typeof body.image === 'string') {
-                    imageUrl = body.image;
-                }
-
-                // handle logo file upload
-                let logoUrl: string | undefined = undefined;
-                if (body.logo && typeof body.logo !== 'string') {
-                    const logoFile: any = body.logo;
-                    const buffer: Buffer = logoFile.toBuffer ? await logoFile.toBuffer() : Buffer.from([]);
-                    const res = await this.r2Client.uploadFileToR2(buffer, logoFile.filename || 'logo', logoFile.mimetype || 'application/octet-stream');
-                    logoUrl = res.url;
-                } else if (body.logo && typeof body.logo === 'string') {
-                    logoUrl = body.logo;
-                }
-
-                const parseArrayField = (val: any) => {
-                    if (!val) return [];
-                    if (Array.isArray(val)) return val;
-                    try { return JSON.parse(val); } catch { return String(val).split(',').map((s:any)=>s.trim()).filter(Boolean); }
-                };
-
-                hotelData = {
-                    name: extractedBody.name,
-                    price: parseNumber(extractedBody.price, 'price', true)!,
-                    location_name: extractedBody.location_name,
-                    image: imageUrl || extractedBody.image || '',
-                    description: extractedBody.description,
-                    amenities: parseArrayField(extractedBody.amenities),
-                    location_id: parseNumber(extractedBody.location_id, 'location_id', true)!,
-                    rating: parseNumber(extractedBody.rating, 'rating'),
-                    reviews: parseNumber(extractedBody.reviews, 'reviews'),
-                    logo: logoUrl || undefined,
-                    verified: extractedBody.verified === 'true' || extractedBody.verified === true,
-                    phone: extractedBody.phone || undefined,
-                    whatsapp: extractedBody.whatsapp || undefined,
-                    facebook: extractedBody.facebook || undefined,
-                    instagram: extractedBody.instagram || undefined,
-                    website: extractedBody.website || undefined,
-                    detailed_reviews: extractedBody.detailed_reviews || undefined,
-                    roomTypes: extractedBody.roomTypes || undefined,
-                    vendor_id: extractedBody.vendor_id || undefined,
-                    subscription_type: extractedBody.subscription_type || undefined,
-                    is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
-                    map_link: extractedBody.map_link || undefined,
-                    latitude: parseNumber(extractedBody.latitude, 'latitude'),
-                    longitude: parseNumber(extractedBody.longitude, 'longitude'),
-                } as ICreateHotelDTO;
-            } else {
-                // JSON request body
-                const body = req.body as any;
-                
-                // Validate required fields for JSON too
-                if (!body.name || !body.price || !body.location_name || !body.description || !body.location_id) {
-                    const missing = [];
-                    if (!body.name) missing.push('name');
-                    if (!body.price && body.price !== 0) missing.push('price');
-                    if (!body.location_name) missing.push('location_name');
-                    if (!body.description) missing.push('description');
-                    if (!body.location_id && body.location_id !== 0) missing.push('location_id');
-                    
-                    logError(new Error(`Missing required fields: ${missing.join(', ')}`), 'Hotel creation (JSON)');
-                    return reply.code(400).send({ 
-                        message: `Missing required fields: ${missing.join(', ')}` 
-                    });
-                }
-                
-                hotelData = body as ICreateHotelDTO;
-            }
-
-            // Never trust vendor_id from payload; always use authenticated user id.
-            hotelData.vendor_id = userId;
-
-            logInfo('Creating hotel', { name: hotelData.name, location_id: hotelData.location_id });
-            const hotel = await this.hotelService.createHotel(hotelData);
-            logInfo('Hotel created successfully', { id: hotel.id, name: hotel.name });
-            reply.code(201).send(hotel);
-        } catch (error: any) {
-            logError(error, 'Hotel creation');
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to create hotel" });
-        }
-    }
-
-    async getHotelById(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const hotel = await this.hotelService.getHotelById(id);
-
-            if (!hotel) {
-                reply.code(404).send({ message: "Hotel not found" });
-                return;
-            }
-
-            reply.send(hotel);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch hotel" });
-        }
-    }
-
-    async getAllHotels(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { page = 1, limit = 10, searchQuery = "" } = req.query as any;
-            const pageNum = parseInt(page as string, 10) || 1;
-            const limitNum = parseInt(limit as string, 10) || 10;
-            const result = await this.hotelService.getAllHotels({
-                page: pageNum,
-                limit: limitNum,
-                searchQuery: searchQuery as string,
-            });
-            reply.send(result);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch hotels" });
-        }
-    }
-
-    async updateHotel(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            let hotelData: IUpdateHotelDTO;
+            const requiredFields = ['name', 'price', 'location_name', 'description', 'location_id'];
+            const missingFields = requiredFields.filter(field => !extractedBody[field]);
             
-            if (isMultipartRequest(req.headers['content-type'])) {
-                const body: any = req.body as any;
-                hotelData = extractMultipartFields<IUpdateHotelDTO>(body, {
-                    price: 'number',
-                    location_id: 'number',
-                    rating: 'number',
-                    reviews: 'number',
-                    verified: 'boolean',
-                    is_active: 'boolean',
-                    is_featured: 'boolean',
-                    amenities: 'array',
-                    roomTypes: 'json',
-                });
-                // Handle image file upload
-                if (body.image && typeof body.image !== 'string') {
-                    const file: any = body.image;
-                    const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
-                    const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
-                    hotelData.image = res.url;
-                }
-                // Handle logo file upload
-                if (body.logo && typeof body.logo !== 'string') {
-                    const logoFile: any = body.logo;
-                    const buffer: Buffer = logoFile.toBuffer ? await logoFile.toBuffer() : Buffer.from([]);
-                    const res = await this.r2Client.uploadFileToR2(buffer, logoFile.filename || 'logo', logoFile.mimetype || 'application/octet-stream');
-                    hotelData.logo = res.url;
-                }
-            } else {
-                hotelData = req.body as IUpdateHotelDTO;
+            if (missingFields.length > 0) {
+                throw new AppError(`Missing required fields: ${missingFields.join(', ')}`, 400, ErrorCodes.VALIDATION_ERROR);
             }
-            const hotel = await this.hotelService.updateHotel(id, hotelData);
-            reply.send(hotel);
-        } catch (error: any) {
-            logError(error, 'Hotel update');
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to update hotel" });
+
+            const parseNumber = (val: any, fieldName: string, required: boolean = false): number | undefined => {
+                if (!val && val !== 0) {
+                    if (required) {
+                        throw new AppError(`${fieldName} is required`, 400, ErrorCodes.VALIDATION_ERROR);
+                    }
+                    return undefined;
+                }
+                const parsed = Number(val);
+                if (isNaN(parsed)) {
+                    throw new AppError(`${fieldName} must be a valid number, got: ${val}`, 400, ErrorCodes.VALIDATION_ERROR);
+                }
+                return parsed;
+            };
+
+            // handle file upload for image field
+            let imageUrl: string | undefined = undefined;
+            if (body.image && typeof body.image !== 'string') {
+                const file = body.image;
+                const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
+                const originalName = file.filename || 'upload';
+                const mimetype = file.mimetype || 'application/octet-stream';
+                const res = await this.r2Client.uploadFileToR2(buffer, originalName, mimetype);
+                imageUrl = res.url;
+            } else if (body.image && typeof body.image === 'string') {
+                imageUrl = body.image;
+            }
+
+            // handle logo file upload
+            let logoUrl: string | undefined = undefined;
+            if (body.logo && typeof body.logo !== 'string') {
+                const logoFile = body.logo;
+                const buffer: Buffer = logoFile.toBuffer ? await logoFile.toBuffer() : Buffer.from([]);
+                const res = await this.r2Client.uploadFileToR2(buffer, logoFile.filename || 'logo', logoFile.mimetype || 'application/octet-stream');
+                logoUrl = res.url;
+            } else if (body.logo && typeof body.logo === 'string') {
+                logoUrl = body.logo;
+            }
+
+            const parseArrayField = (val: any): string[] => {
+                if (!val) return [];
+                if (Array.isArray(val)) return val;
+                try { return JSON.parse(val); } catch { return String(val).split(',').map((s: string) => s.trim()).filter(Boolean); }
+            };
+
+            hotelData = {
+                name: extractedBody.name,
+                price: parseNumber(extractedBody.price, 'price', true)!,
+                location_name: extractedBody.location_name,
+                image: imageUrl || extractedBody.image || '',
+                description: extractedBody.description,
+                amenities: parseArrayField(extractedBody.amenities),
+                location_id: parseNumber(extractedBody.location_id, 'location_id', true)!,
+                rating: parseNumber(extractedBody.rating, 'rating'),
+                reviews: parseNumber(extractedBody.reviews, 'reviews'),
+                logo: logoUrl || undefined,
+                verified: extractedBody.verified === 'true' || extractedBody.verified === true,
+                phone: extractedBody.phone || undefined,
+                whatsapp: extractedBody.whatsapp || undefined,
+                facebook: extractedBody.facebook || undefined,
+                instagram: extractedBody.instagram || undefined,
+                website: extractedBody.website || undefined,
+                map_link: extractedBody.map_link || undefined,
+                latitude: parseNumber(extractedBody.latitude, 'latitude'),
+                longitude: parseNumber(extractedBody.longitude, 'longitude'),
+                is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
+                subscription_type: extractedBody.subscription_type || undefined,
+                vendor_id: userId, // Enforce current user
+            };
+        } else {
+            // JSON request body
+            const body = req.body as ICreateHotelDTO;
+            
+            // Validate required fields
+            if (!body.name || !body.price || !body.location_name || !body.description || !body.location_id) {
+                const missing = [];
+                if (!body.name) missing.push('name');
+                if (!body.price && body.price !== 0) missing.push('price');
+                if (!body.location_name) missing.push('location_name');
+                if (!body.description) missing.push('description');
+                if (!body.location_id && body.location_id !== 0) missing.push('location_id');
+                
+                throw new AppError(`Missing required fields: ${missing.join(', ')}`, 400, ErrorCodes.VALIDATION_ERROR);
+            }
+            
+            hotelData = { ...body, vendor_id: userId };
         }
+
+        logInfo('Creating hotel', { name: hotelData.name, location_id: hotelData.location_id });
+        const hotel = await this.hotelService.createHotel(hotelData);
+        logInfo('Hotel created successfully', { id: hotel.id, name: hotel.name });
+        reply.code(201).send(hotel);
     }
 
-    async deleteHotel(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            await this.hotelService.deleteHotel(id);
-            reply.code(204).send();
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to delete hotel" });
+    async getHotelById(
+        req: FastifyRequest<{ Params: IHotelIdParams }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const hotel = await this.hotelService.getHotelById(id);
+
+        if (!hotel) {
+            throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
+
+        reply.send(hotel);
+    }
+
+    async getAllHotels(
+        req: FastifyRequest<{ Querystring: IGetAllHotelsQuery }>, 
+        reply: FastifyReply
+    ) {
+        const { 
+            page = String(PAGINATION_DEFAULTS.PAGE), 
+            limit = String(PAGINATION_DEFAULTS.LIMIT), 
+            searchQuery = "" 
+        } = req.query;
+        const pageNum = parseInt(page, 10) || PAGINATION_DEFAULTS.PAGE;
+        const limitNum = parseInt(limit, 10) || PAGINATION_DEFAULTS.LIMIT;
+        const result: IPaginatedHotelsResponse = await this.hotelService.getAllHotels({
+            page: pageNum,
+            limit: limitNum,
+            searchQuery: searchQuery,
+        });
+        reply.send(result);
+    }
+
+    async updateHotel(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: IUpdateHotelDTO | any }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        let hotelData: IUpdateHotelDTO;
+        
+        const contentType = (req.headers['content-type'] || '') as string;
+        if (isMultipartRequest(contentType)) {
+            const body = req.body as Record<string, any>;
+            hotelData = extractMultipartFields<IUpdateHotelDTO>(body, {
+                price: 'number',
+                location_id: 'number',
+                rating: 'number',
+                reviews: 'number',
+                verified: 'boolean',
+                is_active: 'boolean',
+                is_featured: 'boolean',
+                amenities: 'array',
+                roomTypes: 'json',
+            });
+            // Handle image file upload
+            if (body.image && typeof body.image !== 'string') {
+                const file = body.image;
+                const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
+                const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
+                hotelData.image = res.url;
+            }
+            // Handle logo file upload
+            if (body.logo && typeof body.logo !== 'string') {
+                const logoFile = body.logo;
+                const buffer: Buffer = logoFile.toBuffer ? await logoFile.toBuffer() : Buffer.from([]);
+                const res = await this.r2Client.uploadFileToR2(buffer, logoFile.filename || 'logo', logoFile.mimetype || 'application/octet-stream');
+                hotelData.logo = res.url;
+            }
+        } else {
+            hotelData = req.body as IUpdateHotelDTO;
+        }
+        const hotel = await this.hotelService.updateHotel(id, hotelData);
+        reply.send(hotel);
+    }
+
+    async deleteHotel(
+        req: FastifyRequest<{ Params: IHotelIdParams }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        await this.hotelService.deleteHotel(id);
+        reply.code(204).send();
     }
 
     // ========== ADMIN ENDPOINTS ==========
 
-    async toggleAdStatus(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const { is_active } = req.body as { is_active: boolean };
-            const hotel = await this.hotelService.toggleAdStatus(id, is_active);
-            reply.send(hotel);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to toggle ad status" });
-        }
+    async toggleAdStatus(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: IToggleAdStatusBody }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const { is_active } = req.body;
+        const hotel = await this.hotelService.toggleAdStatus(id, is_active);
+        reply.send(hotel);
     }
 
-    async renewAd(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const { subscription_type } = req.body as { subscription_type: import("../entity/ENUM/ad-payment.enum").SubscriptionType };
-            const hotel = await this.hotelService.renewAd(id, subscription_type);
-            reply.send(hotel);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to renew ad" });
-        }
+    async renewAd(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: IRenewAdBody }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const { subscription_type } = req.body;
+        const hotel = await this.hotelService.renewAd(id, subscription_type);
+        reply.send(hotel);
     }
 
-    async renewAdByVendor(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const authUserId = req.user?.id || req.user?.userId;
-            if (!authUserId) {
-                return reply.code(401).send({ message: "Authentication required. Please log in." });
-            }
-
-            const { subscription_type } = req.body as { subscription_type: import("../entity/ENUM/ad-payment.enum").SubscriptionType };
-            const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type);
-            reply.send(hotel);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to renew ad" });
+    async renewAdByVendor(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: IRenewAdBody }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        if (!authUserId) {
+            throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
         }
+
+        const { subscription_type } = req.body;
+        const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type);
+        reply.send(hotel);
     }
 
     async getExpiredAds(_req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const hotels = await this.hotelService.getExpiredAds();
-            reply.send(hotels);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch expired ads" });
-        }
+        const hotels = await this.hotelService.getExpiredAds();
+        reply.send(hotels);
     }
 
-    async getAdsByVendor(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { vendorId } = req.params as { vendorId: string };
-            const authUserId = req.user?.id || req.user?.userId;
-            const effectiveVendorId = authUserId || vendorId;
-            const hotels = await this.hotelService.getAdsByVendor(effectiveVendorId);
-            reply.send(hotels);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch vendor ads" });
-        }
+    async getAdsByVendor(
+        req: FastifyRequest<{ Params: IVendorIdParams }>, 
+        reply: FastifyReply
+    ) {
+        const { vendorId } = req.params;
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        const effectiveVendorId = authUserId || vendorId;
+        const hotels = await this.hotelService.getAdsByVendor(effectiveVendorId);
+        reply.send(hotels);
     }
 
-    async setFeaturedStatus(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const { id } = req.params as { id: string };
-            const { is_featured } = req.body as { is_featured: boolean };
-            const hotel = await this.hotelService.setFeaturedStatus(id, is_featured);
-            reply.send(hotel);
-        } catch (error: any) {
-            reply
-                .code(400)
-                .send({ message: error.message || "Failed to set featured status" });
-        }
+    async setFeaturedStatus(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: ISetFeaturedStatusBody }>, 
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const { is_featured } = req.body;
+        const hotel = await this.hotelService.setFeaturedStatus(id, is_featured);
+        reply.send(hotel);
     }
 
     async getAllHotelsAdmin(_req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const hotels = await this.hotelService.getAllHotelsAdmin();
-            reply.send(hotels);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch hotels" });
-        }
+        const hotels = await this.hotelService.getAllHotelsAdmin();
+        reply.send(hotels);
     }
 
-    async getFeaturedAds(req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const {locationId} = req.params as {locationId: string}
-            const hotels = await this.hotelService.getFeaturedAds(locationId);
-            reply.send(hotels);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch featured ads" });
-        }
+    async getFeaturedAds(
+        req: FastifyRequest<{ Params: IHotelLocationParams }>, 
+        reply: FastifyReply
+    ) {
+        const { locationId } = req.params;
+        const hotels = await this.hotelService.getFeaturedAds(locationId);
+        reply.send(hotels);
     }
 
     async getPremiumAds(_req: FastifyRequest, reply: FastifyReply) {
-        try {
-            const hotels = await this.hotelService.getPremiumAds();
-            reply.send(hotels);
-        } catch (error: any) {
-            reply
-                .code(500)
-                .send({ message: error.message || "Failed to fetch premium ads" });
-        }
+        const hotels = await this.hotelService.getPremiumAds();
+        reply.send(hotels);
     }
 }

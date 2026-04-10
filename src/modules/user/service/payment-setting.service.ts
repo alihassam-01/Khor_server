@@ -4,7 +4,8 @@ import {
     ICreatePaymentSettingDTO,
     IUpdatePaymentSettingDTO,
     IPaymentSettingDTO,
-} from "../dtos/payment-setting.dto";
+} from "@modules/user/dtos";
+import { PaymentMethod } from "@common/enums";
 
 export class PaymentSettingService {
     private settingRepository = AppDataSource.getRepository(PaymentSetting);
@@ -12,13 +13,13 @@ export class PaymentSettingService {
     private toDTO(setting: PaymentSetting): IPaymentSettingDTO {
         return {
             id: setting.id,
-            method: setting.method,
+            method: setting.method as PaymentMethod,
             account_name: setting.account_name,
             account_number: setting.account_number,
-            bank_name: setting.bank_name,
-            branch_code: setting.branch_code,
+            bank_name: setting.bank_name || "",
+            branch_code: setting.branch_code || "",
             is_active: setting.is_active,
-            notes: setting.notes,
+            notes: setting.notes || "",
             created_at: setting.created_at,
             updated_at: setting.updated_at,
         };
@@ -69,7 +70,7 @@ export class PaymentSettingService {
         return settings.map((s) => this.toDTO(s));
     }
 
-    async getSettingByMethod(method: any): Promise<IPaymentSettingDTO | null> {
+    async getSettingByMethod(method: PaymentMethod): Promise<IPaymentSettingDTO | null> {
         const setting = await this.settingRepository.findOne({ where: { method, is_active: true } });
         return setting ? this.toDTO(setting) : null;
     }

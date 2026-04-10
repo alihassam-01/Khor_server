@@ -8,7 +8,6 @@ import fastifyMultipart from "@fastify/multipart";
 import { globalErrorHandler } from './common/errors/global-error-handler';
 import { logError, logInfo } from './lib/logger';
 import 'dotenv/config';
-import 'dotenv/config';
 
 async function startServer() {
   const app = fastify({

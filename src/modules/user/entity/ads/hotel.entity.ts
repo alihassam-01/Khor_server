@@ -10,7 +10,7 @@ import {
 } from "typeorm";
 import { Location } from "@modules/user/entity/location";
 import { User } from "@modules/user/entity/user";
-import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { SubscriptionType } from "@common/enums/subscription.enums";
 
 @Entity("hotels")
 export class Hotel {

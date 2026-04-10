@@ -1,7 +1,24 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { LocationService } from "@modules/user/service/location.service";
-import { ICreateLocationDto } from "@modules/user/dtos/location.dto";
-import { LocationType } from "@modules/user/entity/ENUM/enum";
+import {
+  ICreateLocationDto,
+  IUpdateLocationDto,
+  ILocationDTO,
+  ICreateLocationCategoryDto
+} from "@modules/user/dtos";
+import {
+  ILocationIdParams,
+  ILocationSlugParams,
+  ILocationTypeParams,
+  ICategoryIdParams,
+  ICategorySlugParams,
+  ICategoryNameParams,
+  ISetLocationAttributesBody,
+  ISetLocationCategoriesBody,
+  ILocationChildrenParams
+} from "@modules/user/types";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
 
 export class LocationController {
   constructor(
@@ -12,292 +29,158 @@ export class LocationController {
     req: FastifyRequest<{ Body: ICreateLocationDto }>,
     reply: FastifyReply
   ) {
-    try {
-      const location = await this.locationService.createLocation(req.body);
-      reply.code(201).send(location);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const location: ILocationDTO = await this.locationService.createLocation(req.body);
+    reply.code(201).send(location);
   }
 
   async getAllCities(_: FastifyRequest, reply: FastifyReply) {
-    try {
-      const cities = await this.locationService.getAllCities();
-      reply.send(cities);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const cities: ILocationDTO[] = await this.locationService.getAllCities();
+    reply.send(cities);
   }
 
   async getLocationsByType(
-    req: FastifyRequest<{ Params: { type: string } }>,
+    req: FastifyRequest<{ Params: ILocationTypeParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const type = req.params.type as LocationType;
-      const locations = await this.locationService.getLocationsByType(type);
-      reply.send(locations);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const type = req.params.type;
+    const locations: ILocationDTO[] = await this.locationService.getLocationsByType(type);
+    reply.send(locations);
   }
+
   async getLocationById(
-    req: FastifyRequest<{ Params: { id: string } }>,
+    req: FastifyRequest<{ Params: ILocationIdParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const location = await this.locationService.getLocationById(
-        Number(req.params.id)
-      );
-      if (!location)
-        return reply.code(404).send({ message: "Location not found" });
-      reply.send(location);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const location = await this.locationService.getLocationById(
+      Number(req.params.id)
+    );
+    if (!location)
+      throw new AppError("Location not found", 404, ErrorCodes.NOT_FOUND);
+    reply.send(location);
   }
 
   async getLocationBySlug(
-    req: FastifyRequest<{ Params: { slug: string } }>,
+    req: FastifyRequest<{ Params: ILocationSlugParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const location = await this.locationService.getLocationBySlug(
-        req.params.slug
-      );
-      if (!location)
-        return reply.code(404).send({ message: "Location not found" });
-      reply.send(location);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const location = await this.locationService.getLocationBySlug(
+      req.params.slug
+    );
+    if (!location)
+      throw new AppError("Location not found", 404, ErrorCodes.NOT_FOUND);
+    reply.send(location);
   }
 
   async getAllLocations(_: FastifyRequest, reply: FastifyReply) {
-    try {
-      const locations = await this.locationService.getAllLocations();
-      reply.send(locations);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const locations: ILocationDTO[] = await this.locationService.getAllLocations();
+    reply.send(locations);
   }
 
   async updateLocation(
-    req: FastifyRequest<{ Params: { id: string }; Body: any }>,
+    req: FastifyRequest<{ Params: ILocationIdParams; Body: IUpdateLocationDto }>,
     reply: FastifyReply
   ) {
-    try {
-      const updated = await this.locationService.updateLocation(
-        Number(req.params.id),
-        req.body
-      );
-      if (!updated)
-        return reply.code(404).send({ message: "Location not found" });
-      reply.send(updated);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const updated = await this.locationService.updateLocation(
+      Number(req.params.id),
+      req.body
+    );
+    if (!updated)
+      throw new AppError("Location not found", 404, ErrorCodes.NOT_FOUND);
+    reply.send(updated);
   }
 
   async deleteLocation(
-    req: FastifyRequest<{ Params: { id: string } }>,
+    req: FastifyRequest<{ Params: ILocationIdParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const success = await this.locationService.deleteLocation(
-        Number(req.params.id)
-      );
-      if (!success)
-        return reply.code(404).send({ message: "Location not found" });
-      reply.send({ message: "Location deleted successfully" });
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const success = await this.locationService.deleteLocation(
+      Number(req.params.id)
+    );
+    if (!success)
+      throw new AppError("Location not found", 404, ErrorCodes.NOT_FOUND);
+    reply.send({ message: "Location deleted successfully" });
   }
 
   // CATEGORY CONTROLLERS
 
   async createCategory(
-    req: FastifyRequest<{ Body: any }>,
+    req: FastifyRequest<{ Body: ICreateLocationCategoryDto }>,
     reply: FastifyReply
   ) {
-    try {
-      const category = await this.locationService.createCategory(req.body);
-      reply.code(201).send(category);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const category = await this.locationService.createCategory(req.body);
+    reply.code(201).send(category);
   }
 
   async getAllCategories(_: FastifyRequest, reply: FastifyReply) {
-    try {
-      const categories = await this.locationService.getAllCategories();
-      reply.send(categories);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const categories = await this.locationService.getAllCategories();
+    reply.send(categories);
   }
 
   async getCategoryById(
-    req: FastifyRequest<{ Params: { id: string } }>,
+    req: FastifyRequest<{ Params: ICategoryIdParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const category = await this.locationService.getCategoryById(
-        Number(req.params.id)
-      );
-      if (!category)
-        return reply.code(404).send({ message: "Category not found" });
-      reply.send(category);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const category = await this.locationService.getCategoryById(
+      Number(req.params.id)
+    );
+    if (!category)
+      throw new AppError("Category not found", 404, ErrorCodes.NOT_FOUND);
+    reply.send(category);
   }
+
   async getCategoryBySlug(
-    req: FastifyRequest<{ Params: { slug: string } }>,
+    req: FastifyRequest<{ Params: ICategorySlugParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const category = await this.locationService.getCategoryBySlug(
-        req.params.slug
-      );
-      if (!category)
-        return reply.code(404).send({ message: "Category not found" });
-      reply.send(category);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const category = await this.locationService.getCategoryBySlug(
+      req.params.slug
+    );
+    if (!category)
+      throw new AppError("Category not found", 404, ErrorCodes.NOT_FOUND);
+    reply.send(category);
   }
 
   async getCategoryByName(
-    req: FastifyRequest<{ Params: { categoryname: string } }>,
+    req: FastifyRequest<{ Params: ICategoryNameParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const category = await this.locationService.getLocationsByCategoryName(
-        req.params.categoryname
-      );
-      if (!category)
-        return reply.code(404).send({ message: "Category not found" });
-      reply.send(category);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    const locations: ILocationDTO[] = await this.locationService.getLocationsByCategoryName(
+      req.params.categoryname
+    );
+    reply.send(locations);
   }
-  // async getCategoryTree(_: FastifyRequest, reply: FastifyReply) {
-  //   try {
-  //     const tree = await this.locationService.getCategoryTree();
-  //     reply.send(tree);
-  //   } catch (error: any) {
-  //     this.handleError(error, reply);
-  //   }
-  // }
-
-  // async deleteCategory(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
-  //   try {
-  //     const success = await this.locationService.deleteCategory(Number(req.params.id));
-  //     if (!success) return reply.code(404).send({ message: "Category not found" });
-  //     reply.send({ message: "Category deleted successfully" });
-  //   } catch (error: any) {
-  //     this.handleError(error, reply);
-  //   }
-  // }
-
-  // ATTRIBUTE CONTROLLERS
-
-  // async createAttribute(req: FastifyRequest<{ Body: any }>, reply: FastifyReply) {
-  //   try {
-  //     const attribute = await this.locationService.createAttribute(req.body);
-  //     reply.code(201).send(attribute);
-  //   } catch (error: any) {
-  //     this.handleError(error, reply);
-  //   }
-  // }
-
-  // async getAllAttributes(_: FastifyRequest, reply: FastifyReply) {
-  //   try {
-  //     const attributes = await this.locationService.getAllAttributes();
-  //     reply.send(attributes);
-  //   } catch (error: any) {
-  //     this.handleError(error, reply);
-  //   }
-  // }
-
-  // async deleteAttribute(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
-  //   try {
-  //     const success = await this.locationService.deleteAttribute(Number(req.params.id));
-  //     if (!success) return reply.code(404).send({ message: "Attribute not found" });
-  //     reply.send({ message: "Attribute deleted successfully" });
-  //   } catch (error: any) {
-  //     this.handleError(error, reply);
-  //   }
-  // }
 
   // ATTRIBUTE + CATEGORY MAPPING
 
   async setLocationAttributes(
-    req: FastifyRequest<{
-      Body: { locationId: number; attributes: Record<string, string> };
-    }>,
+    req: FastifyRequest<{ Body: ISetLocationAttributesBody }>,
     reply: FastifyReply
   ) {
-    try {
-      const updated = await this.locationService.setLocationAttributes(
-        req.body.locationId,
-        req.body.attributes
-      );
-      reply.send(updated);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    await this.locationService.setLocationAttributes(
+      req.body.locationId,
+      req.body.attributes
+    );
+    reply.send({ message: "Attributes set successfully" });
   }
 
   async setLocationCategories(
-    req: FastifyRequest<{ Body: { locationId: number; categories: number[] } }>,
+    req: FastifyRequest<{ Body: ISetLocationCategoriesBody }>,
     reply: FastifyReply
   ) {
-    try {
-      await this.locationService.setLocationCategories(
-        req.body.locationId,
-        req.body.categories
-      );
-      reply.send({ message: "Categories set successfully" });
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
+    await this.locationService.setLocationCategories(
+      req.body.locationId,
+      req.body.categories
+    );
+    reply.send({ message: "Categories set successfully" });
   }
 
   async getLocationChildren(
-    req: FastifyRequest<{ Params: { locationId: string } }>,
+    req: FastifyRequest<{ Params: ILocationChildrenParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const children = await this.locationService.getLocationChildren(
-        Number(req.params.locationId)
-      );
-      if (!children)
-        return reply
-          .code(404)
-          .send({ message: "No children found for this location" });
-      reply.send(children);
-    } catch (error: any) {
-      this.handleError(error, reply);
-    }
-  }
-
-  // ERROR HANDLER
-  private handleError(error: any, reply: FastifyReply) {
-    let parsedError = {
-      message: "Something went wrong",
-      code: "UNKNOWN_ERROR",
-    };
-
-    try {
-      parsedError = JSON.parse(error.message);
-    } catch (_) {
-      parsedError.message = error.message;
-    }
-
-    reply.code(400).send(parsedError);
+    const children: ILocationDTO[] = await this.locationService.getLocationChildren(
+      Number(req.params.locationId)
+    );
+    reply.send(children);
   }
 }

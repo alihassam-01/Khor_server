@@ -9,7 +9,7 @@ import {
   JoinColumn,
 } from "typeorm";
 import { LocationAttributes, LocationCategoryMapping } from "@modules/user/entity/location";
-import { LocationType } from "@modules/user/entity/ENUM/enum";
+import { LocationType } from "@common/enums/location.enums";
 import { Address } from "@modules/user/entity/address";
 
 @Entity("location")

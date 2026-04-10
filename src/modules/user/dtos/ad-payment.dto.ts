@@ -1,8 +1,10 @@
-import { PaymentStatus, PaymentMethod, AdType, SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { PaymentStatus, PaymentMethod } from "@common/enums/payment.enums";
+import { PropertyType } from "@common/enums/property.enums";
+import { SubscriptionType } from "@common/enums/subscription.enums";
 
 export interface ICreateAdPaymentDTO {
     ad_id: string;
-    ad_type: AdType;
+    ad_type: PropertyType;
     vendor_id: string;
     amount: number;
     payment_method?: PaymentMethod;
@@ -22,7 +24,7 @@ export interface IUpdateAdPaymentDTO {
 export interface IAdPaymentDTO {
     payment_id: string;
     ad_id: string;
-    ad_type: AdType;
+    ad_type: PropertyType;
     vendor_id: string;
     vendor_name?: string;
     vendor_email?: string;

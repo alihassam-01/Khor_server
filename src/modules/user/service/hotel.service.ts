@@ -6,11 +6,14 @@ import {
     IHotelDTO,
     ICreateHotelDTO,
     IUpdateHotelDTO,
-} from "../dtos/hotel.dto";
-import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
-import { RoomTypeEnum } from "@modules/user/entity/ENUM/ad.enum";
+    IPaginatedHotelsResponse,
+} from "@modules/user/dtos";
+import { RoomType, PropertyType, SubscriptionType, PaymentStatus, PaymentMethod } from "@common/enums";
+import { PAGINATION_DEFAULTS, SUBSCRIPTION_DURATION_DAYS, FEATURED_AD_PRICE } from "@common/constants";
 import { logError, logInfo } from "@lib/logger";
-import { R2ClientService } from "./r2client.service";
+import { R2ClientService } from "@modules/user/service/r2client.service";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
 
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
@@ -39,19 +42,21 @@ export class HotelService {
     /**
      * Validate that a room type is a valid enum value
      */
-    private validateRoomType(type: any): RoomTypeEnum {
-        if (!type) throw new Error("Room type is required");
+    private validateRoomType(type: string | RoomType): RoomType {
+        if (!type) throw new AppError("Room type is required", 400, ErrorCodes.BAD_REQUEST);
         
-        const normalizedType = String(type).toLowerCase();
-        const validTypes = Object.values(RoomTypeEnum);
+        const normalizedType = String(type).toLowerCase() as RoomType;
+        const validTypes = Object.values(RoomType);
         
-        if (!validTypes.includes(normalizedType as RoomTypeEnum)) {
-            throw new Error(
-                `Invalid room type: "${type}". Allowed types are: ${validTypes.join(", ")}`
+        if (!validTypes.includes(normalizedType)) {
+            throw new AppError(
+                `Invalid room type: "${type}". Allowed types are: ${validTypes.join(", ")}`,
+                400,
+                ErrorCodes.VALIDATION_ERROR
             );
         }
         
-        return normalizedType as RoomTypeEnum;
+        return normalizedType;
     }
 
 
@@ -68,7 +73,7 @@ export class HotelService {
             images: hotel.image ? [hotel.image] : [],
             active: hotel.is_active,
             description: hotel.description,
-            amenities: hotel.amenities,
+            amenities: hotel.amenities || [],
             logo: hotel.logo,
             verified: hotel.verified,
             links: {
@@ -92,7 +97,7 @@ export class HotelService {
                 hotel.room_types?.map((roomType) => ({
                     type: roomType.type,
                     price: Number(roomType.price),
-                    amenities: roomType.amenities,
+                    amenities: roomType.amenities || [],
                     capacity: roomType.capacity,
                 })) || [],
             vendor_id: hotel.vendor_id,
@@ -117,8 +122,11 @@ export class HotelService {
             });
 
             if (!location) {
-                logError(new Error(`Location not found: ${hotelData.location_id}`), 'Hotel creation');
-                throw new Error(`Location with id ${hotelData.location_id} not found. Please select a valid location.`);
+                throw new AppError(
+                    `Location with id ${hotelData.location_id} not found. Please select a valid location.`,
+                    404,
+                    ErrorCodes.NOT_FOUND
+                );
             }
 
             // Create hotel entity
@@ -133,7 +141,8 @@ export class HotelService {
             hotel.location_id = hotelData.location_id;
             hotel.location = location;
 
-            hotel.vendor_id = await this.resolveVendorUserId(hotelData.vendor_id);
+            const resolvedVendorId = await this.resolveVendorUserId(hotelData.vendor_id);
+            if (resolvedVendorId) hotel.vendor_id = resolvedVendorId;
 
             hotel.rating = hotelData.rating || 0;
             hotel.reviews = hotelData.reviews || 0;
@@ -156,7 +165,6 @@ export class HotelService {
                 hotel.is_paid = false;
                 hotel.is_active = hotelData.is_active !== undefined ? hotelData.is_active : true;
 
-                const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
                 const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                 const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
@@ -165,7 +173,7 @@ export class HotelService {
             } else {
                 hotel.is_paid = false;
                 hotel.is_active = false; // Pending payment/admin approval
-                hotel.expires_at = null as any;
+                hotel.expires_at = undefined;
             }
 
             const savedHotel = await queryRunner.manager.save(hotel);
@@ -184,21 +192,20 @@ export class HotelService {
                     plan = await planService.getPlanByType(subscriptionType);
                 }
                 
-                let totalAmount = plan ? plan.price : 0;
+                let totalAmount = plan ? Number(plan.price) : 0;
 
                 if (hotel.is_featured) {
                     // Try to get featured plan price, or use a default if FEATURED is not a plan type
                     const featuredPlan = await planService.getPlanByType("featured" as any);
-                    totalAmount += featuredPlan ? featuredPlan.price : 1000;
+                    totalAmount += featuredPlan ? Number(featuredPlan.price) : FEATURED_AD_PRICE;
                 }
 
                 if (totalAmount > 0) {
                     const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
-                    const { AdType, PaymentStatus, PaymentMethod } = await import("@modules/user/entity/ENUM/ad-payment.enum");
 
                     const payment = new AdPayment();
                     payment.ad_id = savedHotel.id;
-                    payment.ad_type = AdType.HOTEL;
+                    payment.ad_type = PropertyType.HOTEL;
                     payment.vendor_id = vendorId;
                     payment.amount = totalAmount;
                     payment.payment_method = PaymentMethod.BANK_TRANSFER;
@@ -232,7 +239,7 @@ export class HotelService {
                     const roomType = new HotelRoomType();
                     roomType.type = this.validateRoomType(roomTypeData.type);
                     roomType.price = roomTypeData.price;
-                    roomType.amenities = roomTypeData.amenities;
+                    roomType.amenities = roomTypeData.amenities || [];
                     roomType.capacity = roomTypeData.capacity;
                     roomType.hotel = savedHotel;
                     roomType.hotel_id = savedHotel.id;
@@ -245,10 +252,12 @@ export class HotelService {
             await queryRunner.commitTransaction();
             logInfo('Hotel created successfully', { id: savedHotel.id, name: savedHotel.name });
             return this.toHotelDTO(savedHotel);
-        } catch (error: any) {
+        } catch (error: unknown) {
             await queryRunner.rollbackTransaction();
-            logError(error, 'Hotel creation - Database transaction');
-            throw error;
+            if (error instanceof AppError) throw error;
+            const err = error as Error;
+            logError(err, 'Hotel creation - Database transaction');
+            throw new AppError(err.message || "Failed to create hotel", 500, ErrorCodes.INTERNAL_SERVER_ERROR);
         } finally {
             await queryRunner.release();
         }
@@ -267,7 +276,11 @@ export class HotelService {
         return this.toHotelDTO(hotel);
     }
 
-    async getAllHotels({ page = 1, limit = 10, searchQuery = "" }: { page?: number; limit?: number; searchQuery?: string }): Promise<{ items: IHotelDTO[]; total: number; page: number; limit: number; }> {
+    async getAllHotels({ 
+        page = PAGINATION_DEFAULTS.PAGE, 
+        limit = PAGINATION_DEFAULTS.LIMIT, 
+        searchQuery = "" 
+    }: { page?: number; limit?: number; searchQuery?: string }): Promise<IPaginatedHotelsResponse> {
         const skip = (page - 1) * limit;
         const queryBuilder = this.hotelRepository.createQueryBuilder("hotel")
             .leftJoinAndSelect("hotel.location", "location")
@@ -309,7 +322,7 @@ export class HotelService {
         });
 
         if (!hotel) {
-            throw new Error("Hotel not found");
+            throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
 
         // Update fields if provided
@@ -347,12 +360,18 @@ export class HotelService {
         if (hotelData.map_link !== undefined) hotel.map_link = hotelData.map_link;
         if (hotelData.latitude !== undefined) hotel.latitude = hotelData.latitude;
         if (hotelData.longitude !== undefined) hotel.longitude = hotelData.longitude;
-        if (hotelData.vendor_id !== undefined) hotel.vendor_id = hotelData.vendor_id;
+        
+        if (hotelData.vendor_id !== undefined) {
+             const resolvedVendorId = await this.resolveVendorUserId(hotelData.vendor_id);
+             if (resolvedVendorId) hotel.vendor_id = resolvedVendorId;
+        }
+
         if (hotelData.subscription_type !== undefined) hotel.subscription_type = hotelData.subscription_type;
         if (hotelData.is_active !== undefined)
             hotel.is_active = hotelData.is_active;
         if (hotelData.is_featured !== undefined)
             hotel.is_featured = hotelData.is_featured;
+        
         if (hotelData.roomTypes !== undefined) {
             if (hotel.room_types && hotel.room_types.length > 0) {
                 await this.hotelRepository
@@ -362,11 +381,15 @@ export class HotelService {
                     .where("hotel_id = :hotelId", { hotelId: id })
                     .execute();
             }
-            hotel.room_types = hotelData.roomTypes.map((rt: any) => ({
-                ...rt,
-                type: this.validateRoomType(rt.type), // Validate against enum
-                hotel_id: id,
-            }));
+            hotel.room_types = hotelData.roomTypes.map((rt) => {
+                const roomType = new HotelRoomType();
+                roomType.type = this.validateRoomType(rt.type);
+                roomType.price = rt.price;
+                roomType.amenities = rt.amenities || [];
+                roomType.capacity = rt.capacity;
+                roomType.hotel_id = id;
+                return roomType;
+            });
         }
 
         // Update location if changed
@@ -396,7 +419,7 @@ export class HotelService {
         const hotel = await this.hotelRepository.findOne({ where: { id } });
 
         if (!hotel) {
-            throw new Error("Hotel not found");
+            throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
 
         const imagesToDelete: string[] = [];
@@ -420,7 +443,7 @@ export class HotelService {
         });
 
         if (!hotel) {
-            throw new Error("Hotel not found");
+            throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
 
         hotel.is_active = isActive;
@@ -430,7 +453,7 @@ export class HotelService {
 
     async renewAd(
         id: string,
-        subscriptionType: import("../entity/ENUM/ad-payment.enum").SubscriptionType
+        subscriptionType: SubscriptionType
     ): Promise<IHotelDTO> {
         const hotel = await this.hotelRepository.findOne({
             where: { id },
@@ -438,14 +461,12 @@ export class HotelService {
         });
 
         if (!hotel) {
-            throw new Error("Hotel not found");
+            throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
-
         // Map subscription type to constant key
-        const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey];
+        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
         const now = new Date();
         const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
@@ -462,11 +483,11 @@ export class HotelService {
     async renewAdByVendor(
         id: string,
         vendorId: string,
-        subscriptionType: import("../entity/ENUM/ad-payment.enum").SubscriptionType
+        subscriptionType: SubscriptionType | string
     ): Promise<IHotelDTO> {
         const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
         if (!resolvedVendorUserId) {
-            throw new Error("Unauthorized vendor");
+            throw new AppError("Unauthorized vendor", 403, ErrorCodes.FORBIDDEN);
         }
 
         const hotel = await this.hotelRepository.findOne({
@@ -475,28 +496,26 @@ export class HotelService {
         });
 
         if (!hotel) {
-            throw new Error("Hotel not found or access denied");
+            throw new AppError("Hotel not found or access denied", 404, ErrorCodes.NOT_FOUND);
         }
 
-        const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
         const { SubscriptionPlanService } = await import("./subscription-plan.service");
         const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
-        const { AdType, PaymentStatus, PaymentMethod, SubscriptionType } = await import("@modules/user/entity/ENUM/ad-payment.enum");
 
-        const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
         const now = new Date();
         const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
 
-        hotel.subscription_type = subscriptionType;
+        hotel.subscription_type = subscriptionType as SubscriptionType;
         hotel.is_paid = false;
 
         const planService = new SubscriptionPlanService();
         
         // Get plan by ID if provided, otherwise fallback to type
         let plan = null;
-        if (subscriptionType.length > 20) { // Checking if it looks like a UUID
+        if (subscriptionType.length > 20) { // Checking if it looks like a uuid
             plan = await planService.getPlanById(subscriptionType as string);
         } else {
             plan = await planService.getPlanByType(subscriptionType as any);
@@ -511,7 +530,7 @@ export class HotelService {
             hotel.is_active = false;
             const payment = new AdPayment();
             payment.ad_id = hotel.id;
-            payment.ad_type = AdType.HOTEL;
+            payment.ad_type = PropertyType.HOTEL;
             payment.vendor_id = resolvedVendorUserId;
             payment.amount = amount;
             payment.payment_method = PaymentMethod.BANK_TRANSFER;
@@ -562,7 +581,7 @@ export class HotelService {
         });
 
         if (!hotel) {
-            throw new Error("Hotel not found");
+            throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
 
         hotel.is_featured = isFeatured;
@@ -590,7 +609,6 @@ export class HotelService {
     }
 
     async getPremiumAds(): Promise<IHotelDTO[]> {
-        const { SubscriptionType } = await import("../entity/ENUM/ad-payment.enum");
         const hotels = await this.hotelRepository
             .createQueryBuilder("hotel")
             .leftJoinAndSelect("hotel.location", "location")
