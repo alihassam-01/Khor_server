@@ -1,31 +1,30 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { UserService } from "@modules/user/service/user.service";
-import { UserType } from "@modules/user/entity/ENUM/enum";
-import {
-  ValidationError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../constant/error";
-import { logError } from "@lib/logger";
+import { UserRole } from "@common/enums";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
+import { 
+  IChangeRoleBody, 
+  IUpdateUserBody, 
+  IForgotPasswordBody, 
+  IUserIdParams 
+} from "@modules/user/types";
+import { IPassData } from "@modules/user/dtos";
 
 export class UserController {
+  constructor(private userService: UserService) {}
+
   async forgotPassword(
-    req: FastifyRequest<{ Body: { email: string } }>,
+    req: FastifyRequest<{ Body: IForgotPasswordBody }>,
     reply: FastifyReply
   ) {
     const { email } = req.body;
     if (!email) {
-      return reply.status(400).send({ success: false, message: "Email is required" });
+      throw new AppError("Email is required", 400, ErrorCodes.BAD_REQUEST);
     }
-    try {
-  await this.userService.forgotPassword(email);
-      reply.send({ success: true, message: "If the email exists, a reset link has been sent." });
-    } catch (error: any) {
-      logError(error, 'Forgot password');
-      reply.status(500).send({ success: false, message: error.message || "Failed to process forgot password" });
-    }
+    await this.userService.forgotPassword(email);
+    reply.send({ success: true, message: "If the email exists, a reset link has been sent." });
   }
-  constructor(private userService: UserService) {}
 
   async getUsers(_req: FastifyRequest, reply: FastifyReply) {
     const users = await this.userService.getUsers();
@@ -33,12 +32,13 @@ export class UserController {
   }
 
   async getUserById(
-    req: FastifyRequest<{ Params: { id: string } }>,
+    req: FastifyRequest<{ Params: IUserIdParams }>,
     reply: FastifyReply
   ) {
     const user = await this.userService.getUserById(req.params.id);
     reply.send(user);
   }
+
   async getCustomers(_req: FastifyRequest, reply: FastifyReply) {
     const customers = await this.userService.getCustomers();
     reply.send(customers);
@@ -50,44 +50,28 @@ export class UserController {
   }
 
   async deleteUser(
-    req: FastifyRequest<{ Params: { id: string } }>,
+    req: FastifyRequest<{ Params: IUserIdParams }>,
     reply: FastifyReply
   ) {
-    try {
-      const result = await this.userService.deleteUser(req.params.id);
-      reply.send(result);
-    } catch (error: any) {
-      logError(error, 'Delete user');
-      reply.status(error instanceof NotFoundError ? 404 : 500).send({
-        success: false,
-        message: error.message || "Failed to delete user",
-      });
-    }
+    const result = await this.userService.deleteUser(req.params.id);
+    reply.send(result);
   }
 
   async changeRole(
-    req: FastifyRequest<{ Params: { id: string }; Body: { role: string } }>,
+    req: FastifyRequest<{ Params: IUserIdParams; Body: IChangeRoleBody }>,
     reply: FastifyReply
   ) {
-    try {
-      const newRole = req.body.role as UserType;
-      if (!Object.values(UserType).includes(newRole)) {
-        return reply.status(400).send({ success: false, message: "Invalid role provided." });
-      }
-
-      const updatedUser = await this.userService.changeRole(req.params.id, newRole);
-      reply.send(updatedUser);
-    } catch (error: any) {
-      logError(error, 'Change user role');
-      reply.status(error instanceof NotFoundError ? 404 : 500).send({
-        success: false,
-        message: error.message || "Failed to change user role",
-      });
+    const newRole = req.body.role;
+    if (!Object.values(UserRole).includes(newRole as UserRole)) {
+      throw new AppError("Invalid role provided.", 400, ErrorCodes.BAD_REQUEST);
     }
+
+    const updatedUser = await this.userService.changeRole(req.params.id, newRole as UserRole);
+    reply.send(updatedUser);
   }
 
   async update(
-    req: FastifyRequest<{ Params: { id: string }; Body: { updates: any } }>,
+    req: FastifyRequest<{ Params: IUserIdParams; Body: IUpdateUserBody }>,
     reply: FastifyReply
   ) {
     const userId = req.params.id;
@@ -97,49 +81,27 @@ export class UserController {
   }
 
   async updatePassword(
-    req: FastifyRequest<{ Body: { currentPassword: string; newPassword: string; confirmPassword: string } }>,
+    req: FastifyRequest<{ Body: Omit<IPassData, 'userId'> }>,
     reply: FastifyReply
   ) {
-    try {
-      // Get userId from authenticated user instead of request body
-      const userId = req.user?.id || req.user?.userId;
-      
-      if (!userId) {
-        return reply.status(401).send({
-          success: false,
-          message: "User not authenticated"
-        });
-      }
-
-      const { currentPassword, newPassword, confirmPassword } = req.body;
-
-      // Create PassData object with userId from token
-      const passData = {
-        userId,
-        currentPassword,
-        newPassword,
-        confirmPassword
-      };
-
-      const response = await this.userService.updatePassword(passData);
-      reply.send(response);
-    } catch (error: any) {
-      logError(error, 'Update password');
-      let statusCode = 500;
-
-      if (error instanceof ValidationError) {
-        statusCode = 400; // Bad Request
-      } else if (error instanceof NotFoundError) {
-        statusCode = 404; // Not Found
-      } else if (error instanceof UnauthorizedError) {
-        statusCode = 401; // Unauthorized
-      }
-
-      reply.status(statusCode).send({
-        success: false,
-        message: error.message || "Failed to update password",
-        error: error.name || "UnknownError",
-      });
+    // Get userId from authenticated user instead of request body
+    const userId = (req.user as any)?.id || (req.user as any)?.userId;
+    
+    if (!userId) {
+      throw new AppError("User not authenticated", 401, ErrorCodes.UNAUTHORIZED);
     }
+
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    // Create PassData object with userId from token
+    const passData: IPassData = {
+      userId,
+      currentPassword,
+      newPassword,
+      confirmPassword
+    };
+
+    const response = await this.userService.updatePassword(passData);
+    reply.send(response);
   }
 }

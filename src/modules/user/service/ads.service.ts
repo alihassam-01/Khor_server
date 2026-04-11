@@ -1,8 +1,11 @@
 import { HotelService } from "./hotel.service";
 import { RestaurantService } from "./restaurant.service";
-import { IAdsResponseDTO } from "@modules/user/dtos/ads.dto";
-import { IHotelDTO } from "@modules/user/dtos/hotel.dto";
-import { IRestaurantDTO } from "@modules/user/dtos/restaurant.dto";
+import { 
+    IAdsResponseDTO, 
+    ICombinedAdsResponseDTO,
+    IHotelDTO,
+    IRestaurantDTO
+} from "@modules/user/dtos";
 
 export class AdsService {
     private hotelService = new HotelService();
@@ -30,18 +33,13 @@ export class AdsService {
         limit?: number;
         searchQuery?: string;
         type?: "hotel" | "restaurant" | "all";
-    }): Promise<{
-        hotels: IHotelDTO[];
-        restaurants: IRestaurantDTO[];
-        pagination: {
-            page: number;
-            limit: number;
-            totalHotels: number;
-            totalRestaurants: number;
-            totalItems: number;
+    }): Promise<ICombinedAdsResponseDTO> {
+        const results = { 
+            hotels: [] as IHotelDTO[], 
+            restaurants: [] as IRestaurantDTO[], 
+            totalHotels: 0, 
+            totalRestaurants: 0 
         };
-    }> {
-        const results = { hotels: [] as IHotelDTO[], restaurants: [] as IRestaurantDTO[], totalHotels: 0, totalRestaurants: 0 };
 
         if (type === "hotel" || type === "all") {
             const hotelResult = await this.hotelService.getAllHotels({
@@ -49,8 +47,8 @@ export class AdsService {
                 limit,
                 searchQuery,
             });
-            results.hotels = (hotelResult as any).items;
-            results.totalHotels = (hotelResult as any).total;
+            results.hotels = hotelResult.items;
+            results.totalHotels = hotelResult.total;
         }
 
         if (type === "restaurant" || type === "all") {
@@ -59,8 +57,8 @@ export class AdsService {
                 limit,
                 searchQuery,
             });
-            results.restaurants = (restaurantResult as any).items;
-            results.totalRestaurants = (restaurantResult as any).total;
+            results.restaurants = restaurantResult.items;
+            results.totalRestaurants = restaurantResult.total;
         }
 
         return {
@@ -76,7 +74,7 @@ export class AdsService {
         };
     }
 
-    async getAdsByVendor(vendorId: string): Promise<any[]> {
+    async getAdsByVendor(vendorId: string): Promise<(IHotelDTO | IRestaurantDTO)[]> {
         const [hotels, restaurants] = await Promise.all([
             this.hotelService.getAdsByVendor(vendorId),
             this.restaurantService.getAdsByVendor(vendorId),

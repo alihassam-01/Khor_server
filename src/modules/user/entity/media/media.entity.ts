@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column } from "typeorm";
-import { RelatedType } from "@modules/user/entity/ENUM/enum";
+import { PropertyType } from "@common/enums/property.enums";
 
 @Entity("media")
 export class Media {
@@ -9,8 +9,8 @@ export class Media {
   @Column()
   url!: string;
 
-  @Column({ type: "enum", enum: RelatedType })
-  related_type!: RelatedType;
+  @Column({ type: "enum", enum: PropertyType })
+  related_type!: PropertyType;
 
   @Column()
   related_id!: number;

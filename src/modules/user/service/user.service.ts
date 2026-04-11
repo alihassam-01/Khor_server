@@ -1,60 +1,66 @@
-import { IsNull, Not } from "typeorm";
+import { IsNull, Not, Repository } from "typeorm";
 import { AppDataSource } from "@config/ormconfig";
 import { CustomerProfile, User } from "@modules/user/entity/user";
-import { Vendor } from "@modules/user/entity";
-import { IPassData } from "@modules/user/dtos/user.dto";
+import { Vendor } from "@modules/user/entity/business/vendor-entity";
+import { 
+    IPassData, 
+    IUserResponseDto, 
+    IUserProfileDto, 
+    IDeleteUserResponseDto,
+    IVendorListItemDTO,
+    ICustomerListItemDTO,
+    IVendorProfileDTO,
+    ICustomerProfileDTO
+} from "@modules/user/dtos";
 import { AuthService } from "./auth.service";
 import { forgotPasswordTemplate } from "./email/templates/forgotPassword";
 import * as jwt from "jsonwebtoken";
-import { UserType } from "@modules/user/entity/ENUM/enum";
-
-import {
-  ValidationError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../constant/error";
+import { UserRole } from "@common/enums";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
 import { sendEmail } from "./email";
 import { CONFIG } from "@config/config";
 import { logInfo } from "@lib/logger";
+
 export class UserService {
-  async forgotPassword(email: string) {
-    // Find user by email
-    const user = await this.userRepository.findOne({ where: { email } });
-    if (!user) {
-      return;
-    }
-
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET environment variable is not defined.");
-    }
-    const resetToken = jwt.sign({ email }, CONFIG.jwt.secret as string, {
-      expiresIn: "24h",
-    });
-
-    const resetLink = `${CONFIG.web_domain.url}/reset-password?token=${resetToken}`;
-
-    const name =
-      user.userType === UserType.VENDOR
-        ? user.vendor?.username
-        : user.customerProfile?.username;
-    await sendEmail({
-      to: email,
-      subject: "Reset Password",
-      html: forgotPasswordTemplate(name as string, resetLink),
-    });
-    logInfo(`Password reset email sent to ${email}`);
-    return;
-  }
-  private userRepository = AppDataSource.getRepository(User);
-  private vendorRepo = AppDataSource.getRepository(Vendor);
-  private customerRepo = AppDataSource.getRepository(CustomerProfile);
+  private userRepository: Repository<User> = AppDataSource.getRepository(User);
+  private vendorRepo: Repository<Vendor> = AppDataSource.getRepository(Vendor);
+  private customerRepo: Repository<CustomerProfile> = AppDataSource.getRepository(CustomerProfile);
   private authService = new AuthService(
     this.userRepository,
     this.vendorRepo,
     this.customerRepo
   );
 
-  async getUserById(userId: string) {
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { email }, relations: ['vendor', 'customerProfile'] });
+    if (!user) {
+      return;
+    }
+
+    if (!CONFIG.jwt.secret) {
+      throw new AppError("JWT_SECRET environment variable is not defined.", 500, ErrorCodes.INTERNAL_SERVER_ERROR);
+    }
+    const resetToken = jwt.sign({ email }, CONFIG.jwt.secret, {
+      expiresIn: "24h",
+    });
+
+    const resetLink = `${CONFIG.web_domain.url}/reset-password?token=${resetToken}`;
+
+    const name =
+      user.userType === UserRole.VENDOR
+        ? user.vendor?.username
+        : user.customerProfile?.username;
+    await sendEmail({
+      to: email,
+      subject: "Reset Password",
+      html: forgotPasswordTemplate(name || "User", resetLink),
+    });
+    logInfo(`Password reset email sent to ${email}`);
+    return;
+  }
+
+  async getUserById(userId: string): Promise<IUserProfileDto> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
       relations: {
@@ -63,7 +69,7 @@ export class UserService {
       },
     });
     if (!user) {
-      throw new Error("User not found");
+      throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
     }
     return {
       isActive: user.isActive,
@@ -72,46 +78,63 @@ export class UserService {
       userType: user.userType,
       createdAt: user.createdAt,
       profilePicture:
-        user.userType === UserType.VENDOR
+        user.userType === UserRole.VENDOR
           ? user.vendor?.profile_picture
           : user.customerProfile?.profile_picture,
       username:
-        user.userType === UserType.VENDOR
+        user.userType === UserRole.VENDOR
           ? user.vendor?.username
           : user.customerProfile?.username,
       phoneNumber:
-        user.userType === UserType.VENDOR
+        user.userType === UserRole.VENDOR
           ? user.vendor?.phone_number
           : user.customerProfile?.phone_number,
     };
   }
 
-  async getUsers() {
+  async getUsers(): Promise<IUserResponseDto[]> {
     const users = await this.userRepository.find({
       relations: {
         customerProfile: true,
         vendor: true,
       },
     });
-    // get the customer_profile and vendor
 
-    return users.map((user) => ({
-      id: user.id,
-      isActive: user.isActive,
-      isVerified: user.isVerified,
-      email: user.email,
-      userType: user.userType,
-      createdAt: user.createdAt,
-      profile:
-        user.userType === UserType.CUSTOMER ? user.customerProfile : user.vendor,
-    }));
+    return users.map((user) => {
+        let profile: IVendorProfileDTO | ICustomerProfileDTO | null = null;
+        if (user.userType === UserRole.CUSTOMER && user.customerProfile) {
+            profile = {
+                id: user.customerProfile.userId, // Use userId for CustomerProfile
+                username: user.customerProfile.username,
+                phone_number: user.customerProfile.phone_number,
+                profile_picture: user.customerProfile.profile_picture
+            };
+        } else if (user.userType === UserRole.VENDOR && user.vendor) {
+            profile = {
+                id: user.vendor.id, // Use id (UUID string) for Vendor
+                username: user.vendor.username || "",
+                phone_number: user.vendor.phone_number,
+                profile_picture: user.vendor.profile_picture
+            };
+        }
+
+        return {
+            id: user.id,
+            isActive: user.isActive,
+            isVerified: user.isVerified,
+            email: user.email,
+            userType: user.userType,
+            createdAt: user.createdAt,
+            profile,
+        };
+    });
   }
 
-  async getCustomers() {
+  async getCustomers(): Promise<ICustomerListItemDTO[]> {
     const users = await this.userRepository.find({
       where: {
         isActive: true,
-        userType: UserType.CUSTOMER,
+        userType: UserRole.CUSTOMER,
         customerProfile: Not(IsNull()),
       },
       relations: {
@@ -123,16 +146,21 @@ export class UserService {
       isActive: user.isActive,
       isVerified: user.isVerified,
       email: user.email,
-      customer: user.customerProfile,
+      customer: user.customerProfile ? {
+          id: user.customerProfile.userId, // Use userId
+          username: user.customerProfile.username,
+          phone_number: user.customerProfile.phone_number,
+          profile_picture: user.customerProfile.profile_picture
+      } : null,
       createdAt: user.createdAt,
     }));
   }
 
-  async getVendors() {
+  async getVendors(): Promise<IVendorListItemDTO[]> {
     const users = await this.userRepository.find({
       where: {
         isActive: true,
-        userType: UserType.VENDOR,
+        userType: UserRole.VENDOR,
         vendor: { id: Not(IsNull()) },
       },
       relations: {
@@ -142,8 +170,8 @@ export class UserService {
 
     return users.map((user) => ({
       id: user.id,
-      userId: user.id,             // ← Use this for hotel.vendor_id
-      vendorProfileId: user.vendor?.id,  // For reference
+      userId: user.id,
+      vendorProfileId: user.vendor?.id, // This is a UUID string
       isActive: user.isActive,
       isVerified: user.isVerified,
       email: user.email,
@@ -154,10 +182,10 @@ export class UserService {
     }));
   }
 
-  async deleteUser(userId: string) {
+  async deleteUser(userId: string): Promise<IDeleteUserResponseDto> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
-      throw new NotFoundError("User not found");
+      throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
     }
     user.isActive = false;
     await this.userRepository.save(user);
@@ -165,22 +193,21 @@ export class UserService {
     return { success: true, message: "User deleted successfully" };
   }
 
-  async changeRole(userId: string, newRole: UserType) {
+  async changeRole(userId: string, newRole: UserRole): Promise<IUserProfileDto | { success: boolean; message: string }> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
       relations: ["vendor", "customerProfile"],
     });
 
     if (!user) {
-      throw new NotFoundError("User not found");
+      throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
     }
 
     if (user.userType === newRole) {
       return { success: true, message: "User is already assigned this role." };
     }
 
-    // Auto-create Vendor profile if transitioning to Vendor
-    if (newRole === UserType.VENDOR && !user.vendor) {
+    if (newRole === UserRole.VENDOR && !user.vendor) {
       const vendor = this.vendorRepo.create({
         user,
         username: user.customerProfile?.username || "New Vendor",
@@ -188,8 +215,7 @@ export class UserService {
       });
       await this.vendorRepo.save(vendor);
     } 
-    // Auto-create Customer profile if transitioning to Customer
-    else if (newRole === UserType.CUSTOMER && !user.customerProfile) {
+    else if (newRole === UserRole.CUSTOMER && !user.customerProfile) {
       const customer = this.customerRepo.create({
         user,
         username: user.vendor?.username || "New Customer",
@@ -205,12 +231,12 @@ export class UserService {
     return this.getUserById(user.id);
   }
 
-  async updateUser(userId: string, updateData: any) {
+  async updateUser(userId: string, updateData: { phoneNumber?: string; profilePicture?: string }): Promise<IUserProfileDto> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
-      throw new Error("User not found");
+      throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
     }
-    if (user?.userType === UserType.VENDOR) {
+    if (user?.userType === UserRole.VENDOR) {
       const vendor = await this.vendorRepo.findOne({
         where: { user: { id: user.id } },
       });
@@ -218,15 +244,12 @@ export class UserService {
         if (updateData.phoneNumber != null && updateData.phoneNumber !== "") {
           vendor.phone_number = updateData.phoneNumber;
         }
-        // if (updateData.username != null && updateData.username !== "") {
-        //   vendor.username = updateData.username;
-        // }
         if (updateData.profilePicture != null && updateData.profilePicture !== "") {
           vendor.profile_picture = updateData.profilePicture;
         }
         await this.vendorRepo.save(vendor);
       }
-    } else if (user?.userType === UserType.CUSTOMER) {
+    } else if (user?.userType === UserRole.CUSTOMER) {
       const customer = await this.customerRepo.findOne({
         where: { user: { id: user.id } },
       });
@@ -234,9 +257,6 @@ export class UserService {
         if (updateData.phoneNumber != null && updateData.phoneNumber !== "") {
           customer.phone_number = updateData.phoneNumber;
         }
-        // if (updateData.username != null && updateData.username !== "") {
-        //   customer.username = updateData.username;
-        // }
         if (updateData.profilePicture != null && updateData.profilePicture !== "") {
           customer.profile_picture = updateData.profilePicture;
         }
@@ -246,71 +266,64 @@ export class UserService {
     return this.getUserById(user.id);
   }
 
-  async updatePassword(passData: IPassData) {
+  async updatePassword(passData: IPassData): Promise<{ success: boolean; message: string }> {
     const { userId, currentPassword, newPassword, confirmPassword } = passData;
 
-    // Validation
     if (!userId || !currentPassword || !newPassword || !confirmPassword) {
-      throw new ValidationError("All fields are required.");
+      throw new AppError("All fields are required.", 400, ErrorCodes.VALIDATION_ERROR);
     }
 
-    // Validate UUID format for userId
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
-      throw new ValidationError("Invalid user ID format.");
+      throw new AppError("Invalid user ID format.", 400, ErrorCodes.VALIDATION_ERROR);
     }
 
     if (newPassword !== confirmPassword) {
-      throw new ValidationError(
-        "New password and confirm password do not match."
+      throw new AppError(
+        "New password and confirm password do not match.", 400, ErrorCodes.VALIDATION_ERROR
       );
     }
 
-    // Password strength validation
     if (newPassword.length < 8) {
-      throw new ValidationError(
-        "New password must be at least 8 characters long."
+      throw new AppError(
+        "New password must be at least 8 characters long.", 400, ErrorCodes.VALIDATION_ERROR
       );
     }
 
     if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)) {
-      throw new ValidationError(
-        "New password must contain at least one uppercase letter, one lowercase letter, and one number."
+      throw new AppError(
+        "New password must contain at least one uppercase letter, one lowercase letter, and one number.", 400, ErrorCodes.VALIDATION_ERROR
       );
     }
 
-    // Find user
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
-      throw new NotFoundError("User not found.");
+      throw new AppError("User not found.", 404, ErrorCodes.NOT_FOUND);
     }
 
     if (!user.password) {
-      throw new ValidationError("This account uses Google sign-in and does not have a password. Use 'Forgot Password' to set one.");
+      throw new AppError("This account uses Google sign-in and does not have a password. Use 'Forgot Password' to set one.", 400, ErrorCodes.BAD_REQUEST);
     }
 
-    // Verify current password (assuming passwords are hashed)
     const isMatch = await this.authService.comparePassword(
       currentPassword,
       user.password
     );
     if (!isMatch) {
-      throw new UnauthorizedError("Current password is incorrect.");
+      throw new AppError("Current password is incorrect.", 401, ErrorCodes.UNAUTHORIZED);
     }
 
-    // Check if new password is same as current
     const isSamePassword = await this.authService.comparePassword(
       newPassword,
       user.password
     );
     if (isSamePassword) {
-      throw new ValidationError(
-        "New password must be different from current password."
+      throw new AppError(
+        "New password must be different from current password.", 400, ErrorCodes.VALIDATION_ERROR
       );
     }
 
-    // Update password
     user.password = await this.authService.hashPassword(newPassword);
     await this.userRepository.save(user);
     logInfo(`Password updated successfully for user: ${userId}`);

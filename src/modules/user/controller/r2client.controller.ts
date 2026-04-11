@@ -1,6 +1,9 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { R2ClientService } from "@modules/user/service";
-import { IPresignedUrlRequestDTO, IBatchPresignedUrlRequestDTO } from "@modules/user/dtos/r2-presigned.dto";
+import { R2ClientService } from "@modules/user/service/r2client.service";
+import { 
+    IPresignedUrlRequestDTO, 
+    IBatchPresignedUrlRequestDTO 
+} from "@modules/user/dtos";
 import * as fs from "fs";
 
 export class R2ClientController {
@@ -11,11 +14,11 @@ export class R2ClientController {
   }
 
   /**
-   * Legacy: Upload file through backend (kept for backwards compatibility)
+   * Upload file through backend
    */
   async uploadFile(req: FastifyRequest, reply: FastifyReply) {
     try {
-      // @ts-ignore
+      // @ts-ignore - Fastify multipart might not be typed correctly in this context
       const files = (await req.saveRequestFiles?.()) || [];
       if (!files.length) {
         return reply.status(400).send({ error: "No files provided" });
@@ -32,18 +35,22 @@ export class R2ClientController {
         uploadResults.push(result);
       }
       reply.send({ status: "success", data: uploadResults });
-    } catch (error: any) {
-      console.error("Error uploading files:", error);
-      reply.status(500).send({ error: "Upload failed" });
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error("Error uploading files:", err);
+      reply.status(500).send({ error: "Upload failed: " + err.message });
     }
   }
 
   /**
    * Generate a single presigned URL for direct R2 upload
    */
-  async getPresignedUrl(req: FastifyRequest, reply: FastifyReply) {
+  async getPresignedUrl(
+    req: FastifyRequest<{ Body: IPresignedUrlRequestDTO }>, 
+    reply: FastifyReply
+  ) {
     try {
-      const { fileName, mimeType, folder } = req.body as IPresignedUrlRequestDTO;
+      const { fileName, mimeType, folder } = req.body;
 
       if (!fileName || !mimeType) {
         return reply.status(400).send({ error: "fileName and mimeType are required" });
@@ -60,24 +67,27 @@ export class R2ClientController {
         status: "success",
         data: { ...result, maxFileSize },
       });
-    } catch (error: any) {
-      console.error("Error generating presigned URL:", error);
-      reply.status(500).send({ error: "Failed to generate presigned URL" });
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error("Error generating presigned URL:", err);
+      reply.status(500).send({ error: "Failed to generate presigned URL: " + err.message });
     }
   }
 
   /**
    * Generate multiple presigned URLs for batch direct R2 upload
    */
-  async getPresignedUrls(req: FastifyRequest, reply: FastifyReply) {
+  async getPresignedUrls(
+    req: FastifyRequest<{ Body: IBatchPresignedUrlRequestDTO }>, 
+    reply: FastifyReply
+  ) {
     try {
-      const { files } = req.body as IBatchPresignedUrlRequestDTO;
+      const { files } = req.body;
 
       if (!files || !Array.isArray(files) || files.length === 0) {
         return reply.status(400).send({ error: "files array is required and must not be empty" });
       }
 
-      // Validate each file entry
       for (const file of files) {
         if (!file.fileName || !file.mimeType) {
           return reply.status(400).send({ error: "Each file must have fileName and mimeType" });
@@ -91,9 +101,10 @@ export class R2ClientController {
         status: "success",
         data: { urls: results, maxFileSize },
       });
-    } catch (error: any) {
-      console.error("Error generating presigned URLs:", error);
-      reply.status(500).send({ error: "Failed to generate presigned URLs" });
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error("Error generating presigned URLs:", err);
+      reply.status(500).send({ error: "Failed to generate presigned URLs: " + err.message });
     }
   }
 }

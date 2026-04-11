@@ -1,25 +1,26 @@
 import { AppDataSource } from "@config/ormconfig";
-import { Not, IsNull } from "typeorm";
+import { Not, IsNull, FindOptionsWhere } from "typeorm";
 import { Article, Tag, ArticleTag } from "@modules/user/entity/article";
 import { Location } from "@modules/user/entity/location";
-import { ArticleStatus } from "@modules/user/entity/ENUM/enum";
-import { IArticleDTO } from "@modules/user/dtos/article.dto";
-import { LocationHelperService } from "./helper/location-helper.service";
+import { ArticleStatus } from "@common/enums";
+import { PAGINATION_DEFAULTS } from "@common/constants";
+import { 
+    IArticleDTO, 
+    ICreateArticleDTO, 
+    IUpdateArticleDTO, 
+    IPaginatedArticlesResponse 
+} from "@modules/user/dtos";
+import { LocationHelperService, IEnrichedLocation } from "./helper/location-helper.service";
 import { R2ClientService } from "./r2client.service";
 import { logError } from "@lib/logger";
-// import { LocationCategory } from "@modules/user/entity/location-category.entity";
-// import { In } from 'typeorm';
-// import {Media} from '@modules/user/entity/media.entity';
 
 export class ArticleService {
   private articleRepository = AppDataSource.getRepository(Article);
   private locationRepository = AppDataSource.getRepository(Location);
   private locationHelper = new LocationHelperService();
   private r2ClientService = new R2ClientService();
-  // private categoryRepository = AppDataSource.getRepository(LocationCategory);
-  // private mediaRepository = AppDataSource.getRepository(Media);
 
-  private toArticleDTO(article: Article): IArticleDTO {
+  private toArticleDTO(article: Article, enriched?: IEnrichedLocation): IArticleDTO {
     return {
       article_id: article.article_id,
       title: article.title,
@@ -30,16 +31,26 @@ export class ArticleService {
       seo_title: article.seo_title || "",
       seo_keywords: article.seo_keywords || "",
       seo_description: article.seo_description || "",
-      // Ensure we always return an array for image_urls. If DB returns null/undefined, return []
       image_urls: Array.isArray(article.image_urls) ? article.image_urls : [],
       location: {
         location_id: article.location?.location_id || 0,
         name: article.location?.name || "",
       },
-      tags: article.articleTags?.map((tag) => tag.tag.name) || [],
+      city: enriched?.city ? {
+          location_id: enriched.city.location_id,
+          name: enriched.city.name,
+          slug: enriched.city.slug
+      } : undefined,
+      locality: enriched?.locality ? {
+          location_id: enriched.locality.location_id,
+          name: enriched.locality.name,
+          slug: enriched.locality.slug
+      } : undefined,
+      tags: article.articleTags?.map((at) => at.tag.name) || [],
     };
   }
-  async createArticle(articleData: any): Promise<IArticleDTO> {
+
+  async createArticle(articleData: ICreateArticleDTO): Promise<IArticleDTO> {
     if (!articleData || !articleData.title) {
       throw new Error('Article title is required');
     }
@@ -47,7 +58,6 @@ export class ArticleService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      // 1. Find or create tags
       const tagNames = articleData.tags || [];
       const tags: Tag[] = [];
 
@@ -65,7 +75,6 @@ export class ArticleService {
         tags.push(tag);
       }
 
-      // 2. Find location and categories
       const location = await this.locationRepository.findOne({
         where: { location_id: articleData.location_id },
       });
@@ -74,25 +83,19 @@ export class ArticleService {
         throw new Error("Place not found");
       }
 
-      // const categories = await this.categoryRepository.find({
-      //     where: { categoryId: In(articleData.categories || []) }
-      // });
-
-      // 4. Create the article
       const article = new Article();
       article.title = articleData.title;
       article.slug = articleData.slug || this.generateSlug(articleData.title);
-      article.excerpt = articleData.excerpt;
+      article.excerpt = articleData.excerpt || "";
       article.content = articleData.content;
       article.published_at = articleData.published_at
         ? new Date(articleData.published_at)
         : null;
-      article.seo_title = articleData.seo_title;
+      article.seo_title = articleData.seo_title || "";
       article.seo_keywords = articleData.seo_keywords || "";
-      article.seo_description = articleData.seo_description;
+      article.seo_description = articleData.seo_description || "";
       article.location = location;
-      // Accept either `image_urls` (array) or singular `image_url` (string) from caller.
-      // Default to empty array so Postgres receives a proper text[] parameter.
+      
       if (Array.isArray(articleData.image_urls)) {
         article.image_urls = articleData.image_urls;
       } else if (typeof articleData.image_url === 'string' && articleData.image_url.trim() !== '') {
@@ -100,24 +103,30 @@ export class ArticleService {
       } else {
         article.image_urls = [];
       }
+
+      const savedArticle = await queryRunner.manager.save(article);
+
       const articleTags: ArticleTag[] = tags.map((tag) => {
         const articleTag = new ArticleTag();
-        articleTag.article = article;
+        articleTag.article = savedArticle;
         articleTag.tag = tag;
-        articleTag.article_id = article.article_id;
+        articleTag.article_id = savedArticle.article_id;
         articleTag.tag_id = tag.tagId;
         return articleTag;
       });
 
-      article.articleTags = articleTags;
+      await queryRunner.manager.save(ArticleTag, articleTags);
+      savedArticle.articleTags = articleTags;
 
-      const savedArticle = await queryRunner.manager.save(article);
       await queryRunner.commitTransaction();
-      article.articleTags.forEach((tag) => {
-        delete (tag as any).article;
+      
+      const resultArticle = await this.articleRepository.findOne({
+        where: { article_id: savedArticle.article_id },
+        relations: ["location", "articleTags", "articleTags.tag"]
       });
-      return this.toArticleDTO(savedArticle);
-    } catch (error) {
+
+      return this.toArticleDTO(resultArticle!);
+    } catch (error: unknown) {
       await queryRunner.rollbackTransaction();
       throw error;
     } finally {
@@ -125,8 +134,8 @@ export class ArticleService {
     }
   }
 
-  async getArticleById(articleId: number, includeAll: boolean = false): Promise<any | null> {
-    const whereClause: any = { article_id: articleId };
+  async getArticleById(articleId: number, includeAll: boolean = false): Promise<IArticleDTO | null> {
+    const whereClause: FindOptionsWhere<Article> = { article_id: articleId };
     if (!includeAll) whereClause.published_at = Not(IsNull());
     
     const article = await this.articleRepository.findOne({
@@ -134,6 +143,7 @@ export class ArticleService {
       relations: [
         "location",
         "articleTags",
+        "articleTags.tag",
         "location.attributes",
         "location.categoryMappings",
       ],
@@ -142,11 +152,12 @@ export class ArticleService {
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
       [article]
     );
-    return enrichedArticles[0] || null;
+    const enriched = enrichedArticles[0];
+    return this.toArticleDTO(article, enriched);
   }
 
-  async getArticleBySlug(slug: string, includeAll: boolean = false): Promise<any | null> {
-    const whereClause: any = { slug };
+  async getArticleBySlug(slug: string, includeAll: boolean = false): Promise<IArticleDTO | null> {
+    const whereClause: FindOptionsWhere<Article> = { slug };
     if (!includeAll) whereClause.published_at = Not(IsNull());
 
     const article = await this.articleRepository.findOne({
@@ -154,6 +165,7 @@ export class ArticleService {
       relations: [
         "location",
         "articleTags",
+        "articleTags.tag",
         "location.attributes",
         "location.categoryMappings",
       ],
@@ -162,12 +174,13 @@ export class ArticleService {
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
       [article]
     );
-    return enrichedArticles[0] || null;
+    const enriched = enrichedArticles[0];
+    return this.toArticleDTO(article, enriched);
   }
 
   async updateArticle(
     articleId: number,
-    articleData: any
+    articleData: IUpdateArticleDTO
   ): Promise<IArticleDTO> {
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
@@ -183,19 +196,17 @@ export class ArticleService {
         throw new Error("Article not found");
       }
 
-      // Update basic fields
       if (articleData.title) article.title = articleData.title;
       if (articleData.slug) article.slug = articleData.slug;
-      if (articleData.excerpt) article.excerpt = articleData.excerpt;
+      if (articleData.excerpt !== undefined) article.excerpt = articleData.excerpt || "";
       if (articleData.content) article.content = articleData.content;
-      if ('published_at' in articleData) {
+      if (articleData.published_at !== undefined) {
         article.published_at = articleData.published_at ? new Date(articleData.published_at) : null;
       }
-      if (articleData.seo_title) article.seo_title = articleData.seo_title;
-      if (articleData.seo_description)
-        article.seo_description = articleData.seo_description;
+      if (articleData.seo_title !== undefined) article.seo_title = articleData.seo_title || "";
+      if (articleData.seo_description !== undefined)
+        article.seo_description = articleData.seo_description || "";
 
-      // Update location if changed
       if (
         articleData.location_id &&
         article.location?.location_id !== articleData.location_id
@@ -206,24 +217,25 @@ export class ArticleService {
         if (location) article.location = location;
       }
 
-      // Update tags if provided
       if (articleData.tags) {
         const tagNames = articleData.tags;
         const tags: Tag[] = [];
 
-        for (const tagName of tagNames) {
-          const slug = this.generateSlug(tagName);
+        for (const tag_name of tagNames) {
+          const slug = this.generateSlug(tag_name);
           let tag = await queryRunner.manager.findOne(Tag, {
             where: { slug },
           });
           if (!tag) {
             tag = new Tag();
-            tag.name = tagName;
+            tag.name = tag_name;
             tag.slug = slug;
             tag = await queryRunner.manager.save(tag);
           }
           tags.push(tag);
         }
+
+        await queryRunner.manager.delete(ArticleTag, { article_id: articleId });
 
         const articleTags: ArticleTag[] = tags.map((tag) => {
           const articleTag = new ArticleTag();
@@ -234,10 +246,10 @@ export class ArticleService {
           return articleTag;
         });
 
+        await queryRunner.manager.save(ArticleTag, articleTags);
         article.articleTags = articleTags;
       }
 
-      // Support updating image(s) in update flow if provided
       if (articleData.image_urls || articleData.image_url) {
         const oldImages = article.image_urls || [];
         let newImages: string[] = [];
@@ -258,10 +270,13 @@ export class ArticleService {
 
       const updatedArticle = await queryRunner.manager.save(article);
       await queryRunner.commitTransaction();
-      article.articleTags.forEach((tag) => {
-        delete (tag as any).article;
+      
+      const resultArticle = await this.articleRepository.findOne({
+        where: { article_id: updatedArticle.article_id },
+        relations: ["location", "articleTags", "articleTags.tag"]
       });
-      return this.toArticleDTO(updatedArticle);
+
+      return this.toArticleDTO(resultArticle!);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -295,14 +310,21 @@ export class ArticleService {
     placeId?: number;
     categoryId?: number;
     tag?: string;
-  }): Promise<{ articles: any[]; count: number }> {
-    const { page = 1, limit = 10, status, placeId, tag } = options;
+  }): Promise<IPaginatedArticlesResponse> {
+    const { 
+        page = PAGINATION_DEFAULTS.PAGE, 
+        limit = PAGINATION_DEFAULTS.LIMIT, 
+        status, 
+        placeId, 
+        tag 
+    } = options;
     const skip = (page - 1) * limit;
 
     const query = this.articleRepository
       .createQueryBuilder("article")
       .leftJoinAndSelect("article.location", "location")
       .leftJoinAndSelect("article.articleTags", "articleTags")
+      .leftJoinAndSelect("articleTags.tag", "tag")
       .skip(skip)
       .take(limit)
       .orderBy("article.published_at", "DESC");
@@ -317,13 +339,16 @@ export class ArticleService {
       query.andWhere("article.location_id = :placeId", { placeId });
     }
 
-    // If you want to filter by tag slug, make sure `articleTags` has a `tag` relation or a `slug`
     if (tag) {
       query.innerJoin(
         "article.articleTags",
-        "filterTag",
-        "filterTag.slug = :tag",
-        { tag }
+        "filterTagRelation",
+        "filterTagRelation.article_id = article.article_id"
+      ).innerJoin(
+          "filterTagRelation.tag",
+          "filterTag",
+          "filterTag.slug = :tag",
+          { tag }
       );
     }
 
@@ -333,35 +358,34 @@ export class ArticleService {
       articles
     );
 
-    return { articles: enrichedArticles, count };
+    return { 
+        articles: articles.map((a, index) => this.toArticleDTO(a, enrichedArticles[index])), 
+        count 
+    };
   }
 
-  // get all articles
-  async getAllArticles(includeAll: boolean = false): Promise<any[]> {
-    const whereClause: any = {};
+  async getAllArticles(includeAll: boolean = false): Promise<IArticleDTO[]> {
+    const whereClause: FindOptionsWhere<Article> = {};
     if (!includeAll) whereClause.published_at = Not(IsNull());
 
     const articles = await this.articleRepository.find({
       where: whereClause,
       relations: [
         "articleTags",
+        "articleTags.tag",
         "location",
         "location.categoryMappings",
         "location.attributes",
       ],
       order: { published_at: "DESC" },
     });
-    // Enrich articles with location data
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
       articles
     );
-    return enrichedArticles;
+    return articles.map((a, index) => this.toArticleDTO(a, enrichedArticles[index]));
   }
 
-  /**
-   * Search articles using PostgreSQL full-text search and rank by relevance.
-   */
-  async searchArticles(term: string, includeAll: boolean = false): Promise<any[]> {
+  async searchArticles(term: string, includeAll: boolean = false): Promise<IArticleDTO[]> {
     const normalizedTerm = (term || "").trim();
     if (!normalizedTerm) {
       return [];
@@ -370,6 +394,7 @@ export class ArticleService {
     const query = this.articleRepository
       .createQueryBuilder("article")
       .leftJoinAndSelect("article.articleTags", "articleTags")
+      .leftJoinAndSelect("articleTags.tag", "tag")
       .leftJoinAndSelect("article.location", "location")
       .leftJoinAndSelect("location.categoryMappings", "locationCategoryMappings")
       .leftJoinAndSelect("location.attributes", "locationAttributes")
@@ -391,20 +416,19 @@ export class ArticleService {
       .addOrderBy("article.published_at", "DESC")
       .getMany();
 
-    // Enrich articles with location data
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
       articles
     );
-    return enrichedArticles;
+    return articles.map((a, index) => this.toArticleDTO(a, enrichedArticles[index]));
   }
 
   private generateSlug(text: string): string {
     if (!text || typeof text !== 'string') return '';
     return text
       .toLowerCase()
-      .replace(/[^\w\s-]/g, "") // Remove non-word chars
-      .replace(/\s+/g, "-") // Replace spaces with -
-      .replace(/--+/g, "-") // Replace multiple - with single -
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/--+/g, "-")
       .trim();
   }
 }

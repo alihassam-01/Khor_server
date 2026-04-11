@@ -1,9 +1,9 @@
-import { UserType } from "@modules/user/entity/ENUM/enum";
+import { UserRole } from "@common/enums/user.enums";
 
 export interface IRegisterDto {
     email: string;
     password: string;
-    userType?: UserType;
+    userType?: UserRole;
     name: string;
 }
 
@@ -30,4 +30,24 @@ export interface IResetPasswordDto {
 export interface IGoogleVerifyDto {
     accessToken: string;
     userType?: 'vendor' | 'customer';
+}
+
+export interface ILoginResponseDto {
+    token: string;
+}
+
+export interface IGoogleLoginResponseDto extends ILoginResponseDto {
+    isNewUser: boolean;
+}
+
+export interface ICurrentUserResponseDto {
+    userId: string;
+    email: string;
+    username: string;
+    userType: UserRole;
+    vendorId?: string;
+}
+
+export interface IAuthMessageResponseDto {
+    message: string;
 }

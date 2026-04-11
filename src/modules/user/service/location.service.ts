@@ -1,14 +1,20 @@
-import { In, Repository } from "typeorm";
+import { In, Repository, DataSource } from "typeorm";
 import {
   Location,
   LocationAttributes,
   LocationCategoryMapping,
   LocationCategory,
-} from "../entity/location";
-import { DataSource } from "typeorm";
+} from "@modules/user/entity/location";
 import { Address } from "@modules/user/entity/address";
-import { ICreateLocationDto } from "@modules/user/dtos/location.dto";
-import { LocationType } from "@modules/user/entity/ENUM/enum";
+import { 
+    ICreateLocationDto, 
+    ILocationDTO, 
+    IUpdateLocationDto, 
+    ICreateLocationCategoryDto
+} from "@modules/user/dtos";
+import { LocationType } from "@common/enums";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
 
 export class LocationService {
   private locationRepository: Repository<Location>;
@@ -25,8 +31,30 @@ export class LocationService {
     this.addressRepository = dataSource.getRepository(Address);
   }
 
+  private toLocationDTO(location: Location): ILocationDTO {
+      return {
+          location_id: location.location_id,
+          name: location.name,
+          slug: location.slug,
+          description: location.description || "",
+          plusCode: location.plusCode || "",
+          location_order: location.location_order || 0,
+          location_type: location.location_type,
+          parent_id: location.parent?.location_id || null,
+          attributes: location.attributes?.map(attr => ({
+              attributeKey: attr.attributeKey,
+              attributeValue: attr.attributeValue
+          })) || [],
+          categories: location.categoryMappings?.map(m => ({
+              categoryId: m.category.categoryId,
+              name: m.category.name,
+              slug: m.category.slug
+          })) || []
+      };
+  }
+
   // Location CRUD Operations
-  async createLocation(locationData: ICreateLocationDto): Promise<Location> {
+  async createLocation(locationData: ICreateLocationDto): Promise<ILocationDTO> {
     const location = new Location();
     location.name = locationData.name;
     location.slug = this.generateSlug(locationData.name);
@@ -47,14 +75,17 @@ export class LocationService {
     const savedLocation = await this.locationRepository.save(location);
 
     if (locationData.attributes) {
-      const attributesObj: Record<string, string> = Array.isArray(locationData.attributes)
-        ? locationData.attributes.reduce((acc, attr) => {
-            if (attr.attributeKey && attr.attributeValue !== undefined) {
-              acc[attr.attributeKey] = attr.attributeValue;
-            }
-            return acc;
-          }, {} as Record<string, string>)
-        : locationData.attributes;
+      let attributesObj: Record<string, string> = {};
+      if (Array.isArray(locationData.attributes)) {
+          attributesObj = locationData.attributes.reduce((acc, attr) => {
+              if (attr.attributeKey && attr.attributeValue !== undefined) {
+                  acc[attr.attributeKey] = attr.attributeValue;
+              }
+              return acc;
+          }, {} as Record<string, string>);
+      } else {
+          attributesObj = locationData.attributes;
+      }
       await this.setLocationAttributes(savedLocation.location_id, attributesObj);
     }
 
@@ -62,33 +93,52 @@ export class LocationService {
       await this.addLocationToCategories(savedLocation.location_id, locationData.categories);
     }
 
-    return savedLocation;
+    const finalLocation = await this.locationRepository.findOne({
+        where: { location_id: savedLocation.location_id },
+        relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
+    });
+
+    return this.toLocationDTO(finalLocation!);
   }
 
-  async getLocationById(locationId: number): Promise<Location | null> {
+  async getLocationById(locationId: number): Promise<ILocationDTO | null> {
+    const location = await this.getRawLocationById(locationId);
+    return location ? this.toLocationDTO(location) : null;
+  }
+
+  async getRawLocationById(locationId: number): Promise<Location | null> {
     return await this.locationRepository.findOne({
       where: { location_id: locationId },
       relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
     });
   }
 
-  async getLocationBySlug(slug: string): Promise<Location | null> {
-    return await this.locationRepository.findOne({
+  async getLocationBySlug(slug: string): Promise<ILocationDTO | null> {
+    const location = await this.locationRepository.findOne({
       where: { slug },
       relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
     });
+    return location ? this.toLocationDTO(location) : null;
   }
 
-  async getLocationsByIds(ids: number[]): Promise<Location[]> {
+  async getLocationsByIds(ids: number[]): Promise<ILocationDTO[]> {
+    const locations = await this.getRawLocationsByIds(ids);
+    return locations.map(l => this.toLocationDTO(l));
+  }
+
+  async getRawLocationsByIds(ids: number[]): Promise<Location[]> {
     return await this.locationRepository.find({
       where: { location_id: In(ids) },
       relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
     });
   }
 
-  async updateLocation(locationId: number, locationData: any): Promise<Location | null> {
-    const location = await this.getLocationById(locationId);
-    if (!location) return null;
+  async updateLocation(locationId: number, locationData: IUpdateLocationDto): Promise<ILocationDTO | null> {
+    const location = await this.locationRepository.findOne({
+        where: { location_id: locationId },
+        relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
+    });
+    if (!location) throw new AppError("Location not found", 404, ErrorCodes.NOT_FOUND);
 
     if (locationData.name) {
       location.name = locationData.name;
@@ -101,7 +151,7 @@ export class LocationService {
 
     if (locationData.parent_location_id !== undefined) {
       if (locationData.parent_location_id === null) {
-        location.parent = null as any;
+        location.parent = null as unknown as Location;
       } else {
         const parentLocation = await this.locationRepository.findOne({
           where: { location_id: locationData.parent_location_id },
@@ -118,46 +168,54 @@ export class LocationService {
       await this.setLocationCategories(locationId, locationData.categories);
     }
 
-    return await this.locationRepository.save(location);
+    const saved = await this.locationRepository.save(location);
+    const final = await this.locationRepository.findOne({
+        where: { location_id: saved.location_id },
+        relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
+    });
+    return this.toLocationDTO(final!);
   }
 
   async deleteLocation(locationId: number): Promise<boolean> {
-    const location = await this.getLocationById(locationId);
-    if (!location) return false;
+    const location = await this.locationRepository.findOne({ where: { location_id: locationId } });
+    if (!location) throw new AppError("Location not found", 404, ErrorCodes.NOT_FOUND);
     await this.locationRepository.remove(location);
     return true;
   }
 
-  async getAllLocations(): Promise<Location[]> {
-    return await this.locationRepository.find({
+  async getAllLocations(): Promise<ILocationDTO[]> {
+    const locations = await this.locationRepository.find({
       relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
       order: { location_order: "ASC" },
     });
+    return locations.map(l => this.toLocationDTO(l));
   }
 
   /** Returns all locations with location_type = 'city' */
-  async getAllCities(): Promise<Location[]> {
-    return await this.locationRepository.find({
+  async getAllCities(): Promise<ILocationDTO[]> {
+    const locations = await this.locationRepository.find({
       where: { location_type: LocationType.CITY },
-      relations: ["parent"],
+      relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
       order: { location_order: "ASC" },
     });
+    return locations.map(l => this.toLocationDTO(l));
   }
 
   /** Returns locations filtered by type */
-  async getLocationsByType(type: LocationType): Promise<Location[]> {
-    return await this.locationRepository.find({
+  async getLocationsByType(type: LocationType): Promise<ILocationDTO[]> {
+    const locations = await this.locationRepository.find({
       where: { location_type: type },
-      relations: ["parent"],
+      relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
       order: { location_order: "ASC" },
     });
+    return locations.map(l => this.toLocationDTO(l));
   }
 
   /**
    * Walk up the parent chain to find the nearest ancestor (or self) with location_type = 'city'
    */
   async getCityByLocationId(locationId: number): Promise<string | null> {
-    if (!locationId) throw new Error("Location ID is required");
+    if (!locationId) throw new AppError("Location ID is required", 400, ErrorCodes.BAD_REQUEST);
 
     let current = await this.locationRepository.findOne({
       where: { location_id: locationId },
@@ -184,6 +242,36 @@ export class LocationService {
     }
 
     return null;
+  }
+
+  /**
+   * Fetches the full hierarchy of a location from the location up to the root parent.
+   */
+  async getLocationHierarchy(location: Location | { location_id: number }): Promise<Location[]> {
+    const hierarchy: Location[] = [];
+    let currentId: number | undefined = 'location_id' in location ? location.location_id : (location as Location).location_id;
+
+    const visited = new Set<number>();
+    while (currentId) {
+      if (visited.has(currentId)) break;
+      visited.add(currentId);
+
+      const loc = await this.locationRepository.findOne({
+        where: { location_id: currentId },
+        relations: ["parent"],
+      });
+
+      if (!loc) break;
+      hierarchy.push(loc);
+
+      if (loc.parent) {
+          currentId = loc.parent.location_id;
+      } else {
+          break;
+      }
+    }
+
+    return hierarchy;
   }
 
   // Location Attributes Operations
@@ -239,7 +327,7 @@ export class LocationService {
     const attribute = await this.attributesRepository.findOne({
       where: { location_id: locationId, attributeKey: key },
     });
-    if (!attribute) return false;
+    if (!attribute) throw new AppError(`Attribute with key ${key} not found for location ${locationId}`, 404, ErrorCodes.NOT_FOUND);
     await this.attributesRepository.remove(attribute);
     return true;
   }
@@ -294,29 +382,35 @@ export class LocationService {
     const mapping = await this.categoryMappingRepository.findOne({
       where: { location_id: locationId, category_id: categoryId },
     });
-    if (!mapping) return false;
+    if (!mapping) throw new AppError("Category mapping not found", 404, ErrorCodes.NOT_FOUND);
     await this.categoryMappingRepository.remove(mapping);
     return true;
   }
 
-  async getLocationsByCategoryName(categoryName: string) {
-    return this.locationRepository
+  async getLocationsByCategoryName(categoryName: string): Promise<ILocationDTO[]> {
+    const locations = await this.locationRepository
       .createQueryBuilder("location")
-      .leftJoin("location.categoryMappings", "mapping")
-      .leftJoin("mapping.category", "category")
+      .leftJoinAndSelect("location.categoryMappings", "mapping")
+      .leftJoinAndSelect("mapping.category", "category")
+      .leftJoinAndSelect("location.attributes", "attributes")
+      .leftJoinAndSelect("location.parent", "parent")
       .where("category.name = :name", { name: categoryName })
       .getMany();
+    
+    return locations.map(l => this.toLocationDTO(l));
   }
 
-  async getLocationChildren(locationId: number): Promise<Location[]> {
-    return await this.locationRepository.find({
+  async getLocationChildren(locationId: number): Promise<ILocationDTO[]> {
+    const locations = await this.locationRepository.find({
       where: { parent: { location_id: locationId } },
+      relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
       order: { location_order: "ASC" },
     });
+    return locations.map(l => this.toLocationDTO(l));
   }
 
-  async getAllDescendants(locationId: number): Promise<Location[]> {
-    const descendants: Location[] = [];
+  async getAllDescendants(locationId: number): Promise<ILocationDTO[]> {
+    const descendants: ILocationDTO[] = [];
     const stack: number[] = [locationId];
     while (stack.length > 0) {
       const currentId = stack.pop()!;
@@ -330,7 +424,7 @@ export class LocationService {
   }
 
   // Category CRUD Operations
-  async createCategory(categoryData: any): Promise<LocationCategory> {
+  async createCategory(categoryData: ICreateLocationCategoryDto): Promise<LocationCategory> {
     const category = new LocationCategory();
     category.name = categoryData.name;
     category.slug = this.generateSlug(categoryData.name);
@@ -370,8 +464,8 @@ export class LocationService {
     landmark: string;
     is_primary: boolean;
   }): Promise<Address> {
-    const location = await this.getLocationById(locationId);
-    if (!location) throw new Error("Location not found");
+    const location = await this.locationRepository.findOne({ where: { location_id: locationId } });
+    if (!location) throw new AppError("Location not found", 404, ErrorCodes.NOT_FOUND);
     const address = new Address();
     address.location = location;
     address.street_address = street_address;
@@ -385,7 +479,7 @@ export class LocationService {
       where: { address_id: id },
       relations: ["location"],
     });
-    if (!address) throw new Error("Address not found");
+    if (!address) throw new AppError("Address not found", 404, ErrorCodes.NOT_FOUND);
     Object.assign(address, updates);
     return await this.addressRepository.save(address);
   }
@@ -399,35 +493,6 @@ export class LocationService {
       },
       order: { is_primary: "DESC" },
     });
-  }
-
-  async getLocationHierarchy(location: Location): Promise<Location[]> {
-    const hierarchy: Location[] = [];
-    const visited = new Set<number>();
-
-    if (!location.parent) {
-      const foundLocation = await this.locationRepository.findOne({
-        where: { location_id: location.location_id },
-        relations: ["parent"],
-      });
-      if (!foundLocation) return hierarchy;
-      location = foundLocation;
-    }
-
-    let current: Location | null = location;
-
-    while (current) {
-      if (visited.has(current.location_id)) break;
-      visited.add(current.location_id);
-      hierarchy.unshift(current);
-
-      current = await this.locationRepository.findOne({
-        where: { location_id: current.parent?.location_id },
-        relations: ["parent"],
-      });
-    }
-
-    return hierarchy;
   }
 
   private generateSlug(text: string): string {

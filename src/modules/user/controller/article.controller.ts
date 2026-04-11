@@ -2,6 +2,19 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { ArticleService } from '@modules/user/service/article.service';
 import { R2ClientService } from '@modules/user/service/r2client.service';
 import { extractMultipartFields, isMultipartRequest } from '@common/utils/multipart.util';
+import { 
+    IArticleIdParams, 
+    IArticleSlugParams, 
+    IGetArticleQuery, 
+    IListArticlesQuery, 
+    ISearchArticlesQuery 
+} from '@modules/user/types';
+import { 
+    ICreateArticleDTO, 
+    IUpdateArticleDTO, 
+    IArticleDTO, 
+    IPaginatedArticlesResponse 
+} from '@modules/user/dtos';
 
 export class ArticleController {
   private r2ClientService: R2ClientService;
@@ -10,22 +23,25 @@ export class ArticleController {
     this.r2ClientService = new R2ClientService();
   }
 
-  async createArticle(req: FastifyRequest, reply: FastifyReply) {
+  async createArticle(
+    req: FastifyRequest<{ Body: ICreateArticleDTO | any }>, 
+    reply: FastifyReply
+  ) {
     try {
-      const contentType = req.headers['content-type'] || '';
-      let articleData: any = {};
+      const contentType = (req.headers['content-type'] || '') as string;
+      let articleData: ICreateArticleDTO;
 
-      if (isMultipartRequest(contentType as string)) {
-        const body: any = req.body as any;
+      if (isMultipartRequest(contentType)) {
+        const body = req.body as Record<string, any>;
         const imageUrls: string[] = [];
 
         // Extract plain field values from multipart body
-        const fields = extractMultipartFields<any>(body, {
+        const fields = extractMultipartFields<ICreateArticleDTO>(body, {
           location_id: 'number',
           tags: 'array',
         });
 
-        // Handle image uploads from multipart body (supports single or multiple files)
+        // Handle image uploads from multipart body
         const imagesRaw = body?.images;
         if (imagesRaw) {
           const images = Array.isArray(imagesRaw) ? imagesRaw : [imagesRaw];
@@ -35,7 +51,7 @@ export class ArticleController {
               const buffer: Buffer = await image.toBuffer();
               const result = await this.r2ClientService.uploadFileToR2(
                 buffer,
-                image.filename || 'image',
+                image.filename || 'article_image',
                 image.mimetype || 'application/octet-stream'
               );
               imageUrls.push(result.url);
@@ -48,28 +64,37 @@ export class ArticleController {
           image_urls: imageUrls.length > 0 ? imageUrls : undefined,
         };
       } else {
-        articleData = req.body as any;
-        if (articleData?.tags && typeof articleData.tags === 'string') {
+        const body = req.body as ICreateArticleDTO;
+        let tags: string[] | undefined = body.tags;
+        
+        if (typeof body.tags === 'string') {
+          const tagsStr = body.tags as string;
           try {
-            articleData.tags = JSON.parse(articleData.tags);
+            tags = JSON.parse(tagsStr);
           } catch {
-            articleData.tags = articleData.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+            tags = tagsStr.split(',').map((t: string) => t.trim()).filter(Boolean);
           }
         }
-        if (articleData?.location_id) {
-          articleData.location_id = Number(articleData.location_id);
-        }
+        
+        articleData = {
+          ...body,
+          tags,
+          location_id: body.location_id ? Number(body.location_id) : 0
+        };
       }
 
-      const article = await this.articleService.createArticle(articleData);
+      const article: IArticleDTO = await this.articleService.createArticle(articleData);
       reply.code(201).send(article);
-    } catch (error: any) {
-      console.error('Error creating article:', error);
-      reply.code(400).send({ message: error.message || 'Failed to create article' });
+    } catch (error: unknown) {
+      const err = error as Error;
+      reply.code(400).send({ message: err.message || 'Failed to create article' });
     }
   }
 
-  async getArticleById(req: FastifyRequest<{ Params: { id: string }, Querystring: { all?: string } }>, reply: FastifyReply) {
+  async getArticleById(
+    req: FastifyRequest<{ Params: IArticleIdParams; Querystring: IGetArticleQuery }>, 
+    reply: FastifyReply
+  ) {
     try {
       const includeAll = req.query.all === 'true';
       const article = await this.articleService.getArticleById(Number(req.params.id), includeAll);
@@ -78,14 +103,17 @@ export class ArticleController {
         return reply.code(404).send({ message: 'Article not found' });
       }
 
-      // Reviews removed for Phase 1
       reply.send(article);
-    } catch (error: any) {
-      reply.code(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const err = error as Error;
+      reply.code(500).send({ message: err.message });
     }
   }
 
-  async getArticleBySlug(req: FastifyRequest<{ Params: { slug: string }, Querystring: { all?: string } }>, reply: FastifyReply) {
+  async getArticleBySlug(
+    req: FastifyRequest<{ Params: IArticleSlugParams; Querystring: IGetArticleQuery }>, 
+    reply: FastifyReply
+  ) {
     try {
       const includeAll = req.query.all === 'true';
       const article = await this.articleService.getArticleBySlug(req.params.slug, includeAll);
@@ -93,25 +121,27 @@ export class ArticleController {
         return reply.code(404).send({ message: 'Article not found' });
       }
 
-      // Reviews removed for Phase 1
       reply.send(article);
-    } catch (error: any) {
-      reply.code(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const err = error as Error;
+      reply.code(500).send({ message: err.message });
     }
   }
 
-  async updateArticle(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+  async updateArticle(
+    req: FastifyRequest<{ Params: IArticleIdParams; Body: IUpdateArticleDTO | any }>, 
+    reply: FastifyReply
+  ) {
     try {
       const articleId = Number(req.params.id);
+      const contentType = (req.headers['content-type'] || '') as string;
+      let articleData: IUpdateArticleDTO;
 
-      const contentType = req.headers['content-type'] || '';
-      let articleData: any = {};
-
-      if (isMultipartRequest(contentType as string)) {
-        const body: any = req.body as any;
+      if (isMultipartRequest(contentType)) {
+        const body = req.body as Record<string, any>;
         const imageUrls: string[] = [];
 
-        articleData = extractMultipartFields<any>(body, {
+        articleData = extractMultipartFields<IUpdateArticleDTO>(body, {
           location_id: 'number',
           tags: 'array',
         });
@@ -125,7 +155,7 @@ export class ArticleController {
               const buffer: Buffer = await image.toBuffer();
               const result = await this.r2ClientService.uploadFileToR2(
                 buffer,
-                image.filename || 'image',
+                image.filename || 'article_image',
                 image.mimetype || 'application/octet-stream'
               );
               imageUrls.push(result.url);
@@ -135,65 +165,92 @@ export class ArticleController {
 
         if (imageUrls.length > 0) articleData.image_urls = imageUrls;
       } else {
-        // Handle regular JSON body
-        articleData = req.body;
-        if (articleData?.tags && typeof articleData.tags === 'string') {
+        const body = req.body as IUpdateArticleDTO;
+        let tags: string[] | undefined = body.tags;
+        
+        if (typeof body.tags === 'string') {
+          const tagsStr = body.tags as string;
           try {
-            articleData.tags = JSON.parse(articleData.tags);
+            tags = JSON.parse(tagsStr);
           } catch {
-            articleData.tags = articleData.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+            tags = tagsStr.split(',').map((t: string) => t.trim()).filter(Boolean);
           }
         }
-        if (articleData?.location_id) {
-          articleData.location_id = Number(articleData.location_id);
-        }
+
+        articleData = {
+            ...body,
+            tags,
+            location_id: body.location_id ? Number(body.location_id) : undefined
+        };
       }
 
-      const article = await this.articleService.updateArticle(articleId, articleData);
+      const article: IArticleDTO = await this.articleService.updateArticle(articleId, articleData);
       reply.send(article);
-    } catch (error: any) {
-      console.error('Error updating article:', error);
-      reply.code(400).send({ message: error.message });
+    } catch (error: unknown) {
+        const err = error as Error;
+      reply.code(400).send({ message: err.message });
     }
   }
 
-  async deleteArticle(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+  async deleteArticle(
+    req: FastifyRequest<{ Params: IArticleIdParams }>, 
+    reply: FastifyReply
+  ) {
     try {
       await this.articleService.deleteArticle(Number(req.params.id));
       reply.code(204).send();
-    } catch (error: any) {
-      reply.code(404).send({ message: error.message });
+    } catch (error: unknown) {
+        const err = error as Error;
+      reply.code(404).send({ message: err.message });
     }
   }
 
-  async listArticles(req: FastifyRequest<{ Querystring: any }>, reply: FastifyReply) {
+  async listArticles(
+    req: FastifyRequest<{ Querystring: IListArticlesQuery }>, 
+    reply: FastifyReply
+  ) {
     try {
-      const articles = await this.articleService.listArticles(req.query as { page?: number; limit?: number; status?: string; placeId?: number; categoryId?: number; tag?: string });
-      reply.send(articles);
-    } catch (error: any) {
-      reply.code(500).send({ message: error.message });
+        const { page = "1", limit = "10", status, placeId, tag } = req.query;
+        const result: IPaginatedArticlesResponse = await this.articleService.listArticles({
+            page: parseInt(page, 10) || 1,
+            limit: parseInt(limit, 10) || 10,
+            status,
+            placeId: placeId ? parseInt(placeId, 10) : undefined,
+            tag
+        });
+        reply.send(result);
+    } catch (error: unknown) {
+        const err = error as Error;
+      reply.code(500).send({ message: err.message });
     }
   }
 
-  async getAllArticles(req: FastifyRequest<{ Querystring: { all?: string } }>, reply: FastifyReply) {
+  async getAllArticles(
+    req: FastifyRequest<{ Querystring: IGetArticleQuery }>, 
+    reply: FastifyReply
+  ) {
     try {
       const includeAll = req.query.all === 'true';
-      const articles = await this.articleService.getAllArticles(includeAll);
+      const articles: IArticleDTO[] = await this.articleService.getAllArticles(includeAll);
 
-      // Reviews removed for Phase 1
       reply.send(articles);
-    } catch (error: any) {
-      reply.code(500).send({ message: error.message });
+    } catch (error: unknown) {
+        const err = error as Error;
+      reply.code(500).send({ message: err.message });
     }
   }
 
-  async searchArticles(req: FastifyRequest<{ Querystring: { term: string, all?: string } }>, reply: FastifyReply) {
+  async searchArticles(
+    req: FastifyRequest<{ Querystring: ISearchArticlesQuery }>, 
+    reply: FastifyReply
+  ) {
     try {
       const includeAll = req.query.all === 'true';
-      const results = await this.articleService.searchArticles(req.query.term, includeAll);
+      const results: IArticleDTO[] = await this.articleService.searchArticles(req.query.term, includeAll);
       reply.send(results);
-    } catch (error: any) {
-      reply.code(500).send({ message: error.message });
+    } catch (error: unknown) {
+        const err = error as Error;
+      reply.code(500).send({ message: err.message });
     }
   }
 }

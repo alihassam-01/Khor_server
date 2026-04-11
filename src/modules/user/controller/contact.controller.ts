@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { SendEmail } from "@modules/user/service/email/sendEmail";
+import { ISendContactMessageBody } from "@modules/user/types";
 
 export class ContactController {
     private sendEmailService: SendEmail;
@@ -9,14 +10,7 @@ export class ContactController {
     }
 
     async sendMessage(
-        req: FastifyRequest<{
-            Body: {
-                name: string;
-                email: string;
-                subject: string;
-                message: string;
-            };
-        }>,
+        req: FastifyRequest<{ Body: ISendContactMessageBody }>,
         reply: FastifyReply
     ) {
         try {
@@ -34,8 +28,9 @@ export class ContactController {
             );
 
             reply.send({ message: "Message sent successfully" });
-        } catch (error: any) {
-            console.error("Contact form error:", error);
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error("Contact form error:", err);
             reply.code(500).send({ message: "Failed to send message" });
         }
     }

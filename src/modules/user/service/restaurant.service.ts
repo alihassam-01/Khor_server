@@ -6,10 +6,14 @@ import {
     IRestaurantDTO,
     ICreateRestaurantDTO,
     IUpdateRestaurantDTO,
-} from "../dtos/restaurant.dto";
-import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
-import { R2ClientService } from "./r2client.service";
+    IPaginatedRestaurantsResponse,
+} from "@modules/user/dtos";
+import { PropertyType, SubscriptionType, PaymentStatus, PaymentMethod } from "@common/enums";
+import { PAGINATION_DEFAULTS, SUBSCRIPTION_DURATION_DAYS, FEATURED_AD_PRICE } from "@common/constants";
+import { R2ClientService } from "@modules/user/service/r2client.service";
 import { logError, logInfo } from "@lib/logger";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
 
 export class RestaurantService {
     private restaurantRepository = AppDataSource.getRepository(Restaurant);
@@ -59,7 +63,7 @@ export class RestaurantService {
             latitude: restaurant.latitude ? Number(restaurant.latitude) : null,
             longitude: restaurant.longitude ? Number(restaurant.longitude) : null,
             description: restaurant.description,
-            menu_images: restaurant.menu_images,
+            menu_images: restaurant.menu_images || [],
             detailed_reviews:
                 restaurant.detailed_reviews?.map((review) => ({
                     user_name: review.user_name,
@@ -91,7 +95,11 @@ export class RestaurantService {
             });
 
             if (!location) {
-                throw new Error("Location not found");
+                throw new AppError(
+                    `Location with id ${restaurantData.location_id} not found. Please select a valid location.`,
+                    404,
+                    ErrorCodes.NOT_FOUND
+                );
             }
 
             // Create restaurant
@@ -103,7 +111,8 @@ export class RestaurantService {
             restaurant.reviews = restaurantData.reviews || 0;
             restaurant.image = restaurantData.image;
 
-            restaurant.vendor_id = await this.resolveVendorUserId(restaurantData.vendor_id);
+            const resolvedVendorUserId = await this.resolveVendorUserId(restaurantData.vendor_id);
+            if (resolvedVendorUserId) restaurant.vendor_id = resolvedVendorUserId;
 
             restaurant.phone = restaurantData.phone || null;
             restaurant.whatsapp = restaurantData.whatsapp || null;
@@ -126,18 +135,15 @@ export class RestaurantService {
                     ? restaurantData.is_featured
                     : false;
 
-            // Preserve resolved user id for subscription/payment ownership.
-
             // Default to FREE if not specified
             const subscriptionType = restaurantData.subscription_type || SubscriptionType.FREE;
             restaurant.subscription_type = subscriptionType;
 
-            if (subscriptionType === SubscriptionType.FREE && !restaurantData.is_featured) {
+            if (subscriptionType === SubscriptionType.FREE && !restaurant.is_featured) {
                 restaurant.is_paid = false;
                 restaurant.is_active = restaurantData.is_active !== undefined ? restaurantData.is_active : true;
 
-                const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
-                const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+                const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                 const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
                 const now = new Date();
@@ -145,7 +151,7 @@ export class RestaurantService {
             } else {
                 restaurant.is_paid = false;
                 restaurant.is_active = false;
-                restaurant.expires_at = null as any;
+                restaurant.expires_at = undefined;
             }
 
             const savedRestaurant = await queryRunner.manager.save(restaurant);
@@ -164,20 +170,19 @@ export class RestaurantService {
                     plan = await planService.getPlanByType(subscriptionType);
                 }
                 
-                let totalAmount = plan ? plan.price : 0;
+                let totalAmount = plan ? Number(plan.price) : 0;
                 
                 if (restaurant.is_featured) {
                     const featuredPlan = await planService.getPlanByType("featured" as any);
-                    totalAmount += featuredPlan ? featuredPlan.price : 1000;
+                    totalAmount += featuredPlan ? Number(featuredPlan.price) : FEATURED_AD_PRICE;
                 }
                 
                 if (totalAmount > 0) {
                     const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
-                    const { AdType, PaymentStatus, PaymentMethod } = await import("@modules/user/entity/ENUM/ad-payment.enum");
                     
                     const payment = new AdPayment();
                     payment.ad_id = savedRestaurant.id;
-                    payment.ad_type = AdType.RESTAURANT;
+                    payment.ad_type = PropertyType.RESTAURANT;
                     payment.vendor_id = vendorId;
                     payment.amount = totalAmount;
                     payment.payment_method = PaymentMethod.BANK_TRANSFER;
@@ -210,9 +215,12 @@ export class RestaurantService {
 
             await queryRunner.commitTransaction();
             return this.toRestaurantDTO(savedRestaurant);
-        } catch (error) {
+        } catch (error: unknown) {
             await queryRunner.rollbackTransaction();
-            throw error;
+            if (error instanceof AppError) throw error;
+            const err = error as Error;
+            logError(err, 'Restaurant creation - Database transaction');
+            throw new AppError(err.message || "Failed to create restaurant", 500, ErrorCodes.INTERNAL_SERVER_ERROR);
         } finally {
             await queryRunner.release();
         }
@@ -231,7 +239,11 @@ export class RestaurantService {
         return this.toRestaurantDTO(restaurant);
     }
 
-    async getAllRestaurants({ page = 1, limit = 10, searchQuery = "" }: { page?: number; limit?: number; searchQuery?: string } = {}): Promise<{ items: IRestaurantDTO[]; total: number; page: number; limit: number; }> {
+    async getAllRestaurants({ 
+        page = PAGINATION_DEFAULTS.PAGE, 
+        limit = PAGINATION_DEFAULTS.LIMIT, 
+        searchQuery = "" 
+    }: { page?: number; limit?: number; searchQuery?: string } = {}): Promise<IPaginatedRestaurantsResponse> {
         const skip = (page - 1) * limit;
         const queryBuilder = this.restaurantRepository.createQueryBuilder("restaurant")
             .leftJoinAndSelect("restaurant.location", "location")
@@ -272,7 +284,7 @@ export class RestaurantService {
         });
 
         if (!restaurant) {
-            throw new Error("Restaurant not found");
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
         // Update fields if provided
@@ -322,8 +334,10 @@ export class RestaurantService {
             restaurant.latitude = restaurantData.latitude;
         if (restaurantData.longitude !== undefined)
             restaurant.longitude = restaurantData.longitude;
-        if (restaurantData.vendor_id !== undefined)
-            restaurant.vendor_id = restaurantData.vendor_id;
+        if (restaurantData.vendor_id !== undefined) {
+            const resolvedVendorUserId = await this.resolveVendorUserId(restaurantData.vendor_id);
+            if (resolvedVendorUserId) restaurant.vendor_id = resolvedVendorUserId;
+        }
         if (restaurantData.subscription_type !== undefined)
             restaurant.subscription_type = restaurantData.subscription_type;
 
@@ -356,7 +370,7 @@ export class RestaurantService {
         });
 
         if (!restaurant) {
-            throw new Error("Restaurant not found");
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
         const imagesToDelete: string[] = [];
@@ -382,7 +396,7 @@ export class RestaurantService {
         });
 
         if (!restaurant) {
-            throw new Error("Restaurant not found");
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
         restaurant.is_active = isActive;
@@ -392,7 +406,7 @@ export class RestaurantService {
 
     async renewAd(
         id: string,
-        subscriptionType: import("../entity/ENUM/ad-payment.enum").SubscriptionType
+        subscriptionType: SubscriptionType
     ): Promise<IRestaurantDTO> {
         const restaurant = await this.restaurantRepository.findOne({
             where: { id },
@@ -400,14 +414,12 @@ export class RestaurantService {
         });
 
         if (!restaurant) {
-            throw new Error("Restaurant not found");
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
-
         // Map subscription type to constant key
-        const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey];
+        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
         const now = new Date();
         const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
@@ -424,11 +436,11 @@ export class RestaurantService {
     async renewAdByVendor(
         id: string,
         vendorId: string,
-        subscriptionType: import("../entity/ENUM/ad-payment.enum").SubscriptionType
+        subscriptionType: SubscriptionType | string
     ): Promise<IRestaurantDTO> {
         const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
         if (!resolvedVendorUserId) {
-            throw new Error("Unauthorized vendor");
+            throw new AppError("Unauthorized vendor", 403, ErrorCodes.FORBIDDEN);
         }
 
         const restaurant = await this.restaurantRepository.findOne({
@@ -437,21 +449,19 @@ export class RestaurantService {
         });
 
         if (!restaurant) {
-            throw new Error("Restaurant not found or access denied");
+            throw new AppError("Restaurant not found or access denied", 404, ErrorCodes.NOT_FOUND);
         }
 
-        const { SUBSCRIPTION_DURATION_DAYS } = await import("../constant/ad-subscription.constant");
         const { SubscriptionPlanService } = await import("./subscription-plan.service");
         const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
-        const { AdType, PaymentStatus, PaymentMethod, SubscriptionType } = await import("@modules/user/entity/ENUM/ad-payment.enum");
 
-        const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
         const now = new Date();
         const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
 
-        restaurant.subscription_type = subscriptionType;
+        restaurant.subscription_type = subscriptionType as SubscriptionType;
         restaurant.is_paid = false;
 
         const planService = new SubscriptionPlanService();
@@ -473,7 +483,7 @@ export class RestaurantService {
             restaurant.is_active = false;
             const payment = new AdPayment();
             payment.ad_id = restaurant.id;
-            payment.ad_type = AdType.RESTAURANT;
+            payment.ad_type = PropertyType.RESTAURANT;
             payment.vendor_id = resolvedVendorUserId;
             payment.amount = amount;
             payment.payment_method = PaymentMethod.BANK_TRANSFER;
@@ -523,7 +533,7 @@ export class RestaurantService {
         });
 
         if (!restaurant) {
-            throw new Error("Restaurant not found");
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
         restaurant.is_featured = isFeatured;
@@ -551,7 +561,6 @@ export class RestaurantService {
     }
 
     async getPremiumAds(): Promise<IRestaurantDTO[]> {
-        const { SubscriptionType } = await import("../entity/ENUM/ad-payment.enum");
         const restaurants = await this.restaurantRepository
             .createQueryBuilder("restaurant")
             .leftJoinAndSelect("restaurant.location", "location")

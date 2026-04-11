@@ -1,4 +1,4 @@
-import { SubscriptionType } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { SubscriptionType } from "@common/enums/subscription.enums";
 
 export interface ISubscriptionPlanDTO {
     plan_id?: string;

@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
-import { UserType } from "@modules/user/entity/ENUM/enum";
+import { UserRole } from "@common/enums";
 
 /**
  * Middleware to strictly authorize requests for ADMIN users
@@ -17,7 +17,7 @@ export const authorizeAdmin: preHandlerHookHandler = async (
   }
 
   // Ensure they have the ADMIN role
-  if (request.user.userType !== UserType.ADMIN) {
+  if (request.user.userType !== UserRole.ADMIN) {
     return reply.status(403).send({ 
        message: "Forbidden: You do not have administrator permissions to perform this action." 
     });

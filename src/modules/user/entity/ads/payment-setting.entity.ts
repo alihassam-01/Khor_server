@@ -5,7 +5,7 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
 } from "typeorm";
-import { PaymentMethod } from "@modules/user/entity/ENUM/ad-payment.enum";
+import { PaymentMethod } from "@common/enums/payment.enums";
 
 @Entity("payment_settings")
 export class PaymentSetting {

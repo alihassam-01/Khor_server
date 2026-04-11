@@ -3,43 +3,60 @@ import { AdPaymentService } from "@modules/user/service/ad-payment.service";
 import {
     ICreateAdPaymentDTO,
     IUpdateAdPaymentDTO,
-} from "../dtos/ad-payment.dto";
-import { AdType } from "@modules/user/entity/ENUM/ad-payment.enum";
+    IAdPaymentDTO,
+} from "@modules/user/dtos";
+import { PropertyType } from "@common/enums";
+import { 
+    IAdPaymentIdParams, 
+    IGetPaymentsByAdParams, 
+    IGetPaymentsByVendorParams 
+} from "@modules/user/types";
 
 export class AdPaymentController {
     private paymentService = new AdPaymentService();
 
-    async createPayment(req: FastifyRequest, reply: FastifyReply) {
+    async createPayment(
+        req: FastifyRequest<{ Body: ICreateAdPaymentDTO }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const paymentData = req.body as ICreateAdPaymentDTO;
-            const payment = await this.paymentService.createPayment(paymentData);
+            const paymentData = req.body;
+            const payment: IAdPaymentDTO = await this.paymentService.createPayment(paymentData);
             reply.code(201).send(payment);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(400)
-                .send({ message: error.message || "Failed to create payment" });
+                .send({ message: err.message || "Failed to create payment" });
         }
     }
 
-    async updatePaymentStatus(req: FastifyRequest, reply: FastifyReply) {
+    async updatePaymentStatus(
+        req: FastifyRequest<{ Params: IAdPaymentIdParams; Body: IUpdateAdPaymentDTO }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { id } = req.params as { id: string };
-            const updateData = req.body as IUpdateAdPaymentDTO;
-            const payment = await this.paymentService.updatePaymentStatus(
+            const { id } = req.params;
+            const updateData = req.body;
+            const payment: IAdPaymentDTO = await this.paymentService.updatePaymentStatus(
                 id,
                 updateData
             );
             reply.send(payment);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(400)
-                .send({ message: error.message || "Failed to update payment" });
+                .send({ message: err.message || "Failed to update payment" });
         }
     }
 
-    async getPaymentById(req: FastifyRequest, reply: FastifyReply) {
+    async getPaymentById(
+        req: FastifyRequest<{ Params: IAdPaymentIdParams }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { id } = req.params as { id: string };
+            const { id } = req.params;
             const payment = await this.paymentService.getPaymentById(id);
 
             if (!payment) {
@@ -48,37 +65,46 @@ export class AdPaymentController {
             }
 
             reply.send(payment);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch payment" });
+                .send({ message: err.message || "Failed to fetch payment" });
         }
     }
 
-    async getPaymentsByVendor(req: FastifyRequest, reply: FastifyReply) {
+    async getPaymentsByVendor(
+        req: FastifyRequest<{ Params: IGetPaymentsByVendorParams }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { vendorId } = req.params as { vendorId: string };
+            const { vendorId } = req.params;
             const payments = await this.paymentService.getPaymentsByVendor(vendorId);
             reply.send(payments);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch payments" });
+                .send({ message: err.message || "Failed to fetch payments" });
         }
     }
 
-    async getPaymentsByAd(req: FastifyRequest, reply: FastifyReply) {
+    async getPaymentsByAd(
+        req: FastifyRequest<{ Params: IGetPaymentsByAdParams }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { adId, adType } = req.params as { adId: string; adType: string };
+            const { adId, adType } = req.params;
             const payments = await this.paymentService.getPaymentsByAd(
                 adId,
-                adType as AdType
+                adType as PropertyType
             );
             reply.send(payments);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch payments" });
+                .send({ message: err.message || "Failed to fetch payments" });
         }
     }
 
@@ -86,10 +112,11 @@ export class AdPaymentController {
         try {
             const payments = await this.paymentService.getPendingPayments();
             reply.send(payments);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch pending payments" });
+                .send({ message: err.message || "Failed to fetch pending payments" });
         }
     }
 
@@ -97,39 +124,44 @@ export class AdPaymentController {
         try {
             const payments = await this.paymentService.getAllPayments();
             reply.send(payments);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch payments" });
+                .send({ message: err.message || "Failed to fetch payments" });
         }
     }
 
     async getVendorPayments(req: FastifyRequest, reply: FastifyReply) {
         try {
-            const userId = (req.user as any).userId;
+            const userId = (req.user as any)?.id || (req.user as any)?.userId;
             if (!userId) {
                 reply.code(403).send({ message: "Vendor User ID not found" });
                 return;
             }
-            console.log(`[PAYMENT] Fetching payments for user: ${userId}`);
             const payments = await this.paymentService.getPaymentsByVendor(userId);
             reply.send(payments);
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(500)
-                .send({ message: error.message || "Failed to fetch vendor payments" });
+                .send({ message: err.message || "Failed to fetch vendor payments" });
         }
     }
 
-    async deletePayment(req: FastifyRequest, reply: FastifyReply) {
+    async deletePayment(
+        req: FastifyRequest<{ Params: IAdPaymentIdParams }>, 
+        reply: FastifyReply
+    ) {
         try {
-            const { id } = req.params as { id: string };
+            const { id } = req.params;
             await this.paymentService.deletePayment(id);
             reply.code(204).send();
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as Error;
             reply
                 .code(400)
-                .send({ message: error.message || "Failed to delete payment" });
+                .send({ message: err.message || "Failed to delete payment" });
         }
     }
 }
