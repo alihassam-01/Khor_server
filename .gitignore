@@ -29,4 +29,7 @@ npm-debug.log*
 !.elasticbeanstalk/*.global.yml
 config.bat
 .env
+<<<<<<< HEAD
 /docs
+=======
+>>>>>>> de1c6883bdde75b0026b0fc4727b33360495de2d
