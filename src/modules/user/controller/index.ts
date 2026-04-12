@@ -13,3 +13,4 @@ export * from './subscription-plan.controller';
 export * from './contact.controller';
 export * from './property.controller';
 export * from './payment-setting.controller';
+export * from './media.controller';

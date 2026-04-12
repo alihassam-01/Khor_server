@@ -50,7 +50,8 @@ export class R2ClientService {
   uploadFileToR2 = async (
     fileBuffer: Buffer,
     originalName: string,
-    mimetype: string
+    mimetype: string,
+    folder: string = "uploads"
   ): Promise<{ url: string; key: string }> => {
     // If image, process to WebP and resize; otherwise upload as-is
     let outBuffer = fileBuffer;
@@ -75,7 +76,7 @@ export class R2ClientService {
       }
     }
 
-    const key = `uploads/${uuidv4()}${extension}`;
+    const key = `${folder}/${uuidv4()}${extension}`;
     const command = new PutObjectCommand({
       Bucket: this.getBucketName(),
       Key: key,
