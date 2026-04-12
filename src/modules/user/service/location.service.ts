@@ -10,7 +10,8 @@ import {
     ICreateLocationDto, 
     ILocationDTO, 
     IUpdateLocationDto, 
-    ICreateLocationCategoryDto
+    ICreateLocationCategoryDto,
+    ILocationCategoryDTO
 } from "@modules/user/dtos";
 import { LocationType } from "@common/enums";
 import { AppError } from "@common/errors/AppError";
@@ -437,11 +438,38 @@ export class LocationService {
     return await this.categoryRepository.save(category);
   }
 
-  async getAllCategories(): Promise<LocationCategory[]> {
-    return await this.categoryRepository.find({
+  async getAllCategories(): Promise<ILocationCategoryDTO[]> {
+    const categories = await this.categoryRepository.find({
       relations: ["parentCategory"],
       order: { name: "ASC" },
     });
+    
+    // Fetch counts for all categories
+    const counts = await this.getCategoriesWithArticleCount();
+    
+    return categories.map(cat => ({
+      categoryId: cat.categoryId,
+      name: cat.name,
+      slug: cat.slug,
+      articleCount: counts[cat.categoryId] || 0
+    }));
+  }
+
+  async getCategoriesWithArticleCount(): Promise<Record<number, number>> {
+    const rawCounts = await this.categoryRepository
+      .createQueryBuilder("category")
+      .select("category.categoryId", "categoryId")
+      .addSelect("COUNT(article.article_id)", "count")
+      .leftJoin("category.categoryMappings", "mapping")
+      .leftJoin("mapping.location", "location")
+      .leftJoin("articles", "article", "article.location_id = location.location_id AND article.published_at IS NOT NULL")
+      .groupBy("category.categoryId")
+      .getRawMany();
+
+    return rawCounts.reduce((acc, row) => {
+      acc[Number(row.categoryId)] = Number(row.count);
+      return acc;
+    }, {} as Record<number, number>);
   }
 
   async getCategoryById(categoryId: number): Promise<LocationCategory | null> {

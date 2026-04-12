@@ -15,6 +15,7 @@ import { adPaymentRoutes } from "./ad-payment.routes";
 import { subscriptionPlanRoutes } from "./subscription-plan.routes";
 import { paymentSettingRoutes } from "./payment-setting.routes";
 import propertyRoutes from "./property.routes";
+import { mediaRoutes } from "./media.routes";
 
 
 // Core routes - always enabled
@@ -22,6 +23,7 @@ const routes = [
   authRoutes,
   userRoutes,
   r2ClientRoutes, // Required for media uploads
+  mediaRoutes,
   contactRoutes,
   hotelRoutes, // Admin hotel management
   restaurantRoutes, // Admin restaurant management

@@ -12,6 +12,11 @@ export interface IArticleDTO {
     location: {
         location_id: number;
         name: string;
+        categories?: {
+            categoryId: number;
+            name: string;
+            slug: string;
+        }[];
     };
     city?: {
         location_id: number;
