@@ -35,6 +35,11 @@ export class ArticleService {
       location: {
         location_id: article.location?.location_id || 0,
         name: article.location?.name || "",
+        categories: article.location?.categoryMappings?.map(m => ({
+          categoryId: m.category.categoryId,
+          name: m.category.name,
+          slug: m.category.slug
+        })) || []
       },
       city: enriched?.city ? {
           location_id: enriched.city.location_id,
@@ -316,6 +321,7 @@ export class ArticleService {
         limit = PAGINATION_DEFAULTS.LIMIT, 
         status, 
         placeId, 
+        categoryId,
         tag 
     } = options;
     const skip = (page - 1) * limit;
@@ -337,6 +343,14 @@ export class ArticleService {
 
     if (placeId) {
       query.andWhere("article.location_id = :placeId", { placeId });
+    }
+
+    if (categoryId) {
+      query.innerJoin(
+        "location.categoryMappings",
+        "categoryMapping",
+        "categoryMapping.location_id = location.location_id"
+      ).andWhere("categoryMapping.category_id = :categoryId", { categoryId });
     }
 
     if (tag) {

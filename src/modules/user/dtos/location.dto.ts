@@ -10,6 +10,7 @@ export interface ILocationCategoryDTO {
     name: string;
     slug: string;
     location_id?: number;
+    articleCount?: number;
 }
 
 export interface ILocationDTO {
