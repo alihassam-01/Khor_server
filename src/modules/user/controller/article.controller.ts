@@ -39,6 +39,7 @@ export class ArticleController {
         const fields = extractMultipartFields<ICreateArticleDTO>(body, {
           location_id: 'number',
           tags: 'array',
+          categories: 'array',
         });
 
         // Handle image uploads from multipart body
@@ -144,6 +145,7 @@ export class ArticleController {
         articleData = extractMultipartFields<IUpdateArticleDTO>(body, {
           location_id: 'number',
           tags: 'array',
+          categories: 'array',
         });
 
         const imagesRaw = body?.images;
@@ -210,13 +212,14 @@ export class ArticleController {
     reply: FastifyReply
   ) {
     try {
-        const { page = "1", limit = "10", status, placeId, tag } = req.query;
+        const { page = "1", limit = "10", status, placeId, tag, category } = req.query as any;
         const result: IPaginatedArticlesResponse = await this.articleService.listArticles({
             page: parseInt(page, 10) || 1,
             limit: parseInt(limit, 10) || 10,
             status,
             placeId: placeId ? parseInt(placeId, 10) : undefined,
-            tag
+            tag,
+            categoryId: category ? parseInt(category, 10) : undefined
         });
         reply.send(result);
     } catch (error: unknown) {

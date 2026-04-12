@@ -9,6 +9,7 @@ CreateDateColumn,
 OneToMany,
 } from 'typeorm';
 import { LocationCategoryMapping } from './location-category-mapping.entity';
+import { ArticleCategoryMapping } from '../article/article-category-mapping.entity';
 
 @Entity('location_categories')
 export class LocationCategory {
@@ -33,6 +34,9 @@ export class LocationCategory {
 
   @OneToMany(() => LocationCategoryMapping, (mapping) => mapping.category)
   categoryMappings!: LocationCategoryMapping[];
+
+  @OneToMany(() => ArticleCategoryMapping, (mapping) => mapping.category)
+  articleMappings!: ArticleCategoryMapping[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt!: Date;

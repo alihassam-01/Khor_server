@@ -20,6 +20,8 @@ export default async function locationRoutes(fastify: FastifyInstance) {
   fastify.get("/locations/categories", locationController.getAllCategories.bind(locationController));
   fastify.post("/locations/category", locationController.createCategory.bind(locationController));
   fastify.get("/locations/category/:id", locationController.getCategoryById.bind(locationController));
+  fastify.put("/locations/category/:id", locationController.updateCategory.bind(locationController));
+  fastify.delete("/locations/category/:id", locationController.deleteCategory.bind(locationController));
   fastify.get("/locations/category/slug/:slug", locationController.getCategoryBySlug.bind(locationController));
   fastify.get("/locations/by-category/:categoryname", locationController.getCategoryByName.bind(locationController));
   // Mapping routes

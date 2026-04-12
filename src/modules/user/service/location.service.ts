@@ -11,6 +11,7 @@ import {
     ILocationDTO, 
     IUpdateLocationDto, 
     ICreateLocationCategoryDto,
+    IUpdateLocationCategoryDto,
     ILocationCategoryDTO
 } from "@modules/user/dtos";
 import { LocationType } from "@common/enums";
@@ -459,10 +460,15 @@ export class LocationService {
     const rawCounts = await this.categoryRepository
       .createQueryBuilder("category")
       .select("category.categoryId", "categoryId")
-      .addSelect("COUNT(article.article_id)", "count")
+      .addSelect("COUNT(DISTINCT article.article_id)", "count")
+      .leftJoin("category.articleMappings", "articleMapping")
       .leftJoin("category.categoryMappings", "mapping")
       .leftJoin("mapping.location", "location")
-      .leftJoin("articles", "article", "article.location_id = location.location_id AND article.published_at IS NOT NULL")
+      .leftJoin(
+        "articles", 
+        "article", 
+        "(article.article_id = articleMapping.article_id OR article.location_id = location.location_id) AND article.published_at IS NOT NULL"
+      )
       .groupBy("category.categoryId")
       .getRawMany();
 
@@ -484,6 +490,41 @@ export class LocationService {
       where: { slug },
       relations: ["parentCategory", "subcategories"],
     });
+  }
+
+  async updateCategory(categoryId: number, data: IUpdateLocationCategoryDto): Promise<LocationCategory> {
+    const category = await this.categoryRepository.findOne({ where: { categoryId } });
+    if (!category) throw new AppError("Category not found", 404, ErrorCodes.NOT_FOUND);
+
+    if (data.name) {
+      category.name = data.name;
+      if (!data.slug) {
+        category.slug = this.generateSlug(data.name);
+      }
+    }
+    
+    if (data.slug) {
+      category.slug = data.slug;
+    }
+
+    if (data.parentCategoryId !== undefined) {
+      if (data.parentCategoryId === null) {
+        category.parentCategory = null as any;
+      } else {
+        const parent = await this.categoryRepository.findOne({
+          where: { categoryId: data.parentCategoryId },
+        });
+        if (parent) category.parentCategory = parent;
+      }
+    }
+
+    return await this.categoryRepository.save(category);
+  }
+
+  async deleteCategory(categoryId: number): Promise<void> {
+    const category = await this.categoryRepository.findOne({ where: { categoryId } });
+    if (!category) throw new AppError("Category not found", 404, ErrorCodes.NOT_FOUND);
+    await this.categoryRepository.remove(category);
   }
 
   async createAddress({ locationId, street_address, landmark, is_primary }: {

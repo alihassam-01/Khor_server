@@ -31,6 +31,11 @@ export interface IArticleDTO {
         type?: string;
     } | null;
     tags: string[];
+    categories: {
+        categoryId: number;
+        name: string;
+        slug: string;
+    }[];
 }
 
 export interface ICreateArticleDTO {
@@ -46,6 +51,7 @@ export interface ICreateArticleDTO {
     tags?: string[];
     image_url?: string;
     image_urls?: string[];
+    categories?: number[];
 }
 
 export interface IUpdateArticleDTO {
@@ -61,6 +67,7 @@ export interface IUpdateArticleDTO {
     tags?: string[];
     image_url?: string;
     image_urls?: string[];
+    categories?: number[];
 }
 
 export interface IPaginatedArticlesResponse {
