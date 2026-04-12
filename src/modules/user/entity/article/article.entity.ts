@@ -4,7 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  OneToOne,
+  ManyToOne,
   JoinColumn,
   OneToMany,
   BeforeInsert,
@@ -12,8 +12,7 @@ import {
 } from "typeorm";
 import { Location } from "@modules/user/entity/location";
 import { ArticleTag } from "./article-tags.entity";
-// Optional HTML cleaner
-// import { stripHtml } from "string-strip-html";
+import { ArticleCategoryMapping } from "./article-category-mapping.entity";
 
 @Entity("articles")
 export class Article {
@@ -56,12 +55,15 @@ export class Article {
   @UpdateDateColumn({ type: "timestamp" })
   updated_at!: Date;
 
-  @OneToOne(() => Location, { nullable: true })
+  @ManyToOne(() => Location, { nullable: true })
   @JoinColumn({ name: "location_id" })
   location!: Location | null;
 
   @OneToMany(() => ArticleTag, (articleTag) => articleTag.article)
   articleTags!: ArticleTag[];
+
+  @OneToMany(() => ArticleCategoryMapping, (mapping) => mapping.article)
+  categoryMappings!: ArticleCategoryMapping[];
 
   @Column("int", { nullable: true })
   location_id!: number | null;
@@ -75,7 +77,6 @@ export class Article {
   @BeforeInsert()
   @BeforeUpdate()
   setFulltextIndex() {
-    // Optional: Use `stripHtml(this.content || '').result` if needed
     this.fulltext_index = [
       this.title || '',
       this.excerpt || '',

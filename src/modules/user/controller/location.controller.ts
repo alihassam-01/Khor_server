@@ -4,7 +4,8 @@ import {
   ICreateLocationDto,
   IUpdateLocationDto,
   ILocationDTO,
-  ICreateLocationCategoryDto
+  ICreateLocationCategoryDto,
+  IUpdateLocationCategoryDto
 } from "@modules/user/dtos";
 import {
   ILocationIdParams,
@@ -138,6 +139,25 @@ export class LocationController {
     if (!category)
       throw new AppError("Category not found", 404, ErrorCodes.NOT_FOUND);
     reply.send(category);
+  }
+
+  async updateCategory(
+    req: FastifyRequest<{ Params: ICategoryIdParams; Body: IUpdateLocationCategoryDto }>,
+    reply: FastifyReply
+  ) {
+    const category = await this.locationService.updateCategory(
+      Number(req.params.id),
+      req.body
+    );
+    reply.send(category);
+  }
+
+  async deleteCategory(
+    req: FastifyRequest<{ Params: ICategoryIdParams }>,
+    reply: FastifyReply
+  ) {
+    await this.locationService.deleteCategory(Number(req.params.id));
+    reply.code(204).send();
   }
 
   async getCategoryByName(

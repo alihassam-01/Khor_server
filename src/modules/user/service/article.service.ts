@@ -1,6 +1,6 @@
 import { AppDataSource } from "@config/ormconfig";
 import { Not, IsNull, FindOptionsWhere } from "typeorm";
-import { Article, Tag, ArticleTag } from "@modules/user/entity/article";
+import { Article, Tag, ArticleTag, ArticleCategoryMapping } from "@modules/user/entity/article";
 import { Location } from "@modules/user/entity/location";
 import { ArticleStatus } from "@common/enums";
 import { PAGINATION_DEFAULTS } from "@common/constants";
@@ -52,6 +52,11 @@ export class ArticleService {
           slug: enriched.locality.slug
       } : undefined,
       tags: article.articleTags?.map((at) => at.tag.name) || [],
+      categories: article.categoryMappings?.map(m => ({
+          categoryId: m.category.categoryId,
+          name: m.category.name,
+          slug: m.category.slug
+      })) || []
     };
   }
 
@@ -123,11 +128,21 @@ export class ArticleService {
       await queryRunner.manager.save(ArticleTag, articleTags);
       savedArticle.articleTags = articleTags;
 
+      if (articleData.categories && articleData.categories.length > 0) {
+        const categoryMappings = articleData.categories.map(categoryId => {
+          const mapping = new ArticleCategoryMapping();
+          mapping.article_id = savedArticle.article_id;
+          mapping.category_id = categoryId;
+          return mapping;
+        });
+        await queryRunner.manager.save(ArticleCategoryMapping, categoryMappings);
+      }
+
       await queryRunner.commitTransaction();
       
       const resultArticle = await this.articleRepository.findOne({
         where: { article_id: savedArticle.article_id },
-        relations: ["location", "articleTags", "articleTags.tag"]
+        relations: ["location", "articleTags", "articleTags.tag", "categoryMappings", "categoryMappings.category"]
       });
 
       return this.toArticleDTO(resultArticle!);
@@ -149,6 +164,8 @@ export class ArticleService {
         "location",
         "articleTags",
         "articleTags.tag",
+        "categoryMappings",
+        "categoryMappings.category",
         "location.attributes",
         "location.categoryMappings",
       ],
@@ -171,6 +188,8 @@ export class ArticleService {
         "location",
         "articleTags",
         "articleTags.tag",
+        "categoryMappings",
+        "categoryMappings.category",
         "location.attributes",
         "location.categoryMappings",
       ],
@@ -273,12 +292,25 @@ export class ArticleService {
         }
       }
 
+      if (articleData.categories !== undefined) {
+        await queryRunner.manager.delete(ArticleCategoryMapping, { article_id: articleId });
+        if (articleData.categories.length > 0) {
+          const categoryMappings = articleData.categories.map(categoryId => {
+            const mapping = new ArticleCategoryMapping();
+            mapping.article_id = articleId;
+            mapping.category_id = categoryId;
+            return mapping;
+          });
+          await queryRunner.manager.save(ArticleCategoryMapping, categoryMappings);
+        }
+      }
+
       const updatedArticle = await queryRunner.manager.save(article);
       await queryRunner.commitTransaction();
       
       const resultArticle = await this.articleRepository.findOne({
         where: { article_id: updatedArticle.article_id },
-        relations: ["location", "articleTags", "articleTags.tag"]
+        relations: ["location", "articleTags", "articleTags.tag", "categoryMappings", "categoryMappings.category"]
       });
 
       return this.toArticleDTO(resultArticle!);
@@ -331,6 +363,8 @@ export class ArticleService {
       .leftJoinAndSelect("article.location", "location")
       .leftJoinAndSelect("article.articleTags", "articleTags")
       .leftJoinAndSelect("articleTags.tag", "tag")
+      .leftJoinAndSelect("article.categoryMappings", "categoryMappings")
+      .leftJoinAndSelect("categoryMappings.category", "category")
       .skip(skip)
       .take(limit)
       .orderBy("article.published_at", "DESC");
@@ -346,11 +380,12 @@ export class ArticleService {
     }
 
     if (categoryId) {
-      query.innerJoin(
-        "location.categoryMappings",
-        "categoryMapping",
-        "categoryMapping.location_id = location.location_id"
-      ).andWhere("categoryMapping.category_id = :categoryId", { categoryId });
+      // Check both article categories and location categories
+      query.leftJoin("location.categoryMappings", "locCategoryMapping")
+          .andWhere(
+            "(categoryMappings.category_id = :categoryId OR locCategoryMapping.category_id = :categoryId)",
+            { categoryId }
+          );
     }
 
     if (tag) {
@@ -388,6 +423,8 @@ export class ArticleService {
         "articleTags",
         "articleTags.tag",
         "location",
+        "categoryMappings",
+        "categoryMappings.category",
         "location.categoryMappings",
         "location.attributes",
       ],
@@ -410,6 +447,8 @@ export class ArticleService {
       .leftJoinAndSelect("article.articleTags", "articleTags")
       .leftJoinAndSelect("articleTags.tag", "tag")
       .leftJoinAndSelect("article.location", "location")
+      .leftJoinAndSelect("article.categoryMappings", "categoryMappings")
+      .leftJoinAndSelect("categoryMappings.category", "category")
       .leftJoinAndSelect("location.categoryMappings", "locationCategoryMappings")
       .leftJoinAndSelect("location.attributes", "locationAttributes")
       .addSelect(

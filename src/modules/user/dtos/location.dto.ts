@@ -53,3 +53,9 @@ export interface ICreateLocationCategoryDto {
     name: string;
     parentCategoryId?: number;
 }
+
+export interface IUpdateLocationCategoryDto {
+    name?: string;
+    slug?: string;
+    parentCategoryId?: number;
+}
