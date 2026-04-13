@@ -15,7 +15,9 @@ export const CONFIG = {
   },
   jwt: {
     secret: process.env.JWT_SECRET || "defaultsecretkey",
-    salt: process.env.SALT || "defaultsalt"
+    salt: process.env.SALT || "defaultsalt",
+    expiresIn: process.env.JWT_EXPIRES_IN || "1d",
+    resetExpiresIn: process.env.JWT_RESET_EXPIRES_IN || "24h"
   },
   smtp: {
     server: process.env.SMTP_SERVER || "",

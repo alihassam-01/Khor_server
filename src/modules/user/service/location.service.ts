@@ -43,6 +43,11 @@ export class LocationService {
           location_order: location.location_order || 0,
           location_type: location.location_type,
           parent_id: location.parent?.location_id || null,
+          parent: location.parent ? {
+              location_id: location.parent.location_id,
+              name: location.parent.name,
+              location_type: location.parent.location_type
+          } : null,
           attributes: location.attributes?.map(attr => ({
               attributeKey: attr.attributeKey,
               attributeValue: attr.attributeValue

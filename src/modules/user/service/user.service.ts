@@ -42,7 +42,7 @@ export class UserService {
       throw new AppError("JWT_SECRET environment variable is not defined.", 500, ErrorCodes.INTERNAL_SERVER_ERROR);
     }
     const resetToken = jwt.sign({ email }, CONFIG.jwt.secret, {
-      expiresIn: "24h",
+      expiresIn: CONFIG.jwt.resetExpiresIn as any,
     });
 
     const resetLink = `${CONFIG.web_domain.url}/reset-password?token=${resetToken}`;

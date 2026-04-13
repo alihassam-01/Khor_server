@@ -232,7 +232,7 @@ export class AuthService {
                 vendorId: user.userType === UserRole.VENDOR ? user.vendor?.id : undefined,
             },
             CONFIG.jwt.secret as string,
-            { expiresIn: "7d" }
+            { expiresIn: CONFIG.jwt.expiresIn as any }
         );
 
         logInfo(`User logged in successfully: ${email}`);
@@ -392,7 +392,7 @@ export class AuthService {
                     existingUser.userType === UserRole.VENDOR ? existingUser.vendor?.id : undefined,
             },
             CONFIG.jwt.secret as string,
-            { expiresIn: "7d" }
+            { expiresIn: CONFIG.jwt.expiresIn as any }
         );
 
         return { token, isNewUser };
