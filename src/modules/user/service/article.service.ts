@@ -1,5 +1,5 @@
 import { AppDataSource } from "@config/ormconfig";
-import { Not, IsNull, FindOptionsWhere } from "typeorm";
+import { Not, IsNull, FindOptionsWhere, In } from "typeorm";
 import { Article, Tag, ArticleTag, ArticleCategoryMapping } from "@modules/user/entity/article";
 import { Location } from "@modules/user/entity/location";
 import { ArticleStatus } from "@common/enums";
@@ -32,15 +32,15 @@ export class ArticleService {
       seo_keywords: article.seo_keywords || "",
       seo_description: article.seo_description || "",
       image_urls: Array.isArray(article.image_urls) ? article.image_urls : [],
-      location: {
-        location_id: article.location?.location_id || 0,
-        name: article.location?.name || "",
-        categories: article.location?.categoryMappings?.map(m => ({
+      locations: (article.locations || []).map(loc => ({
+        location_id: loc.location_id,
+        name: loc.name,
+        categories: loc.categoryMappings?.map(m => ({
           categoryId: m.category.categoryId,
           name: m.category.name,
           slug: m.category.slug
         })) || []
-      },
+      })),
       city: enriched?.city ? {
           location_id: enriched.city.location_id,
           name: enriched.city.name,
@@ -85,13 +85,15 @@ export class ArticleService {
         tags.push(tag);
       }
 
-      const location = await this.locationRepository.findOne({
-        where: { location_id: articleData.location_id },
-      });
+      const locationIds = Array.isArray(articleData.location_ids) 
+        ? articleData.location_ids 
+        : (articleData.location_ids ? [articleData.location_ids] : []);
 
-      if (!location) {
-        throw new Error("Place not found");
-      }
+      const locations = locationIds.length > 0 
+        ? await this.locationRepository.find({
+            where: { location_id: In(locationIds) },
+          })
+        : [];
 
       const article = new Article();
       article.title = articleData.title;
@@ -104,7 +106,7 @@ export class ArticleService {
       article.seo_title = articleData.seo_title || "";
       article.seo_keywords = articleData.seo_keywords || "";
       article.seo_description = articleData.seo_description || "";
-      article.location = location;
+      article.locations = locations;
       
       if (Array.isArray(articleData.image_urls)) {
         article.image_urls = articleData.image_urls;
@@ -142,7 +144,7 @@ export class ArticleService {
       
       const resultArticle = await this.articleRepository.findOne({
         where: { article_id: savedArticle.article_id },
-        relations: ["location", "articleTags", "articleTags.tag", "categoryMappings", "categoryMappings.category"]
+        relations: ["locations", "articleTags", "articleTags.tag", "categoryMappings", "categoryMappings.category"]
       });
 
       return this.toArticleDTO(resultArticle!);
@@ -161,13 +163,13 @@ export class ArticleService {
     const article = await this.articleRepository.findOne({
       where: whereClause,
       relations: [
-        "location",
+        "locations",
         "articleTags",
         "articleTags.tag",
         "categoryMappings",
         "categoryMappings.category",
-        "location.attributes",
-        "location.categoryMappings",
+        "locations.attributes",
+        "locations.categoryMappings",
       ],
     });
     if (!article) return null;
@@ -185,13 +187,13 @@ export class ArticleService {
     const article = await this.articleRepository.findOne({
       where: whereClause,
       relations: [
-        "location",
+        "locations",
         "articleTags",
         "articleTags.tag",
         "categoryMappings",
         "categoryMappings.category",
-        "location.attributes",
-        "location.categoryMappings",
+        "locations.attributes",
+        "locations.categoryMappings",
       ],
     });
     if (!article) return null;
@@ -213,7 +215,7 @@ export class ArticleService {
     try {
       const article = await this.articleRepository.findOne({
         where: { article_id: articleId },
-        relations: ["articleTags", "articleTags.tag", "location"],
+        relations: ["articleTags", "articleTags.tag", "locations"],
       });
 
       if (!article) {
@@ -231,14 +233,11 @@ export class ArticleService {
       if (articleData.seo_description !== undefined)
         article.seo_description = articleData.seo_description || "";
 
-      if (
-        articleData.location_id &&
-        article.location?.location_id !== articleData.location_id
-      ) {
-        const location = await this.locationRepository.findOne({
-          where: { location_id: articleData.location_id },
+      if (articleData.location_ids) {
+        const locations = await this.locationRepository.find({
+          where: { location_id: In(articleData.location_ids) },
         });
-        if (location) article.location = location;
+        article.locations = locations;
       }
 
       if (articleData.tags) {
@@ -310,7 +309,7 @@ export class ArticleService {
       
       const resultArticle = await this.articleRepository.findOne({
         where: { article_id: updatedArticle.article_id },
-        relations: ["location", "articleTags", "articleTags.tag", "categoryMappings", "categoryMappings.category"]
+        relations: ["locations", "articleTags", "articleTags.tag", "categoryMappings", "categoryMappings.category"]
       });
 
       return this.toArticleDTO(resultArticle!);
@@ -360,7 +359,7 @@ export class ArticleService {
 
     const query = this.articleRepository
       .createQueryBuilder("article")
-      .leftJoinAndSelect("article.location", "location")
+      .leftJoinAndSelect("article.locations", "location")
       .leftJoinAndSelect("article.articleTags", "articleTags")
       .leftJoinAndSelect("articleTags.tag", "tag")
       .leftJoinAndSelect("article.categoryMappings", "categoryMappings")
@@ -376,7 +375,7 @@ export class ArticleService {
     }
 
     if (placeId) {
-      query.andWhere("article.location_id = :placeId", { placeId });
+      query.andWhere("location.location_id = :placeId", { placeId });
     }
 
     if (categoryId) {
@@ -422,11 +421,11 @@ export class ArticleService {
       relations: [
         "articleTags",
         "articleTags.tag",
-        "location",
+        "locations",
         "categoryMappings",
         "categoryMappings.category",
-        "location.categoryMappings",
-        "location.attributes",
+        "locations.categoryMappings",
+        "locations.attributes",
       ],
       order: { published_at: "DESC" },
     });
@@ -446,7 +445,7 @@ export class ArticleService {
       .createQueryBuilder("article")
       .leftJoinAndSelect("article.articleTags", "articleTags")
       .leftJoinAndSelect("articleTags.tag", "tag")
-      .leftJoinAndSelect("article.location", "location")
+      .leftJoinAndSelect("article.locations", "location")
       .leftJoinAndSelect("article.categoryMappings", "categoryMappings")
       .leftJoinAndSelect("categoryMappings.category", "category")
       .leftJoinAndSelect("location.categoryMappings", "locationCategoryMappings")

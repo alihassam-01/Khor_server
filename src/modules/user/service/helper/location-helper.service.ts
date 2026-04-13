@@ -93,14 +93,17 @@ export class LocationHelperService {
   /**
    * Enrich articles with city and locality based on their location_id
    */
-  public async enrichArticlesWithCities<T extends { location_id?: number | null }>(articles: T[]): Promise<(T & IEnrichedLocation)[]> {
+  public async enrichArticlesWithCities<T extends { locations?: Location[] | any[] }>(articles: T[]): Promise<(T & IEnrichedLocation)[]> {
     return Promise.all(
       articles.map(async (article) => {
-        if (!article.location_id) {
+        const locations = article.locations || [];
+        const locationId = locations.length > 0 ? (locations[0].location_id || locations[0]) : null;
+
+        if (!locationId) {
           return { ...article, city: null, locality: null };
         }
         const { city, locality } = await this.getCityAndLocality(
-          article.location_id
+          Number(locationId)
         );
         return { ...article, city, locality };
       })

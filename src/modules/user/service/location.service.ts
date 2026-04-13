@@ -469,10 +469,11 @@ export class LocationService {
       .leftJoin("category.articleMappings", "articleMapping")
       .leftJoin("category.categoryMappings", "mapping")
       .leftJoin("mapping.location", "location")
+      .leftJoin("article_locations", "al", "al.location_id = location.location_id")
       .leftJoin(
         "articles", 
         "article", 
-        "(article.article_id = articleMapping.article_id OR article.location_id = location.location_id) AND article.published_at IS NOT NULL"
+        "(article.article_id = articleMapping.article_id OR article.article_id = al.article_id) AND article.published_at IS NOT NULL"
       )
       .groupBy("category.categoryId")
       .getRawMany();

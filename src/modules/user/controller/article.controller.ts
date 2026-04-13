@@ -37,7 +37,7 @@ export class ArticleController {
 
         // Extract plain field values from multipart body
         const fields = extractMultipartFields<ICreateArticleDTO>(body, {
-          location_id: 'number',
+          location_ids: 'array',
           tags: 'array',
           categories: 'array',
         });
@@ -80,7 +80,9 @@ export class ArticleController {
         articleData = {
           ...body,
           tags,
-          location_id: body.location_id ? Number(body.location_id) : 0
+          location_ids: Array.isArray(body.location_ids) 
+            ? body.location_ids.map(Number) 
+            : (body.location_ids ? [Number(body.location_ids)] : [])
         };
       }
 
@@ -143,7 +145,7 @@ export class ArticleController {
         const imageUrls: string[] = [];
 
         articleData = extractMultipartFields<IUpdateArticleDTO>(body, {
-          location_id: 'number',
+          location_ids: 'array',
           tags: 'array',
           categories: 'array',
         });
@@ -182,7 +184,9 @@ export class ArticleController {
         articleData = {
             ...body,
             tags,
-            location_id: body.location_id ? Number(body.location_id) : undefined
+            location_ids: body.location_ids 
+              ? (Array.isArray(body.location_ids) ? body.location_ids.map(Number) : [Number(body.location_ids)])
+              : undefined
         };
       }
 
