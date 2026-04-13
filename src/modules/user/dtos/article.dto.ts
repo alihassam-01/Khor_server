@@ -9,7 +9,7 @@ export interface IArticleDTO {
     seo_keywords?: string;
     seo_description?: string;
     image_urls?: string[];
-    location: {
+    locations: {
         location_id: number;
         name: string;
         categories?: {
@@ -17,7 +17,7 @@ export interface IArticleDTO {
             name: string;
             slug: string;
         }[];
-    };
+    }[];
     city?: {
         location_id: number;
         name: string;
@@ -47,7 +47,7 @@ export interface ICreateArticleDTO {
     seo_title?: string;
     seo_keywords?: string;
     seo_description?: string;
-    location_id: number;
+    location_ids: number[];
     tags?: string[];
     image_url?: string;
     image_urls?: string[];
@@ -63,7 +63,7 @@ export interface IUpdateArticleDTO {
     seo_title?: string;
     seo_keywords?: string;
     seo_description?: string;
-    location_id?: number;
+    location_ids?: number[];
     tags?: string[];
     image_url?: string;
     image_urls?: string[];

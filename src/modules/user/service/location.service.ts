@@ -43,6 +43,11 @@ export class LocationService {
           location_order: location.location_order || 0,
           location_type: location.location_type,
           parent_id: location.parent?.location_id || null,
+          parent: location.parent ? {
+              location_id: location.parent.location_id,
+              name: location.parent.name,
+              location_type: location.parent.location_type
+          } : null,
           attributes: location.attributes?.map(attr => ({
               attributeKey: attr.attributeKey,
               attributeValue: attr.attributeValue
@@ -464,10 +469,11 @@ export class LocationService {
       .leftJoin("category.articleMappings", "articleMapping")
       .leftJoin("category.categoryMappings", "mapping")
       .leftJoin("mapping.location", "location")
+      .leftJoin("article_locations", "al", "al.location_id = location.location_id")
       .leftJoin(
         "articles", 
         "article", 
-        "(article.article_id = articleMapping.article_id OR article.location_id = location.location_id) AND article.published_at IS NOT NULL"
+        "(article.article_id = articleMapping.article_id OR article.article_id = al.article_id) AND article.published_at IS NOT NULL"
       )
       .groupBy("category.categoryId")
       .getRawMany();

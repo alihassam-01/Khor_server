@@ -22,6 +22,11 @@ export interface ILocationDTO {
     location_order: number;
     location_type: LocationType;
     parent_id?: number | null;
+    parent?: {
+        location_id: number;
+        name: string;
+        location_type: LocationType;
+    } | null;
     attributes?: ILocationAttributeDTO[];
     categories?: ILocationCategoryDTO[];
 }

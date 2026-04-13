@@ -7,10 +7,12 @@ import {
   OneToMany,
   ManyToOne,
   JoinColumn,
+  ManyToMany,
 } from "typeorm";
 import { LocationAttributes, LocationCategoryMapping } from "@modules/user/entity/location";
 import { LocationType } from "@common/enums/location.enums";
 import { Address } from "@modules/user/entity/address";
+import { Article } from "../article/article.entity";
 
 @Entity("location")
 export class Location {
@@ -68,4 +70,7 @@ export class Location {
 
   @OneToMany(() => Address, (address) => address.location)
   addresses!: Address[];
+
+  @ManyToMany(() => Article, (article) => article.locations)
+  articles!: Article[];
 }

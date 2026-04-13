@@ -1,6 +1,5 @@
 import 'tsconfig-paths/register';
 import fastify from "fastify";
-// import { AppDataSource } from "./config/ormconfig";
 import typeormPlugin from './app/plugins/typeorm';
 import routes from './modules/user/routes';
 import { CONFIG } from './config/config';
@@ -18,7 +17,7 @@ async function startServer() {
   await app.register(fastifyMultipart, {
     attachFieldsToBody: true,
     limits: {
-      fileSize: 5 * 1024 * 1024,
+      fileSize: CONFIG.r2.maxFileSize,
     }
   });
   await app.register(import('@fastify/formbody'));

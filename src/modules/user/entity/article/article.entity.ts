@@ -4,9 +4,9 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
   OneToMany,
+  ManyToMany,
+  JoinTable,
   BeforeInsert,
   BeforeUpdate,
 } from "typeorm";
@@ -55,18 +55,19 @@ export class Article {
   @UpdateDateColumn({ type: "timestamp" })
   updated_at!: Date;
 
-  @ManyToOne(() => Location, { nullable: true })
-  @JoinColumn({ name: "location_id" })
-  location!: Location | null;
+  @ManyToMany(() => Location, (location) => location.articles)
+  @JoinTable({
+    name: "article_locations",
+    joinColumn: { name: "article_id", referencedColumnName: "article_id" },
+    inverseJoinColumn: { name: "location_id", referencedColumnName: "location_id" }
+  })
+  locations!: Location[];
 
   @OneToMany(() => ArticleTag, (articleTag) => articleTag.article)
   articleTags!: ArticleTag[];
 
   @OneToMany(() => ArticleCategoryMapping, (mapping) => mapping.article)
   categoryMappings!: ArticleCategoryMapping[];
-
-  @Column("int", { nullable: true })
-  location_id!: number | null;
 
   @Column("text", { select: false })
   fulltext_index!: string;
