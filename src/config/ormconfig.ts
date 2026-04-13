@@ -33,7 +33,7 @@ const entities = isProduction
 const migrations = isProduction
   ? [join(projectRoot, "dist/migrations/*.js")]
   : [join(projectRoot, "src/migrations/**/*.ts")];
-  
+
 const shouldSynchronize = process.env.DB_SYNCHRONIZE === "true";
 
 export const AppDataSource = new DataSource(
