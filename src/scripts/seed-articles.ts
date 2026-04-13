@@ -49,7 +49,7 @@ async function seedArticles() {
                 seo_title: articleData.seo_title,
                 seo_description: articleData.seo_description,
                 seo_keywords: articleData.seo_keywords,
-                location: location || undefined,
+                locations: location ? [location] : [],
                 published_at: articleData.published_at,
                 image_urls: [] // Empty initially, can be updated via API
             });
