@@ -1,7 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ArticleService } from '@modules/user/service/article.service';
-import { R2ClientService } from '@modules/user/service/r2client.service';
-import { extractMultipartFields, isMultipartRequest } from '@common/utils/multipart.util';
 import { 
     IArticleIdParams, 
     IArticleSlugParams, 
@@ -17,74 +15,27 @@ import {
 } from '@modules/user/dtos';
 
 export class ArticleController {
-  private r2ClientService: R2ClientService;
-
-  constructor(private readonly articleService: ArticleService) {
-    this.r2ClientService = new R2ClientService();
-  }
+  constructor(private readonly articleService: ArticleService) {}
 
   async createArticle(
-    req: FastifyRequest<{ Body: ICreateArticleDTO | any }>, 
+    req: FastifyRequest<{ Body: ICreateArticleDTO }>, 
     reply: FastifyReply
   ) {
     try {
-      const contentType = (req.headers['content-type'] || '') as string;
-      let articleData: ICreateArticleDTO;
+      const body = req.body;
 
-      if (isMultipartRequest(contentType)) {
-        const body = req.body as Record<string, any>;
-        const imageUrls: string[] = [];
-
-        // Extract plain field values from multipart body
-        const fields = extractMultipartFields<ICreateArticleDTO>(body, {
-          location_ids: 'array',
-          tags: 'array',
-          categories: 'array',
-        });
-
-        // Handle image uploads from multipart body
-        const imagesRaw = body?.images;
-        if (imagesRaw) {
-          const images = Array.isArray(imagesRaw) ? imagesRaw : [imagesRaw];
-          for (const image of images) {
-            if (imageUrls.length >= 3) break;
-            if (image && typeof image !== 'string' && typeof image.toBuffer === 'function') {
-              const buffer: Buffer = await image.toBuffer();
-              const result = await this.r2ClientService.uploadFileToR2(
-                buffer,
-                image.filename || 'article_image',
-                image.mimetype || 'application/octet-stream'
-              );
-              imageUrls.push(result.url);
-            }
-          }
-        }
-
-        articleData = {
-          ...fields,
-          image_urls: imageUrls.length > 0 ? imageUrls : undefined,
-        };
-      } else {
-        const body = req.body as ICreateArticleDTO;
-        let tags: string[] | undefined = body.tags;
-        
-        if (typeof body.tags === 'string') {
-          const tagsStr = body.tags as string;
-          try {
-            tags = JSON.parse(tagsStr);
-          } catch {
-            tags = tagsStr.split(',').map((t: string) => t.trim()).filter(Boolean);
-          }
-        }
-        
-        articleData = {
-          ...body,
-          tags,
-          location_ids: Array.isArray(body.location_ids) 
-            ? body.location_ids.map(Number) 
-            : (body.location_ids ? [Number(body.location_ids)] : [])
-        };
-      }
+      const articleData: ICreateArticleDTO = {
+        ...body,
+        // Ensure numeric arrays (in case client sends strings, coerce safely)
+        location_ids: (body.location_ids || []).map(Number).filter(n => !isNaN(n)),
+        categories: (body.categories || []).map(Number).filter(n => !isNaN(n)),
+        // Normalize tags: accept comma-string or array
+        tags: Array.isArray(body.tags)
+          ? (body.tags as string[]).filter((t: string) => t?.trim())
+          : typeof (body as any).tags === 'string'
+            ? ((body as any).tags as string).split(',').map((t: string) => t.trim()).filter(Boolean)
+            : [],
+      };
 
       const article: IArticleDTO = await this.articleService.createArticle(articleData);
       reply.code(201).send(article);
@@ -132,68 +83,34 @@ export class ArticleController {
   }
 
   async updateArticle(
-    req: FastifyRequest<{ Params: IArticleIdParams; Body: IUpdateArticleDTO | any }>, 
+    req: FastifyRequest<{ Params: IArticleIdParams; Body: IUpdateArticleDTO }>, 
     reply: FastifyReply
   ) {
     try {
       const articleId = Number(req.params.id);
-      const contentType = (req.headers['content-type'] || '') as string;
-      let articleData: IUpdateArticleDTO;
+      const body = req.body;
 
-      if (isMultipartRequest(contentType)) {
-        const body = req.body as Record<string, any>;
-        const imageUrls: string[] = [];
-
-        articleData = extractMultipartFields<IUpdateArticleDTO>(body, {
-          location_ids: 'array',
-          tags: 'array',
-          categories: 'array',
-        });
-
-        const imagesRaw = body?.images;
-        if (imagesRaw) {
-          const images = Array.isArray(imagesRaw) ? imagesRaw : [imagesRaw];
-          for (const image of images) {
-            if (imageUrls.length >= 3) break;
-            if (image && typeof image !== 'string' && typeof image.toBuffer === 'function') {
-              const buffer: Buffer = await image.toBuffer();
-              const result = await this.r2ClientService.uploadFileToR2(
-                buffer,
-                image.filename || 'article_image',
-                image.mimetype || 'application/octet-stream'
-              );
-              imageUrls.push(result.url);
-            }
-          }
-        }
-
-        if (imageUrls.length > 0) articleData.image_urls = imageUrls;
-      } else {
-        const body = req.body as IUpdateArticleDTO;
-        let tags: string[] | undefined = body.tags;
-        
-        if (typeof body.tags === 'string') {
-          const tagsStr = body.tags as string;
-          try {
-            tags = JSON.parse(tagsStr);
-          } catch {
-            tags = tagsStr.split(',').map((t: string) => t.trim()).filter(Boolean);
-          }
-        }
-
-        articleData = {
-            ...body,
-            tags,
-            location_ids: body.location_ids 
-              ? (Array.isArray(body.location_ids) ? body.location_ids.map(Number) : [Number(body.location_ids)])
-              : undefined
-        };
-      }
+      const articleData: IUpdateArticleDTO = {
+        ...body,
+        // Ensure numeric arrays
+        location_ids: body.location_ids
+          ? body.location_ids.map(Number).filter(n => !isNaN(n))
+          : undefined,
+        categories: body.categories
+          ? body.categories.map(Number).filter(n => !isNaN(n))
+          : undefined,
+        // Normalize tags
+        tags: Array.isArray(body.tags)
+          ? (body.tags as string[]).filter((t: string) => t?.trim())
+          : typeof (body as any).tags === 'string'
+            ? ((body as any).tags as string).split(',').map((t: string) => t.trim()).filter(Boolean)
+            : undefined,
+      };
 
       const article: IArticleDTO = await this.articleService.updateArticle(articleId, articleData);
       reply.send(article);
     } catch (error: unknown) {
-        const err = error as Error;
+      const err = error as Error;
       reply.code(400).send({ message: err.message });
     }
   }
@@ -206,7 +123,7 @@ export class ArticleController {
       await this.articleService.deleteArticle(Number(req.params.id));
       reply.code(204).send();
     } catch (error: unknown) {
-        const err = error as Error;
+      const err = error as Error;
       reply.code(404).send({ message: err.message });
     }
   }
@@ -216,18 +133,18 @@ export class ArticleController {
     reply: FastifyReply
   ) {
     try {
-        const { page = "1", limit = "10", status, placeId, tag, category } = req.query as any;
-        const result: IPaginatedArticlesResponse = await this.articleService.listArticles({
-            page: parseInt(page, 10) || 1,
-            limit: parseInt(limit, 10) || 10,
-            status,
-            placeId: placeId ? parseInt(placeId, 10) : undefined,
-            tag,
-            categoryId: category ? parseInt(category, 10) : undefined
-        });
-        reply.send(result);
+      const { page, limit, status, placeId, categoryId, tag } = req.query;
+      const result: IPaginatedArticlesResponse = await this.articleService.listArticles({
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        status,
+        placeId: placeId ? Number(placeId) : undefined,
+        categoryId: categoryId ? Number(categoryId) : undefined,
+        tag,
+      });
+      reply.send(result);
     } catch (error: unknown) {
-        const err = error as Error;
+      const err = error as Error;
       reply.code(500).send({ message: err.message });
     }
   }
@@ -239,10 +156,9 @@ export class ArticleController {
     try {
       const includeAll = req.query.all === 'true';
       const articles: IArticleDTO[] = await this.articleService.getAllArticles(includeAll);
-
       reply.send(articles);
     } catch (error: unknown) {
-        const err = error as Error;
+      const err = error as Error;
       reply.code(500).send({ message: err.message });
     }
   }
@@ -253,10 +169,10 @@ export class ArticleController {
   ) {
     try {
       const includeAll = req.query.all === 'true';
-      const results: IArticleDTO[] = await this.articleService.searchArticles(req.query.term, includeAll);
-      reply.send(results);
+      const articles: IArticleDTO[] = await this.articleService.searchArticles(req.query.term || '', includeAll);
+      reply.send(articles);
     } catch (error: unknown) {
-        const err = error as Error;
+      const err = error as Error;
       reply.code(500).send({ message: err.message });
     }
   }
