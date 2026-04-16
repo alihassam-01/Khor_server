@@ -471,5 +471,42 @@ This document describes all available API routes in the application, including h
 
 ---
 
-<!-- More resources (articles, ads, locations, etc.) would follow in this format. -->
+---
+
+## Articles
+
+The Articles API handles blog posts, trip guides, and other content. It is a pure JSON API.
+
+### Get All Articles
+**GET** `/api/articles`
+- Returns a paginated list of articles.
+
+### Get Article by Slug
+**GET** `/api/articles/:slug`
+- Returns detailed article content.
+
+### Create Article (Admin)
+**POST** `/api/articles`
+- Create a new article with JSON payload.
+- See [Article API Usage Guide](file:///f:/GoFunoon/travelBaltistan/Khor-server/docs/ARTICLE_API_USAGE.md) for details.
+
+### Update Article (Admin)
+**PUT** `/api/articles/:id`
+- Update existing article fields.
+- Relationship syncing for locations and categories is supported.
+
+### Delete Article (Admin)
+**DELETE** `/api/articles/:id`
+
+---
+
+## Media & R2 Uploads
+
+### Get Presigned URLs
+**POST** `/api/media/presigned`
+- Used for direct client-side uploads to R2.
+
+---
+
+<!-- Additional resources like ads, locations, etc. -->
 

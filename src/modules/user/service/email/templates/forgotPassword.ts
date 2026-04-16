@@ -1,6 +1,6 @@
 export function forgotPasswordTemplate(
     name: string,
-    resetLink: string
+    otpCode: string
 ) {
     return `
     <!DOCTYPE html>
@@ -46,7 +46,7 @@ export function forgotPasswordTemplate(
             .logo {
                 font-size: 36px;
                 font-weight: bold;
-                color: #F8F8F8;
+                color: #FFFFFF;
                 display: flex;
                 align-items: center;
             }
@@ -73,21 +73,20 @@ export function forgotPasswordTemplate(
                 margin-bottom: 25px;
                 font-size: 16px;
             }
-            .reset-button {
-                display: block;
-                width: 250px;
-                margin: 30px auto;
-                padding: 14px 0;
-                background-color: #008080;
-                color: white;
+            .otp-container {
+                background-color: #F8F8F8;
+                border-radius: 10px;
+                padding: 30px;
                 text-align: center;
-                text-decoration: none;
-                font-weight: bold;
-                border-radius: 5px;
-                transition: background-color 0.3s;
+                margin: 30px 0;
+                border: 2px dashed #008080;
             }
-            .reset-button:hover {
-                background-color: #5F9EA0;
+            .otp-code {
+                font-size: 42px;
+                font-weight: bold;
+                letter-spacing: 10px;
+                color: #008080;
+                font-family: 'Courier New', Courier, monospace;
             }
             .expiry-notice {
                 text-align: center;
@@ -112,17 +111,10 @@ export function forgotPasswordTemplate(
                 background-color: #F8F8F8;
                 border-top: 1px solid #C0C0C0;
             }
-            .contact-info {
-                margin-top: 10px;
-            }
             .website-link {
                 color: #008080;
                 text-decoration: none;
                 font-weight: bold;
-            }
-            .website-link:hover {
-                color: #5F9EA0;
-                text-decoration: underline;
             }
             .social-links {
                 margin-top: 15px;
@@ -139,17 +131,6 @@ export function forgotPasswordTemplate(
                 margin: 0 5px;
                 text-decoration: none;
                 font-size: 14px;
-            }
-            @media (max-width: 600px) {
-                .email-container {
-                    border-radius: 0;
-                }
-                .email-body {
-                    padding: 20px;
-                }
-                .reset-button {
-                    width: 100%;
-                }
             }
         </style>
     </head>
@@ -168,21 +149,20 @@ export function forgotPasswordTemplate(
             <div class="email-body">
                 <h2 class="greeting">Hello, ${name}!</h2>
                 <p class="message">We received a request to reset your password for your Khor account.</p>
-                <p class="message">To reset your password, please click the button below:</p>
-                <a href="${resetLink}" class="reset-button">RESET YOUR PASSWORD</a>
+                <p class="message">Your password reset verification code is:</p>
+                
+                <div class="otp-container">
+                    <div class="otp-code">${otpCode}</div>
+                </div>
+
                 <div class="expiry-notice">
-                    <p>This password reset link will expire in 24 hours.</p>
+                    <p>This verification code will expire in 10 minutes.</p>
                 </div>
                 <div class="divider"></div>
-                <p class="message">If you have trouble clicking the button, copy and paste the following URL into your browser:</p>
-                <p class="message" style="word-break: break-all; color: #008080; background-color: #F8F8F8; padding: 10px; border-radius: 5px;">
-                    ${resetLink}
-                </p>
-                <p class="message">If you did not request a password reset, please ignore this email or contact support.</p>
+                <p class="message">If you did not request a password reset, please ignore this email or contact support if you have concerns.</p>
             </div>
             <div class="footer">
                 <p>© ${new Date().getFullYear()} <a href="https://www.gokhor.com" class="website-link">Khor</a>. All rights reserved.</p>
-                <p class="contact-info">Contact us: <a href="mailto:info@gokhor.com" class="website-link">info@gokhor.com</a></p>
                 <div class="social-links">
                     <a href="https://web.facebook.com/people/GoKhor/61586037316500/" class="social-icon">f</a>
                     <a href="https://www.linkedin.com/company/gokhor" class="social-icon">in</a>
