@@ -50,4 +50,5 @@ export interface ICurrentUserResponseDto {
 
 export interface IAuthMessageResponseDto {
     message: string;
+    resetToken?: string;
 }

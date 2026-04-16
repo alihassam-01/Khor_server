@@ -153,10 +153,11 @@ GET /tour-packages/search?term=adventure
 
 ### 4. Articles Search
 
-**Endpoint:** `GET /articles/search`
+**Endpoint:** `GET /api/articles/search`
 
 **Query Parameters:**
 - `term` (string, required) - The search term to match against article data
+- `all` (boolean, optional) - If `true`, includes extra metadata
 
 **Search Fields:**
 - `title` - Article title
@@ -179,11 +180,12 @@ GET /articles/search?term=baltistan
     "content": "Full article content here...",
     "published_at": "2024-05-15T10:00:00.000Z",
     "image_urls": ["https://cdn.example.com/image1.jpg"],
-    "location": {
-      "location_id": 5,
-      "name": "Baltistan",
-      "city": "Skardu"
-    },
+    "locations": [
+      { "id": 5, "name": "Skardu" }
+    ],
+    "categories": [
+      { "category_id": 1, "name": "Adventure" }
+    ],
     "tags": ["travel", "mountains", "culture"]
   }
 ]

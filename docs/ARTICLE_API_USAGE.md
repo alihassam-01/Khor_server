@@ -1,367 +1,123 @@
-# Article API Usage with Image Uploads
+# Article API Usage Guide
 
-## Creating an Article with Images
+This document describes how to interact with the Article API. The API has been migrated to a **pure JSON-based architecture**. File uploads are handled client-side via presigned URLs, and the backend processes public URL strings.
 
-The article creation endpoint now accepts **multipart/form-data** with up to **3 image files**.
+---
 
-### Endpoint
+## 1. Fetching Articles (Public)
+
+### List Articles (Paginated)
+Get a list of articles with optional filtering.
+
+**Endpoint**
+```
+GET /api/articles/list
+```
+
+**Query Parameters**
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `page` | `number` | Page number (default: 1) |
+| `limit` | `number` | Items per page (default: 10) |
+| `status` | `string` | Filter by status (`published`, `draft`) |
+| `placeId` | `number` | Filter by location ID |
+| `categoryId` | `number` | Filter by category ID |
+| `tag` | `string` | Filter by specific tag |
+
+---
+
+### Get Single Article
+Retrieve full details of an article.
+
+**Endpoints**
+```
+GET /api/articles/:slug
+GET /api/articles/id/:id
+```
+
+---
+
+## 2. Managing Articles (Admin)
+
+> [!IMPORTANT]
+> All management endpoints (`POST`, `PUT`, `DELETE`) require a valid **Admin Bearer Token** in the `Authorization` header.
+
+### Creating an Article
+**Endpoint**
 ```
 POST /api/articles
-Content-Type: multipart/form-data
+Content-Type: application/json
 ```
 
-### Frontend Example (JavaScript/TypeScript)
+**JSON Payload (Create)**
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `title` | `string` | Yes | The full title of the article |
+| `content` | `string` | Yes | The main content (Markdown supported) |
+| `excerpt` | `string` | Yes | A short summary for cards/lists |
+| `location_ids` | `number[]` | No | IDs of attached locations (Many-to-Many) |
+| `categories` | `number[]` | No | IDs of attached categories |
+| `image_urls` | `string[]` | No | Array of public URLs for images |
+| `tags` | `string[]` | No | List of descriptive tags |
 
-```javascript
-async function createArticle(articleData, imageFiles) {
-  const formData = new FormData();
-  
-  // Add text fields
-  formData.append('title', articleData.title);
-  formData.append('slug', articleData.slug);
-  formData.append('excerpt', articleData.excerpt);
-  formData.append('content', articleData.content);
-  formData.append('seo_title', articleData.seo_title);
-  formData.append('seo_description', articleData.seo_description);
-  formData.append('seo_keywords', articleData.seo_keywords);
-  formData.append('location_id', articleData.location_id);
-  
-  // Add published_at if provided
-  if (articleData.published_at) {
-    formData.append('published_at', articleData.published_at);
-  }
-  
-  // Add tags (send as JSON string or comma-separated)
-  if (articleData.tags && articleData.tags.length > 0) {
-    formData.append('tags', JSON.stringify(articleData.tags));
-    // OR: formData.append('tags', articleData.tags.join(','));
-  }
-  
-  // Add image files (up to 3)
-  if (imageFiles && imageFiles.length > 0) {
-    imageFiles.slice(0, 3).forEach((file) => {
-      formData.append('images', file);
-    });
-  }
-  
-  const response = await fetch('http://localhost:3000/api/articles', {
-    method: 'POST',
-    body: formData,
-    // Don't set Content-Type header - browser will set it with boundary
-  });
-  
-  return await response.json();
-}
+---
+
+## 3. Content Creation & Markdown Guide
+
+The frontend (`DestinationDetails`) uses specific Markdown patterns to extract sidebar data and interactive widgets.
+
+### A. Seasons (Best Time to Visit)
+Use `H3` headers with the season name. The description follows directly below.
+```markdown
+### Spring
+The valleys are filled with apricot blossoms and moderate temperatures.
+
+### Summer
+Perfect for trekking...
 ```
 
-### React Example with File Input
+### B. Things to Do (Activities)
+Format as a list with **Bold Titles**. An optional *Italic* subtitle can be used at the top.
+```markdown
+## Things to Do
+*Exploring the wilderness...*
 
-```jsx
-import { useState } from 'react';
-
-function CreateArticleForm() {
-  const [formData, setFormData] = useState({
-    title: '',
-    slug: '',
-    excerpt: '',
-    content: '',
-    seo_title: '',
-    seo_description: '',
-    seo_keywords: '',
-    location_id: '',
-    tags: [],
-  });
-  const [imageFiles, setImageFiles] = useState([]);
-
-  const handleImageChange = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length > 3) {
-      alert('Maximum 3 images allowed');
-      setImageFiles(files.slice(0, 3));
-    } else {
-      setImageFiles(files);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    const formDataToSend = new FormData();
-    
-    // Add all text fields
-    Object.keys(formData).forEach(key => {
-      if (key === 'tags') {
-        formDataToSend.append('tags', JSON.stringify(formData.tags));
-      } else if (formData[key]) {
-        formDataToSend.append(key, formData[key]);
-      }
-    });
-    
-    // Add images
-    imageFiles.forEach(file => {
-      formDataToSend.append('images', file);
-    });
-    
-    try {
-      const response = await fetch('http://localhost:3000/api/articles', {
-        method: 'POST',
-        body: formDataToSend,
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Article created:', result);
-        alert('Article created successfully!');
-      } else {
-        const error = await response.json();
-        console.error('Error:', error);
-        alert('Failed to create article: ' + error.message);
-      }
-    } catch (error) {
-      console.error('Network error:', error);
-      alert('Network error occurred');
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        <label>Title:</label>
-        <input
-          type="text"
-          value={formData.title}
-          onChange={(e) => setFormData({...formData, title: e.target.value})}
-          required
-        />
-      </div>
-
-      <div>
-        <label>Slug:</label>
-        <input
-          type="text"
-          value={formData.slug}
-          onChange={(e) => setFormData({...formData, slug: e.target.value})}
-          required
-        />
-      </div>
-
-      <div>
-        <label>Excerpt:</label>
-        <textarea
-          value={formData.excerpt}
-          onChange={(e) => setFormData({...formData, excerpt: e.target.value})}
-          required
-        />
-      </div>
-
-      <div>
-        <label>Content:</label>
-        <textarea
-          value={formData.content}
-          onChange={(e) => setFormData({...formData, content: e.target.value})}
-          rows={10}
-          required
-        />
-      </div>
-
-      <div>
-        <label>Location ID:</label>
-        <input
-          type="number"
-          value={formData.location_id}
-          onChange={(e) => setFormData({...formData, location_id: e.target.value})}
-          required
-        />
-      </div>
-
-      <div>
-        <label>Images (max 3):</label>
-        <input
-          type="file"
-          multiple
-          accept="image/*"
-          onChange={handleImageChange}
-        />
-        {imageFiles.length > 0 && (
-          <p>{imageFiles.length} file(s) selected</p>
-        )}
-      </div>
-
-      <div>
-        <label>SEO Title:</label>
-        <input
-          type="text"
-          value={formData.seo_title}
-          onChange={(e) => setFormData({...formData, seo_title: e.target.value})}
-        />
-      </div>
-
-      <div>
-        <label>SEO Description:</label>
-        <textarea
-          value={formData.seo_description}
-          onChange={(e) => setFormData({...formData, seo_description: e.target.value})}
-        />
-      </div>
-
-      <div>
-        <label>SEO Keywords:</label>
-        <input
-          type="text"
-          value={formData.seo_keywords}
-          onChange={(e) => setFormData({...formData, seo_keywords: e.target.value})}
-          placeholder="keyword1, keyword2, keyword3"
-        />
-      </div>
-
-      <button type="submit">Create Article</button>
-    </form>
-  );
-}
-
-export default CreateArticleForm;
+1. **Trekking**: High-altitude trails and base camps.
+2. **Photography**: Surreal landscapes of the cold desert.
 ```
 
-### cURL Example
+### C. Travel Tips & Info
+Use GitHub-style alerts (Blockquotes + `[!TAG]`) to generate styled tip cards.
+```markdown
+> [!TIP]
+> **Transport**: Best visited by 4x4 vehicles.
 
-```bash
-curl -X POST http://localhost:3000/api/articles \
-  -F "title=Hashu Pi Bagh" \
-  -F "slug=hashu-pi-bagh" \
-  -F "excerpt=Beautiful orchard in Shigar" \
-  -F "content=Full article content here..." \
-  -F "seo_title=Hashu Pi Bagh - Best Orchard" \
-  -F "seo_description=Visit the beautiful Hashu Pi Bagh" \
-  -F "seo_keywords=shigar,skardu,orchard,fruits" \
-  -F "location_id=5" \
-  -F "tags=[\"nature\",\"tourism\",\"orchard\"]" \
-  -F "images=@/path/to/image1.jpg" \
-  -F "images=@/path/to/image2.jpg" \
-  -F "images=@/path/to/image3.jpg"
+> [!CAUTION]
+> Carry extra warm clothing even in summer.
 ```
 
-## Updating an Article with Images
+---
 
-### Endpoint
-```
-PUT /api/articles/:id
-Content-Type: multipart/form-data (for images) OR application/json (for text only)
-```
+## 4. Image Upload Workflow
 
-### Frontend Example
+The Article API no longer accepts raw file uploads (`multipart/form-data`).
 
-```javascript
-async function updateArticle(articleId, updates, newImageFiles) {
-  // If no new images, can use JSON
-  if (!newImageFiles || newImageFiles.length === 0) {
-    const response = await fetch(`http://localhost:3000/api/articles/${articleId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(updates),
-    });
-    return await response.json();
-  }
-  
-  // If uploading new images, use FormData
-  const formData = new FormData();
-  
-  Object.keys(updates).forEach(key => {
-    if (key === 'tags' && Array.isArray(updates[key])) {
-      formData.append('tags', JSON.stringify(updates[key]));
-    } else if (updates[key] !== undefined && updates[key] !== null) {
-      formData.append(key, updates[key]);
-    }
-  });
-  
-  newImageFiles.slice(0, 3).forEach(file => {
-    formData.append('images', file);
-  });
-  
-  const response = await fetch(`http://localhost:3000/api/articles/${articleId}`, {
-    method: 'PUT',
-    body: formData,
-  });
-  
-  return await response.json();
-}
-```
+1.  **Frontend**: Fetch a **Presigned URL** from `/api/media/presigned`.
+2.  **Frontend**: Upload the file directly to R2 using that URL.
+3.  **Backend**: Send the final public URL in the `image_urls` array of your JSON payload.
 
-## Important Notes
+---
 
-1. **Maximum Images**: Up to 3 images per article
-2. **Field Name**: Image files must use the field name `images` (not `image`)
-3. **File Size Limit**: 5MB per file (configured in server)
-4. **Supported Formats**: All image formats (jpg, png, webp, etc.)
-5. **Storage**: Images are automatically uploaded to Cloudflare R2
-6. **Image URLs**: Returned in the `image_urls` array in the response
-7. **Tags Format**: Can be sent as JSON string `"[\"tag1\",\"tag2\"]"` or comma-separated `"tag1,tag2"`
-
-## Response Format
+## 5. Response Format
 
 ```json
 {
-  "article_id": 1,
-  "title": "Hashu Pi Bagh",
-  "slug": "hashu-pi-bagh",
-  "excerpt": "Beautiful orchard in Shigar",
-  "content": "Full article content...",
-  "published_at": null,
-  "seo_title": "Hashu Pi Bagh - Best Orchard",
-  "seo_keywords": "shigar,skardu,orchard,fruits",
-  "seo_description": "Visit the beautiful Hashu Pi Bagh",
-  "image_urls": [
-    "https://your-r2-domain.com/uploads/abc-123.jpg",
-    "https://your-r2-domain.com/uploads/def-456.jpg",
-    "https://your-r2-domain.com/uploads/ghi-789.jpg"
-  ],
-  "location": {
-    "location_id": 5,
-    "name": "Shigar"
-  },
-  "tags": ["nature", "tourism", "orchard"]
+  "article_id": 42,
+  "title": "The Magic of Deosai",
+  "slug": "the-magic-of-deosai",
+  "image_urls": ["..."],
+  "locations": [{ "id": 5, "name": "Skardu" }],
+  "categories": [{ "category_id": 1, "name": "Adventure" }],
+  "tags": ["nature"]
 }
 ```
-
-## Error Handling
-
-### No Images (Optional)
-If no images are provided, the article will be created/updated without images. The `image_urls` field will be an empty array.
-
-### Too Many Images
-Only the first 3 images will be processed. Additional images are ignored.
-
-### Upload Failures
-If an image upload to R2 fails, the entire operation will fail and return an error.
-
-```json
-{
-  "message": "Failed to upload file to R2"
-}
-```
-
-### Missing Required Fields
-```json
-{
-  "message": "Place not found"
-}
-```
-
-## Migration from Old API
-
-**Old Format (deprecated):**
-```javascript
-{
-  "image_url": "https://external-url.com/image.jpg"
-}
-```
-
-**New Format:**
-```javascript
-// Use FormData with file uploads
-const formData = new FormData();
-formData.append('images', fileObject);
-```
-
-The backend still accepts `image_url` for backward compatibility, but it's recommended to use the new multipart upload approach.

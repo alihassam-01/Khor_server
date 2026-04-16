@@ -14,12 +14,12 @@ import {
 } from "@modules/user/dtos";
 import { AuthService } from "./auth.service";
 import { forgotPasswordTemplate } from "./email/templates/forgotPassword";
-import * as jwt from "jsonwebtoken";
+// import * as jwt from "jsonwebtoken";
 import { UserRole } from "@common/enums";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { sendEmail } from "./email";
-import { CONFIG } from "@config/config";
+// import { CONFIG } from "@config/config";
 import { logInfo } from "@lib/logger";
 
 export class UserService {
@@ -38,25 +38,27 @@ export class UserService {
       return;
     }
 
-    if (!CONFIG.jwt.secret) {
-      throw new AppError("JWT_SECRET environment variable is not defined.", 500, ErrorCodes.INTERNAL_SERVER_ERROR);
-    }
-    const resetToken = jwt.sign({ email }, CONFIG.jwt.secret, {
-      expiresIn: CONFIG.jwt.resetExpiresIn as any,
-    });
+    const otp = this.authService.generateOtp();
+    console.log(`[USER] Generated forgot password OTP for ${email}: ${otp}`);
+    const hashedOtp = await this.authService.hashOtp(otp);
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    const resetLink = `${CONFIG.web_domain.url}/reset-password?token=${resetToken}`;
+    user.verificationToken = hashedOtp;
+    user.otpExpiresAt = otpExpiresAt;
+    await this.userRepository.save(user);
 
     const name =
       user.userType === UserRole.VENDOR
         ? user.vendor?.username
         : user.customerProfile?.username;
+        
     await sendEmail({
       to: email,
-      subject: "Reset Password",
-      html: forgotPasswordTemplate(name || "User", resetLink),
+      subject: "Password Reset OTP",
+      html: forgotPasswordTemplate(name || "User", otp),
     });
-    logInfo(`Password reset email sent to ${email}`);
+    
+    logInfo(`Password reset OTP email sent to ${email}`);
     return;
   }
 

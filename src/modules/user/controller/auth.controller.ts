@@ -29,8 +29,11 @@ export class AuthController {
     }
 
     async verifyOtp(req: FastifyRequest<{ Body: IVerifyOtpDto }>, reply: FastifyReply) {
-        await this.authService.verifyOtp(req.body.email, req.body.otp);
-        const response: IAuthMessageResponseDto = { message: "Email verified successfully" };
+        const result = await this.authService.verifyOtp(req.body.email, req.body.otp);
+        const response: IAuthMessageResponseDto = { 
+            message: "Email verified successfully",
+            resetToken: result.resetToken 
+        };
         reply.send(response);
     }
 

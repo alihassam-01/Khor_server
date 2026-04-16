@@ -48,11 +48,11 @@ export class AuthService {
         return bcrypt.compare(password, hash);
     }
 
-    private generateOtp(): string {
+    public generateOtp(): string {
         return crypto.randomInt(10 ** (OTP_LENGTH - 1), 10 ** OTP_LENGTH).toString();
     }
 
-    private async hashOtp(otp: string): Promise<string> {
+    public async hashOtp(otp: string): Promise<string> {
         return bcrypt.hash(otp, 10);
     }
 
@@ -113,13 +113,13 @@ export class AuthService {
         });
     }
 
-    async verifyOtp(email: string, otp: string): Promise<boolean> {
+    async verifyOtp(email: string, otp: string): Promise<{ success: boolean; resetToken?: string }> {
         const user = await this.userRepository.findOneBy({ email });
         if (!user) {
             throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        if (user.isVerified) {
+        if (user.isVerified && !user.verificationToken) {
             throw new AppError("Email is already verified", 400, ErrorCodes.OTP_ALREADY_VERIFIED);
         }
 
@@ -142,7 +142,16 @@ export class AuthService {
         await this.userRepository.save(user);
 
         logInfo(`OTP verified successfully for user: ${email}`);
-        return true;
+
+        // Generate a reset token that can be used for password reset (Step 3)
+        if (!CONFIG.jwt.secret) {
+            throw new Error("JWT_SECRET is not configured");
+        }
+        const resetToken = jwt.sign({ email }, CONFIG.jwt.secret as string, {
+            expiresIn: "10m", // Short lived token for password reset
+        });
+
+        return { success: true, resetToken };
     }
 
     async resendOtp(email: string): Promise<void> {
