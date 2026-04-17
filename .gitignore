@@ -2,7 +2,7 @@
 node_modules/
 
 # Dependency lock file
-package-lock.json
+# package-lock.json
 # (optional) yarn.lock or pnpm-lock.yaml if you're not using them
 
 # Build output
