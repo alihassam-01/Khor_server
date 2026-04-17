@@ -1,4 +1,4 @@
-import { IsNull, Not, Repository } from "typeorm";
+import { Repository } from "typeorm";
 import { AppDataSource } from "@config/ormconfig";
 import { CustomerProfile, User } from "@modules/user/entity/user";
 import { Vendor } from "@modules/user/entity/business/vendor-entity";
@@ -73,6 +73,9 @@ export class UserService {
     if (!user) {
       throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
     }
+
+    const isVendor = user.userType === UserRole.VENDOR;
+    
     return {
       isActive: user.isActive,
       isVerified: user.isVerified,
@@ -80,17 +83,17 @@ export class UserService {
       userType: user.userType,
       createdAt: user.createdAt,
       profilePicture:
-        user.userType === UserRole.VENDOR
+        isVendor
           ? user.vendor?.profile_picture
-          : user.customerProfile?.profile_picture,
+          : user.customerProfile?.profile_picture || undefined,
       username:
-        user.userType === UserRole.VENDOR
+        (isVendor
           ? user.vendor?.username
-          : user.customerProfile?.username,
+          : user.customerProfile?.username) || user.email.split("@")[0] || "Unknown User",
       phoneNumber:
-        user.userType === UserRole.VENDOR
+        (isVendor
           ? user.vendor?.phone_number
-          : user.customerProfile?.phone_number,
+          : user.customerProfile?.phone_number) || undefined,
     };
   }
 
@@ -104,19 +107,22 @@ export class UserService {
 
     return users.map((user) => {
         let profile: IVendorProfileDTO | ICustomerProfileDTO | null = null;
-        if (user.userType === UserRole.CUSTOMER && user.customerProfile) {
+        const fallbackUsername = user.email.split("@")[0] || "Unknown User";
+
+        if (user.userType === UserRole.VENDOR) {
             profile = {
-                id: user.customerProfile.userId, // Use userId for CustomerProfile
-                username: user.customerProfile.username,
-                phone_number: user.customerProfile.phone_number,
-                profile_picture: user.customerProfile.profile_picture
+                id: user.vendor?.id || user.id, // Use user.id as fallback for profile id if vendor record is missing
+                username: user.vendor?.username || fallbackUsername,
+                phone_number: user.vendor?.phone_number || undefined,
+                profile_picture: user.vendor?.profile_picture || undefined
             };
-        } else if (user.userType === UserRole.VENDOR && user.vendor) {
+        } else {
+            // Default to customer-like profile for other roles (Customer, Admin, Travel Agency)
             profile = {
-                id: user.vendor.id, // Use id (UUID string) for Vendor
-                username: user.vendor.username || "",
-                phone_number: user.vendor.phone_number,
-                profile_picture: user.vendor.profile_picture
+                id: user.customerProfile?.userId || user.id,
+                username: user.customerProfile?.username || fallbackUsername,
+                phone_number: user.customerProfile?.phone_number || undefined,
+                profile_picture: user.customerProfile?.profile_picture || undefined
             };
         }
 
@@ -137,7 +143,6 @@ export class UserService {
       where: {
         isActive: true,
         userType: UserRole.CUSTOMER,
-        customerProfile: Not(IsNull()),
       },
       relations: {
         customerProfile: true,
@@ -148,12 +153,12 @@ export class UserService {
       isActive: user.isActive,
       isVerified: user.isVerified,
       email: user.email,
-      customer: user.customerProfile ? {
-          id: user.customerProfile.userId, // Use userId
-          username: user.customerProfile.username,
-          phone_number: user.customerProfile.phone_number,
-          profile_picture: user.customerProfile.profile_picture
-      } : null,
+      customer: {
+          id: user.customerProfile?.userId || user.id,
+          username: user.customerProfile?.username || user.email.split("@")[0] || "Unknown User",
+          phone_number: user.customerProfile?.phone_number || undefined,
+          profile_picture: user.customerProfile?.profile_picture || undefined
+      },
       createdAt: user.createdAt,
     }));
   }
@@ -163,7 +168,6 @@ export class UserService {
       where: {
         isActive: true,
         userType: UserRole.VENDOR,
-        vendor: { id: Not(IsNull()) },
       },
       relations: {
         vendor: true,
@@ -173,13 +177,13 @@ export class UserService {
     return users.map((user) => ({
       id: user.id,
       userId: user.id,
-      vendorProfileId: user.vendor?.id, // This is a UUID string
+      vendorProfileId: user.vendor?.id || undefined,
       isActive: user.isActive,
       isVerified: user.isVerified,
       email: user.email,
-      username: user.vendor?.username,
-      profile_picture: user.vendor?.profile_picture,
-      phone_number: user.vendor?.phone_number,
+      username: user.vendor?.username || user.email.split("@")[0] || "Unknown Vendor",
+      profile_picture: user.vendor?.profile_picture || undefined,
+      phone_number: user.vendor?.phone_number || undefined,
       createdAt: user.createdAt,
     }));
   }
@@ -205,31 +209,32 @@ export class UserService {
       throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
     }
 
-    if (user.userType === newRole) {
-      return { success: true, message: "User is already assigned this role." };
-    }
-
+    // Even if role is same, ensure profile exists
     if (newRole === UserRole.VENDOR && !user.vendor) {
       const vendor = this.vendorRepo.create({
         user,
-        username: user.customerProfile?.username || "New Vendor",
+        username: user.customerProfile?.username || user.email.split("@")[0] || "New Vendor",
         profile_picture: user.customerProfile?.profile_picture || undefined,
+        phone_number: user.customerProfile?.phone_number || undefined,
       });
       await this.vendorRepo.save(vendor);
     } 
     else if (newRole === UserRole.CUSTOMER && !user.customerProfile) {
       const customer = this.customerRepo.create({
         user,
-        username: user.vendor?.username || "New Customer",
+        username: user.vendor?.username || user.email.split("@")[0] || "New Customer",
         profile_picture: user.vendor?.profile_picture || undefined,
+        phone_number: user.vendor?.phone_number || undefined,
       });
       await this.customerRepo.save(customer);
     }
 
-    user.userType = newRole;
-    await this.userRepository.save(user);
+    if (user.userType !== newRole) {
+      user.userType = newRole;
+      await this.userRepository.save(user);
+      logInfo(`User role updated successfully for ${userId} to ${newRole}`);
+    }
 
-    logInfo(`User role updated successfully for ${userId} to ${newRole}`);
     return this.getUserById(user.id);
   }
 

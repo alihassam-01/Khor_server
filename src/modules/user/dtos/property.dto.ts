@@ -3,6 +3,9 @@ export interface ICreateProperty {
   description: string;
   streetAddress?: string;
   localityId: string;
+  location_id?: number;
+  location_name?: string;
+  price?: number;
   landmark?: string;
   plusCode?: string;
   vendorId: string;
