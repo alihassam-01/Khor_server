@@ -54,10 +54,9 @@ export class R2ClientService {
     mimetype: string,
     folder: string = "uploads"
   ): Promise<{ url: string; key: string }> => {
-    // Check for duplicate by hashing the original buffer
     const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
     const existing = await this.s3Image.findOne({ where: { hash, isDeleted: false } });
-    
+
     if (existing) {
       return { url: existing.url, key: existing.key };
     }
@@ -93,7 +92,7 @@ export class R2ClientService {
       ContentType: outMimetype,
     });
     await this.r2Client.send(command);
-    
+
     const url = `${this.getBucketUrl()}/${key}`;
     if (!url) {
       throw new Error("Failed to upload file to R2: URL generation failed");
@@ -107,7 +106,7 @@ export class R2ClientService {
       isDeleted: false,
     });
     await this.s3Image.save(imageEntity);
-    
+
     return { url, key };
   };
 
@@ -136,7 +135,7 @@ export class R2ClientService {
     });
     await this.r2Client.send(command);
     await this.s3Image.update({ key: In(keys) }, { isDeleted: true });
-    
+
     return { success: true, message: "File deleted successfully" };
   };
 

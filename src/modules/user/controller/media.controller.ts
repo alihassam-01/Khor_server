@@ -69,11 +69,22 @@ export class MediaController {
             });
 
         } catch (error: unknown) {
-            const err = error as Error;
-            console.error("[MediaController] Upload error:", err);
-            return reply.status(500).send({ 
+            const err = error as any;
+            console.error("[MediaController] Upload error:", {
+                message: err.message,
+                code: err.code,
+                statusCode: err.statusCode,
+                stack: err.stack
+            });
+            
+            const statusCode = err.statusCode || 500;
+            const message = err.code === 'FST_ERR_MULTIPART_FILE_SIZE_LIMIT' 
+                ? "One or more files exceed the size limit." 
+                : "Image upload failed: " + err.message;
+
+            return reply.status(statusCode).send({ 
                 status: "error", 
-                error: "Image upload failed: " + err.message 
+                error: message
             });
         }
     }
