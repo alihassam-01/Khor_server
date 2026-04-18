@@ -35,7 +35,7 @@ export class ArticleService {
       locations: (article.locations || []).map(loc => ({
         location_id: loc.location_id,
         name: loc.name,
-        categories: loc.categoryMappings?.map(m => ({
+        categories: loc.categoryMappings?.filter(m => m.category).map(m => ({
           categoryId: m.category.categoryId,
           name: m.category.name,
           slug: m.category.slug
@@ -52,7 +52,7 @@ export class ArticleService {
           slug: enriched.locality.slug
       } : undefined,
       tags: article.articleTags?.map((at) => at.tag.name) || [],
-      categories: article.categoryMappings?.map(m => ({
+      categories: article.categoryMappings?.filter(m => m.category).map(m => ({
           categoryId: m.category.categoryId,
           name: m.category.name,
           slug: m.category.slug
@@ -364,6 +364,8 @@ export class ArticleService {
       .leftJoinAndSelect("articleTags.tag", "tag")
       .leftJoinAndSelect("article.categoryMappings", "categoryMappings")
       .leftJoinAndSelect("categoryMappings.category", "category")
+      .leftJoinAndSelect("location.categoryMappings", "locCategoryMappings")
+      .leftJoinAndSelect("locCategoryMappings.category", "locCategory")
       .skip(skip)
       .take(limit)
       .orderBy("article.published_at", "DESC");
@@ -425,6 +427,7 @@ export class ArticleService {
         "categoryMappings",
         "categoryMappings.category",
         "locations.categoryMappings",
+        "locations.categoryMappings.category",
         "locations.attributes",
       ],
       order: { published_at: "DESC" },
@@ -449,6 +452,7 @@ export class ArticleService {
       .leftJoinAndSelect("article.categoryMappings", "categoryMappings")
       .leftJoinAndSelect("categoryMappings.category", "category")
       .leftJoinAndSelect("location.categoryMappings", "locationCategoryMappings")
+      .leftJoinAndSelect("locationCategoryMappings.category", "locationCategory")
       .leftJoinAndSelect("location.attributes", "locationAttributes")
       .addSelect(
         `ts_rank_cd(article.search_vector, websearch_to_tsquery('english', :term))`,
