@@ -29,10 +29,10 @@ export class PropertyController {
             // Map frontend fields (ICreateProperty) to backend expected fields
             const mappedBody = {
                 ...body,
-                location_name: body.streetAddress || "",
-                location_id: Number(body.localityId),
+                location_name: (body as any).location_name || body.streetAddress || "",
+                location_id: (body as any).location_id || Number(body.localityId),
                 image: body.images && body.images.length > 0 ? body.images[0] : "",
-                price: 0, // Default for routing, will be handled by sub-controllers if needed
+                price: body.price || 0, // Default for routing, will be handled by sub-controllers if needed
                 vendor_id: authUserId,
             };
 

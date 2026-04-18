@@ -11,6 +11,7 @@ import { S3ImagesEntity } from "@modules/user/entity/images/s3Images.entity";
 import { AppDataSource } from "@config/ormconfig";
 import { In, Repository } from "typeorm";
 import { IPresignedUrlResponseDTO } from "@modules/user/dtos/r2-presigned.dto";
+import * as crypto from 'crypto';
 
 export class R2ClientService {
   private r2Client = new S3Client({
@@ -53,6 +54,14 @@ export class R2ClientService {
     mimetype: string,
     folder: string = "uploads"
   ): Promise<{ url: string; key: string }> => {
+    // Check for duplicate by hashing the original buffer
+    const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+    const existing = await this.s3Image.findOne({ where: { hash, isDeleted: false } });
+    
+    if (existing) {
+      return { url: existing.url, key: existing.key };
+    }
+
     // If image, process to WebP and resize; otherwise upload as-is
     let outBuffer = fileBuffer;
     let outMimetype = mimetype;
@@ -93,6 +102,7 @@ export class R2ClientService {
     const imageEntity = this.s3Image.create({
       key,
       url,
+      hash,
       dateUploaded: new Date(),
       isDeleted: false,
     });

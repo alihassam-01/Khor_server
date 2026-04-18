@@ -10,6 +10,8 @@ export class S3ImagesEntity {
     url!: string;
     @Column({ type: 'timestamp', nullable: false })
     dateUploaded!: Date;
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    hash?: string;
     @Column({ type: 'boolean' })
     isDeleted!: boolean;
 }

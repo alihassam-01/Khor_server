@@ -9,10 +9,16 @@ export interface IReviewDTO {
 }
 
 export interface IRoomTypeDTO {
-    type: RoomType;
+    name: string;
+    description?: string;
+    type?: RoomType;
     price: number;
     amenities: string[];
     capacity: number;
+    total_rooms?: number;
+    images?: string[];
+    size_sqm?: number;
+    is_active?: boolean;
 }
 
 export interface IHotelDTO {

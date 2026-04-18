@@ -95,10 +95,17 @@ export class HotelService {
                 })) || [],
             roomTypes:
                 hotel.room_types?.map((roomType) => ({
+                    id: roomType.id,
+                    name: roomType.name,
+                    description: roomType.description,
                     type: roomType.type,
                     price: Number(roomType.price),
                     amenities: roomType.amenities || [],
                     capacity: roomType.capacity,
+                    total_rooms: roomType.total_rooms,
+                    images: roomType.images || [],
+                    size_sqm: roomType.size_sqm ? Number(roomType.size_sqm) : undefined,
+                    is_active: roomType.is_active,
                 })) || [],
             vendor_id: hotel.vendor_id,
             expires_at: hotel.expires_at,
@@ -237,10 +244,16 @@ export class HotelService {
             if (hotelData.roomTypes && hotelData.roomTypes.length > 0) {
                 const roomTypes = hotelData.roomTypes.map((roomTypeData) => {
                     const roomType = new HotelRoomType();
-                    roomType.type = this.validateRoomType(roomTypeData.type);
+                    roomType.name = roomTypeData.name;
+                    roomType.description = roomTypeData.description || "";
+                    roomType.type = roomTypeData.type ? this.validateRoomType(roomTypeData.type) : undefined as any;
                     roomType.price = roomTypeData.price;
                     roomType.amenities = roomTypeData.amenities || [];
                     roomType.capacity = roomTypeData.capacity;
+                    roomType.total_rooms = roomTypeData.total_rooms || 1;
+                    roomType.images = roomTypeData.images || [];
+                    roomType.size_sqm = roomTypeData.size_sqm || 0;
+                    roomType.is_active = roomTypeData.is_active !== undefined ? roomTypeData.is_active : true;
                     roomType.hotel = savedHotel;
                     roomType.hotel_id = savedHotel.id;
                     return roomType;
@@ -383,10 +396,16 @@ export class HotelService {
             }
             hotel.room_types = hotelData.roomTypes.map((rt) => {
                 const roomType = new HotelRoomType();
-                roomType.type = this.validateRoomType(rt.type);
+                roomType.name = rt.name;
+                roomType.description = rt.description || "";
+                roomType.type = rt.type ? this.validateRoomType(rt.type) : undefined as any;
                 roomType.price = rt.price;
                 roomType.amenities = rt.amenities || [];
                 roomType.capacity = rt.capacity;
+                roomType.total_rooms = rt.total_rooms || 1;
+                roomType.images = rt.images || [];
+                roomType.size_sqm = rt.size_sqm || 0;
+                roomType.is_active = rt.is_active !== undefined ? rt.is_active : true;
                 roomType.hotel_id = id;
                 return roomType;
             });
