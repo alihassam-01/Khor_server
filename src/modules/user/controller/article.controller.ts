@@ -1,24 +1,24 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ArticleService } from '@modules/user/service/article.service';
-import { 
-    IArticleIdParams, 
-    IArticleSlugParams, 
-    IGetArticleQuery, 
-    IListArticlesQuery, 
-    ISearchArticlesQuery 
+import {
+  IArticleIdParams,
+  IArticleSlugParams,
+  IGetArticleQuery,
+  IListArticlesQuery,
+  ISearchArticlesQuery
 } from '@modules/user/types';
-import { 
-    ICreateArticleDTO, 
-    IUpdateArticleDTO, 
-    IArticleDTO, 
-    IPaginatedArticlesResponse 
+import {
+  ICreateArticleDTO,
+  IUpdateArticleDTO,
+  IArticleDTO,
+  IPaginatedArticlesResponse
 } from '@modules/user/dtos';
 
 export class ArticleController {
-  constructor(private readonly articleService: ArticleService) {}
+  constructor(private readonly articleService: ArticleService) { }
 
   async createArticle(
-    req: FastifyRequest<{ Body: ICreateArticleDTO }>, 
+    req: FastifyRequest<{ Body: ICreateArticleDTO }>,
     reply: FastifyReply
   ) {
     try {
@@ -26,10 +26,8 @@ export class ArticleController {
 
       const articleData: ICreateArticleDTO = {
         ...body,
-        // Ensure numeric arrays (in case client sends strings, coerce safely)
         location_ids: (body.location_ids || []).map(Number).filter(n => !isNaN(n)),
         categories: (body.categories || []).map(Number).filter(n => !isNaN(n)),
-        // Normalize tags: accept comma-string or array
         tags: Array.isArray(body.tags)
           ? (body.tags as string[]).filter((t: string) => t?.trim())
           : typeof (body as any).tags === 'string'
@@ -46,7 +44,7 @@ export class ArticleController {
   }
 
   async getArticleById(
-    req: FastifyRequest<{ Params: IArticleIdParams; Querystring: IGetArticleQuery }>, 
+    req: FastifyRequest<{ Params: IArticleIdParams; Querystring: IGetArticleQuery }>,
     reply: FastifyReply
   ) {
     try {
@@ -65,7 +63,7 @@ export class ArticleController {
   }
 
   async getArticleBySlug(
-    req: FastifyRequest<{ Params: IArticleSlugParams; Querystring: IGetArticleQuery }>, 
+    req: FastifyRequest<{ Params: IArticleSlugParams; Querystring: IGetArticleQuery }>,
     reply: FastifyReply
   ) {
     try {
@@ -83,7 +81,7 @@ export class ArticleController {
   }
 
   async updateArticle(
-    req: FastifyRequest<{ Params: IArticleIdParams; Body: IUpdateArticleDTO }>, 
+    req: FastifyRequest<{ Params: IArticleIdParams; Body: IUpdateArticleDTO }>,
     reply: FastifyReply
   ) {
     try {
@@ -92,14 +90,12 @@ export class ArticleController {
 
       const articleData: IUpdateArticleDTO = {
         ...body,
-        // Ensure numeric arrays
         location_ids: body.location_ids
           ? body.location_ids.map(Number).filter(n => !isNaN(n))
           : undefined,
         categories: body.categories
           ? body.categories.map(Number).filter(n => !isNaN(n))
           : undefined,
-        // Normalize tags
         tags: Array.isArray(body.tags)
           ? (body.tags as string[]).filter((t: string) => t?.trim())
           : typeof (body as any).tags === 'string'
@@ -116,7 +112,7 @@ export class ArticleController {
   }
 
   async deleteArticle(
-    req: FastifyRequest<{ Params: IArticleIdParams }>, 
+    req: FastifyRequest<{ Params: IArticleIdParams }>,
     reply: FastifyReply
   ) {
     try {
@@ -129,7 +125,7 @@ export class ArticleController {
   }
 
   async listArticles(
-    req: FastifyRequest<{ Querystring: IListArticlesQuery }>, 
+    req: FastifyRequest<{ Querystring: IListArticlesQuery }>,
     reply: FastifyReply
   ) {
     try {
@@ -150,7 +146,7 @@ export class ArticleController {
   }
 
   async getAllArticles(
-    req: FastifyRequest<{ Querystring: IGetArticleQuery }>, 
+    req: FastifyRequest<{ Querystring: IGetArticleQuery }>,
     reply: FastifyReply
   ) {
     try {
@@ -164,7 +160,7 @@ export class ArticleController {
   }
 
   async searchArticles(
-    req: FastifyRequest<{ Querystring: ISearchArticlesQuery }>, 
+    req: FastifyRequest<{ Querystring: ISearchArticlesQuery }>,
     reply: FastifyReply
   ) {
     try {
