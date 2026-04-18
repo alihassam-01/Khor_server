@@ -12,7 +12,7 @@ async function startServer() {
   const app = fastify({
     pluginTimeout: 120000,
     logger: true,
-    bodyLimit: 50 * 1024 * 1024, // 50MB to allow multiple image uploads in one request
+    bodyLimit: 50 * 1024 * 1024,
   });
 
   await app.register(fastifyMultipart, {
