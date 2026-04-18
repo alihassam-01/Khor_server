@@ -4,7 +4,7 @@ import {
     IPresignedUrlRequestDTO, 
     IBatchPresignedUrlRequestDTO 
 } from "@modules/user/dtos";
-import * as fs from "fs";
+
 
 export class R2ClientController {
   private r2ClientService: R2ClientService;
@@ -18,22 +18,32 @@ export class R2ClientController {
    */
   async uploadFile(req: FastifyRequest, reply: FastifyReply) {
     try {
-      // @ts-ignore - Fastify multipart might not be typed correctly in this context
-      const files = (await req.saveRequestFiles?.()) || [];
-      if (!files.length) {
+      const body = req.body as any;
+      const imagesRaw = body?.images || body?.file || body?.files;
+      
+      if (!imagesRaw) {
         return reply.status(400).send({ error: "No files provided" });
       }
 
+      const files = Array.isArray(imagesRaw) ? imagesRaw : [imagesRaw];
       const uploadResults = [];
+
       for (const file of files) {
-        const buffer = fs.readFileSync(file.filepath);
-        const result = await this.r2ClientService.uploadFileToR2(
-          buffer,
-          file.filename,
-          file.mimetype
-        );
-        uploadResults.push(result);
+        if (file && typeof file.toBuffer === 'function') {
+          const buffer = await file.toBuffer();
+          const result = await this.r2ClientService.uploadFileToR2(
+            buffer,
+            file.filename || 'upload',
+            file.mimetype || 'application/octet-stream'
+          );
+          uploadResults.push(result);
+        }
       }
+
+      if (uploadResults.length === 0) {
+        return reply.status(400).send({ error: "No valid files were uploaded." });
+      }
+
       reply.send({ status: "success", data: uploadResults });
     } catch (error: unknown) {
       const err = error as Error;

@@ -19,6 +19,9 @@ async function startServer() {
     attachFieldsToBody: true,
     limits: {
       fileSize: CONFIG.r2.maxFileSize,
+      fieldSize: CONFIG.r2.maxFileSize, // Allow fields (which might contain file data in memory) to be as large as files
+      files: 20, // Support batch uploads of up to 20 files
+      parts: 100, // Support up to 100 parts per request
     }
   });
   await app.register(import('@fastify/formbody'));
