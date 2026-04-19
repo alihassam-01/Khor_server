@@ -93,7 +93,7 @@ export class AnalyticsJobService {
                     adsStats
                 );
                 
-                logInfo(`Sent weekly report to vendor: ${vendorUser.email}`);
+
             }
             
             logInfo("Weekly analytics report generation completed successfully.");

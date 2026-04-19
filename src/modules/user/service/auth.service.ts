@@ -70,7 +70,7 @@ export class AuthService {
 
             const hashedPassword = await this.hashPassword(password);
             const otp = this.generateOtp();
-            logInfo(`Generated OTP for ${email}`);
+
             const hashedOtp = await this.hashOtp(otp);
             const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
@@ -176,7 +176,7 @@ export class AuthService {
         }
 
         const otp = this.generateOtp();
-        logInfo(`Resent OTP for ${email}`);
+
         const hashedOtp = await this.hashOtp(otp);
         const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 

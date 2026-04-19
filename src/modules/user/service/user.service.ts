@@ -42,7 +42,7 @@ export class UserService {
     }
 
     const otp = this.authService.generateOtp();
-    logInfo(`Generated forgot password OTP for ${email}`);
+
     const hashedOtp = await this.authService.hashOtp(otp);
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
