@@ -21,8 +21,11 @@ import { ErrorCodes } from "@common/errors/error-codes";
 import { sendEmail } from "./email";
 // import { CONFIG } from "@config/config";
 import { logInfo } from "@lib/logger";
+import { EMAIL_SUBJECTS, AuditLogStatus, AuditLogEventType } from "../constant/audit.constant";
+import { AuditLogService } from "./audit-log.service";
 
 export class UserService {
+  private auditLogService = new AuditLogService();
   private userRepository: Repository<User> = AppDataSource.getRepository(User);
   private vendorRepo: Repository<Vendor> = AppDataSource.getRepository(Vendor);
   private customerRepo: Repository<CustomerProfile> = AppDataSource.getRepository(CustomerProfile);
@@ -39,7 +42,7 @@ export class UserService {
     }
 
     const otp = this.authService.generateOtp();
-    console.log(`[USER] Generated forgot password OTP for ${email}: ${otp}`);
+    logInfo(`Generated forgot password OTP for ${email}`);
     const hashedOtp = await this.authService.hashOtp(otp);
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -52,13 +55,21 @@ export class UserService {
         ? user.vendor?.username
         : user.customerProfile?.username;
         
-    await sendEmail({
+    const success = await sendEmail({
       to: email,
-      subject: "Password Reset OTP",
+      subject: EMAIL_SUBJECTS.FORGOT_PASSWORD_OTP,
       html: forgotPasswordTemplate(name || "User", otp),
     });
+
+    await this.auditLogService.log(
+      AuditLogEventType.FORGOT_PASSWORD_OTP,
+      email,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { name: name || "User" }
+    );
     
-    logInfo(`Password reset OTP email sent to ${email}`);
+
     return;
   }
 

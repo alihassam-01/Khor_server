@@ -16,6 +16,7 @@ import { subscriptionPlanRoutes } from "./subscription-plan.routes";
 import { paymentSettingRoutes } from "./payment-setting.routes";
 import propertyRoutes from "./property.routes";
 import { mediaRoutes } from "./media.routes";
+import analyticsRoutes from "./analytics.routes";
 
 
 // Core routes - always enabled
@@ -32,6 +33,7 @@ const routes = [
   subscriptionPlanRoutes, // Public subscription plans
   paymentSettingRoutes, // Admin and public payment settings
   propertyRoutes, // Generic property routes
+  analyticsRoutes,
 ];
 
 

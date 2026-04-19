@@ -19,15 +19,22 @@ async function startServer() {
     attachFieldsToBody: true,
     limits: {
       fileSize: CONFIG.r2.maxFileSize,
-      fieldSize: CONFIG.r2.maxFileSize, // Allow fields (which might contain file data in memory) to be as large as files
-      files: 20, // Support batch uploads of up to 20 files
-      parts: 100, // Support up to 100 parts per request
+      fieldSize: CONFIG.r2.maxFileSize,
+      files: 20,
+      parts: 100,
     }
   });
   await app.register(import('@fastify/formbody'));
 
   await app.register(import('@fastify/cors'), {
-    origin: "*",
+    origin: [
+      CONFIG.web_domain.url as string, 
+      CONFIG.admin_domain.url as string,
+      "http://localhost:5173", 
+      "http://localhost:5174",
+      "http://localhost:5175"
+    ],
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   });
 
@@ -57,6 +64,14 @@ async function startServer() {
   }
 
   app.setErrorHandler(globalErrorHandler);
+
+  // Initialize background jobs
+  try {
+    const { initJobs } = await import('./modules/user/jobs');
+    initJobs();
+  } catch (error) {
+    logError(error, "Jobs initialization");
+  }
 
   try {
     await app.listen({ port: CONFIG.server.port, host: CONFIG.server.host });

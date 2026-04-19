@@ -31,6 +31,9 @@ export const CONFIG = {
   web_domain: {
     url: process.env.WEB_DOMAIN,
   },
+  admin_domain: {
+    url: process.env.ADMIN_DOMAIN || "https://admin.gokhor.com",
+  },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
   },
