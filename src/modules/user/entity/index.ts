@@ -31,6 +31,7 @@ export * from "./location/location.entity";
 // User entities
 export * from "./user/customer-profile.entity";
 export * from "./user/user.entity";
+export * from "./audit-log.entity";
 
 // Business entities (minimal for Phase 1)
 export * from "./business";

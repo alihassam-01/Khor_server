@@ -126,6 +126,7 @@ interface IEmailBookingData {
     planType: string;
     duration: string;
   };
+  bookingId?: string;
   // Additional fields that might be passed
   customerInfo?: {
     fullName: string;

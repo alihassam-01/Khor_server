@@ -17,16 +17,15 @@ import {
     ICurrentUserResponseDto 
 } from "@modules/user/dtos";
 
-const PROFILE_IMAGES = [
-    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/rabbit.png",
-    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/lion.png",
-    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/cat.png",
-    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/chick.png",
-    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/penguin.png",
-    "https://khor-test-uploads.s3.us-east-1.amazonaws.com/uploads/profile_image/bear.png",
-];
+
+
+import { EMAIL_SUBJECTS, AuditLogStatus, AuditLogEventType } from "@modules/user/constant/audit.constant";
+import { AuditLogService } from "./audit-log.service";
+import { PROFILE_IMAGES } from "@modules/user/constant/user.constant";
 
 export class AuthService {
+    private auditLogService = new AuditLogService();
+
     constructor(
         private userRepository: Repository<User>,
         private vendorRepository: Repository<Vendor>,
@@ -71,17 +70,25 @@ export class AuthService {
 
             const hashedPassword = await this.hashPassword(password);
             const otp = this.generateOtp();
-            console.log(`[AUTH] Generated OTP for ${email}: ${otp}`);
+
             const hashedOtp = await this.hashOtp(otp);
             const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-            await sendEmail({
+            const success = await sendEmail({
                 to: email,
-                subject: "Your Khor Verification Code",
+                subject: EMAIL_SUBJECTS.REGISTRATION_OTP,
                 html: otpVerificationTemplate(name, otp, OTP_EXPIRY_MINUTES),
             });
 
-            logInfo(`OTP email sent to ${email}`);
+            await this.auditLogService.log(
+                AuditLogEventType.REGISTRATION_OTP,
+                email,
+                success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+                success ? undefined : "Email service returned failure",
+                { name, role: userRole }
+            );
+
+
 
             const user = this.userRepository.create({
                 email,
@@ -169,7 +176,7 @@ export class AuthService {
         }
 
         const otp = this.generateOtp();
-        console.log(`[AUTH] Resent OTP for ${email}: ${otp}`);
+
         const hashedOtp = await this.hashOtp(otp);
         const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
@@ -182,13 +189,21 @@ export class AuthService {
                 ? user.vendor?.username ?? email
                 : user.customerProfile?.username ?? email;
 
-        await sendEmail({
+        const success = await sendEmail({
             to: email,
-            subject: "Your New Khor Verification Code",
+            subject: EMAIL_SUBJECTS.RESEND_OTP,
             html: otpVerificationTemplate(username, otp, OTP_EXPIRY_MINUTES),
         });
 
-        logInfo(`OTP resent to ${email}`);
+        await this.auditLogService.log(
+            AuditLogEventType.RESEND_OTP,
+            email,
+            success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+            success ? undefined : "Email service returned failure",
+            { username }
+        );
+
+
     }
 
     async login(email: string, password: string): Promise<ILoginResponseDto> {

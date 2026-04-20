@@ -61,3 +61,8 @@ export enum PackageStatus {
     PUBLISHED = 'PUBLISHED',
     DRAFT = 'DRAFT',
   }
+
+  export enum AnalyticsEventType {
+    VIEW = 'view',
+    CLICK = 'click',
+  }

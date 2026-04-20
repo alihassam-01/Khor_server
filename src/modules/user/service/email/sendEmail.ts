@@ -1,10 +1,13 @@
 import { IEmailBookingData } from "@modules/user/dtos/bookingConfirmation.dto";
 import { sendEmail } from "./index";
 import { accountActivationTemplate } from "./templates/accountActivation";
+import { AuditLogStatus, AuditLogEventType, EMAIL_SUBJECTS } from "@modules/user/constant/audit.constant";
+import { AuditLogService } from "@modules/user/service/audit-log.service";
 import { bookingConfirmationEmailTemplate } from "./templates/bookingConfirmation";
-// import { bookingConfirmationEmailTemplate } from './templates/bookingConfirmation';
 
 export class SendEmail {
+  private auditLogService = new AuditLogService();
+
   async sendForgotPasswordEmail(
     name: string,
     email: string,
@@ -14,11 +17,21 @@ export class SendEmail {
     const html = forgotPasswordTemplate(name, resetLink);
     const success = await sendEmail({
       to: email,
-      subject: "Reset Your Password",
+      subject: EMAIL_SUBJECTS.FORGOT_PASSWORD_OTP,
       html,
     });
+
+    await this.auditLogService.log(
+      AuditLogEventType.FORGOT_PASSWORD_OTP,
+      email,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { name }
+    );
+
     return success ? { status: "ok" } : { status: "error" };
   }
+
   async sendAccountActivationEmail(
     name: string,
     email: string,
@@ -29,12 +42,21 @@ export class SendEmail {
 
     const success = await sendEmail({
       to: email,
-      subject: "Activate Your Account",
+      subject: EMAIL_SUBJECTS.ACCOUNT_ACTIVATION,
       html,
     });
 
+    await this.auditLogService.log(
+      AuditLogEventType.ACCOUNT_ACTIVATION,
+      email,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { name }
+    );
+
     return success ? { status: "ok" } : { status: "error" };
   }
+
   async sendBookingConfirmationEmail(
     bookingInfo: IEmailBookingData,
     pdfBuffer: Buffer
@@ -43,7 +65,7 @@ export class SendEmail {
 
     const success = await sendEmail({
       to: bookingInfo.customerEmail,
-      subject: "Booking Confirmation",
+      subject: EMAIL_SUBJECTS.BOOKING_CONFIRMATION,
       html,
       attachment: [
         {
@@ -53,8 +75,18 @@ export class SendEmail {
         },
       ],
     });
+
+    await this.auditLogService.log(
+      AuditLogEventType.BOOKING_CONFIRMATION,
+      bookingInfo.customerEmail,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { bookingId: bookingInfo.bookingId }
+    );
+
     return success ? { status: "ok" } : { status: "error" };
   }
+
   async sendContactEmail(
     name: string,
     email: string,
@@ -84,6 +116,40 @@ export class SendEmail {
       replyTo: email,
     });
 
+    await this.auditLogService.log(
+      AuditLogEventType.CONTACT_US_FORWARD,
+      adminEmail,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { fromName: name, fromEmail: email, subject }
+    );
+
+    return success ? { status: "ok" } : { status: "error" };
+  }
+
+  async sendAnalyticsReportEmail(
+    vendorName: string,
+    email: string,
+    period: string,
+    adsStats: any[]
+  ) {
+    const { analyticsReportTemplate } = await import("./templates/analyticsReport");
+    const html = analyticsReportTemplate(vendorName, period, adsStats);
+    
+    const success = await sendEmail({
+      to: email,
+      subject: `${EMAIL_SUBJECTS.ANALYTICS_REPORT} - ${period}`,
+      html,
+    });
+
+    await this.auditLogService.log(
+      AuditLogEventType.ANALYTICS_REPORT,
+      email,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { vendorName, period, adCount: adsStats.length }
+    );
+    
     return success ? { status: "ok" } : { status: "error" };
   }
 }
