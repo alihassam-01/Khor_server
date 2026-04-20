@@ -1,7 +1,7 @@
 import { AppDataSource } from "@config/ormconfig";
-import { AdAnalytics } from "../entity/ads/ad-analytics.entity";
-import { AnalyticsEventType } from "../entity/ENUM/enum";
-import { AdType } from "../entity/ENUM/ad.enum";
+import { AdAnalytics } from "@entity/ads/ad-analytics.entity";
+import { AnalyticsEventType } from "@entity/ENUM/enum";
+import { AdType } from "@entity/ENUM/ad.enum";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { logError } from "@lib/logger";
@@ -56,7 +56,7 @@ export class AnalyticsService {
             const formattedStats = stats.reduce((acc, curr) => {
                 acc[curr.type] = parseInt(curr.count);
                 return acc;
-            }, { view: 0, click: 0 });
+            }, { [AnalyticsEventType.VIEW]: 0, [AnalyticsEventType.CLICK]: 0 });
 
             return {
                 ...formattedStats,

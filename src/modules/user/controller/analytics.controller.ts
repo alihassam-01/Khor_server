@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { AnalyticsService, AnalyticsBatchItem } from "../service/analytics.service";
+import { AnalyticsService, AnalyticsBatchItem } from "@modules/user/service/analytics.service";
 import crypto from "crypto";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";

@@ -1,8 +1,9 @@
 import { AppDataSource } from "@config/ormconfig";
-import { User } from "../entity/user/user.entity";
-import { Hotel, Restaurant } from "../entity/ads";
-import { AdAnalytics } from "../entity/ads/ad-analytics.entity";
-import { SendEmail } from "./email/sendEmail";
+import { User } from "@entity/user/user.entity";
+import { Hotel, Restaurant } from "@entity/ads";
+import { AdAnalytics } from "@entity/ads/ad-analytics.entity";
+import { AnalyticsEventType } from "@entity/ENUM/enum";
+import { SendEmail } from "@modules/user/service/email/sendEmail";
 import { logInfo, logError } from "@lib/logger";
 
 export class AnalyticsJobService {
@@ -68,10 +69,10 @@ export class AnalyticsJobService {
                     const formatted = stats.reduce((acc, curr) => {
                         acc[curr.type] = parseInt(curr.count);
                         return acc;
-                    }, { view: 0, click: 0 });
+                    }, { [AnalyticsEventType.VIEW]: 0, [AnalyticsEventType.CLICK]: 0 });
 
-                    const views = formatted.view || 0;
-                    const clicks = formatted.click || 0;
+                    const views = formatted[AnalyticsEventType.VIEW] || 0;
+                    const clicks = formatted[AnalyticsEventType.CLICK] || 0;
                     const ctr = views > 0 ? ((clicks / views) * 100).toFixed(2) : "0.00";
 
                     adsStats.push({

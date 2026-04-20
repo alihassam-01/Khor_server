@@ -2,7 +2,7 @@ import { IEmailBookingData } from "@modules/user/dtos/bookingConfirmation.dto";
 import { sendEmail } from "./index";
 import { accountActivationTemplate } from "./templates/accountActivation";
 import { AuditLogStatus, AuditLogEventType, EMAIL_SUBJECTS } from "@modules/user/constant/audit.constant";
-import { AuditLogService } from "../audit-log.service";
+import { AuditLogService } from "@modules/user/service/audit-log.service";
 import { bookingConfirmationEmailTemplate } from "./templates/bookingConfirmation";
 
 export class SendEmail {

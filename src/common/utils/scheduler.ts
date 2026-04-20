@@ -1,16 +1,16 @@
 import { logInfo } from "@lib/logger";
+import { SchedulePattern } from "@common/enums/scheduler.enum";
 
 type Task = () => Promise<void> | void;
 
 export class SimpleScheduler {
-    private static tasks: { pattern: string; task: Task; lastRun?: Date }[] = [];
+    private static tasks: { pattern: SchedulePattern; task: Task; lastRun?: Date }[] = [];
     private static interval: any = null;
 
     /**
      * Minimal scheduler that checks every hour
-     * pattern: 'daily' | 'weekly' | 'monthly'
      */
-    static schedule(pattern: 'daily' | 'weekly' | 'monthly', task: Task) {
+    static schedule(pattern: SchedulePattern, task: Task) {
         this.tasks.push({ pattern, task });
         logInfo(`Task scheduled with pattern: ${pattern}`);
 
@@ -35,17 +35,17 @@ export class SimpleScheduler {
         for (const item of this.tasks) {
             let shouldRun = false;
 
-            if (item.pattern === 'daily') {
+            if (item.pattern === SchedulePattern.DAILY) {
                 // Run every day between 01:00 and 02:00
                 if (hour === 1) {
                     shouldRun = true;
                 }
-            } else if (item.pattern === 'weekly') {
+            } else if (item.pattern === SchedulePattern.WEEKLY) {
                 // Run on Monday (1) between 00:00 and 01:00
                 if (day === 1 && hour === 0) {
                     shouldRun = true;
                 }
-            } else if (item.pattern === 'monthly') {
+            } else if (item.pattern === SchedulePattern.MONTHLY) {
                 // Run on 1st of month between 00:00 and 01:00
                 if (date === 1 && hour === 0) {
                     shouldRun = true;
