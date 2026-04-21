@@ -48,7 +48,7 @@ export class PropertyController {
                 location_id: (body as any).location_id || Number(body.localityId),
                 image: body.images && body.images.length > 0 ? body.images[0] : "",
                 price: body.price || 0, // Default for routing, will be handled by sub-controllers if needed
-                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendorId || (body as any).vendor_id || authUserId) : authUserId,
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || authUserId) : authUserId,
             };
 
             // Update request body with mapped data for sub-controllers

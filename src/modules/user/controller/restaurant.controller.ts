@@ -11,13 +11,13 @@ import { extractMultipartFields, isMultipartRequest } from "@common/utils/multip
 import { PAGINATION_DEFAULTS } from "@common/constants";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
-import { logInfo, logWarn } from "@lib/logger";
+import { logWarn } from "@lib/logger";
 import { isValidUuid } from "@common/utils/uuid.util";
-import { 
-    IRestaurantIdParams, 
-    IGetAllRestaurantsQuery, 
-    IToggleRestaurantAdStatusBody, 
-    IRenewRestaurantAdBody, 
+import {
+    IRestaurantIdParams,
+    IGetAllRestaurantsQuery,
+    IToggleRestaurantAdStatusBody,
+    IRenewRestaurantAdBody,
     ISetRestaurantFeaturedStatusBody,
     IHotelLocationParams,
     IVendorIdParams
@@ -28,7 +28,7 @@ export class RestaurantController {
     private r2Client = new R2ClientService();
 
     async createRestaurant(
-        req: FastifyRequest<{ Body: ICreateRestaurantDTO | any }>, 
+        req: FastifyRequest<{ Body: ICreateRestaurantDTO | any }>,
         reply: FastifyReply
     ) {
         const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
@@ -117,13 +117,13 @@ export class RestaurantController {
                 map_link: extractedBody.map_link || undefined,
                 latitude: parseNumber(extractedBody.latitude, 'latitude'),
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
-                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendorId || extractedBody.vendor_id || authUserId) : authUserId,
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || authUserId) : authUserId,
             };
         } else {
             const body = req.body as ICreateRestaurantDTO;
-            restaurantData = { 
-                ...body, 
-                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendorId || (body as any).vendor_id || authUserId) : authUserId 
+            restaurantData = {
+                ...body,
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || authUserId) : authUserId 
             };
         }
 
@@ -132,7 +132,7 @@ export class RestaurantController {
     }
 
     async getRestaurantById(
-        req: FastifyRequest<{ Params: IRestaurantIdParams }>, 
+        req: FastifyRequest<{ Params: IRestaurantIdParams }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
@@ -146,13 +146,13 @@ export class RestaurantController {
     }
 
     async getAllRestaurants(
-        req: FastifyRequest<{ Querystring: IGetAllRestaurantsQuery }>, 
+        req: FastifyRequest<{ Querystring: IGetAllRestaurantsQuery }>,
         reply: FastifyReply
     ) {
-        const { 
-            page = String(PAGINATION_DEFAULTS.PAGE), 
-            limit = String(PAGINATION_DEFAULTS.LIMIT), 
-            searchQuery = "" 
+        const {
+            page = String(PAGINATION_DEFAULTS.PAGE),
+            limit = String(PAGINATION_DEFAULTS.LIMIT),
+            searchQuery = ""
         } = req.query;
         const pageNum = parseInt(page, 10) || PAGINATION_DEFAULTS.PAGE;
         const limitNum = parseInt(limit, 10) || PAGINATION_DEFAULTS.LIMIT;
@@ -165,7 +165,7 @@ export class RestaurantController {
     }
 
     async updateRestaurant(
-        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantDTO | any }>, 
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantDTO | any }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
@@ -212,7 +212,7 @@ export class RestaurantController {
     }
 
     async deleteRestaurant(
-        req: FastifyRequest<{ Params: IRestaurantIdParams }>, 
+        req: FastifyRequest<{ Params: IRestaurantIdParams }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
@@ -223,7 +223,7 @@ export class RestaurantController {
     // ========== ADMIN ENDPOINTS ==========
 
     async toggleAdStatus(
-        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IToggleRestaurantAdStatusBody }>, 
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IToggleRestaurantAdStatusBody }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
@@ -233,7 +233,7 @@ export class RestaurantController {
     }
 
     async renewAd(
-        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>, 
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
@@ -243,7 +243,7 @@ export class RestaurantController {
     }
 
     async renewAdByVendor(
-        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>, 
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
@@ -263,7 +263,7 @@ export class RestaurantController {
     }
 
     async getAdsByVendor(
-        req: FastifyRequest<{ Params: IVendorIdParams }>, 
+        req: FastifyRequest<{ Params: IVendorIdParams }>,
         reply: FastifyReply
     ) {
         const { vendorId } = req.params;
@@ -274,7 +274,7 @@ export class RestaurantController {
     }
 
     async setFeaturedStatus(
-        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: ISetRestaurantFeaturedStatusBody }>, 
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: ISetRestaurantFeaturedStatusBody }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
@@ -289,7 +289,7 @@ export class RestaurantController {
     }
 
     async getFeaturedAds(
-        req: FastifyRequest<{ Params: IHotelLocationParams }>, 
+        req: FastifyRequest<{ Params: IHotelLocationParams }>,
         reply: FastifyReply
     ) {
         const { locationId } = req.params;

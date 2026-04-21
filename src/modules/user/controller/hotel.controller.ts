@@ -129,7 +129,7 @@ export class HotelController {
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 subscription_type: extractedBody.subscription_type || undefined,
-                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendorId || extractedBody.vendor_id || userId) : userId,
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || userId) : userId,
             };
         } else {
             // JSON request body
@@ -149,7 +149,7 @@ export class HotelController {
             
             hotelData = { 
                 ...body, 
-                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendorId || (body as any).vendor_id || userId) : userId 
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || userId) : userId 
             };
         }
 
