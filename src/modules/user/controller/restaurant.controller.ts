@@ -5,11 +5,14 @@ import {
     IUpdateRestaurantDTO,
     IPaginatedRestaurantsResponse
 } from "@modules/user/dtos";
+import { UserRole } from "@common/enums";
 import { R2ClientService } from "@modules/user/service/r2client.service";
 import { extractMultipartFields, isMultipartRequest } from "@common/utils/multipart.util";
 import { PAGINATION_DEFAULTS } from "@common/constants";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { logInfo, logWarn } from "@lib/logger";
+import { isValidUuid } from "@common/utils/uuid.util";
 import { 
     IRestaurantIdParams, 
     IGetAllRestaurantsQuery, 
@@ -31,6 +34,10 @@ export class RestaurantController {
         const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
         if (!authUserId) {
             throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
+        }
+        if (!isValidUuid(authUserId)) {
+            logWarn(`Invalid authUserId (non-UUID) in RestaurantController: "${authUserId}"`);
+            throw new AppError(`Invalid user identity format. Please re-login.`, 400, ErrorCodes.VALIDATION_ERROR);
         }
 
         const contentType = (req.headers['content-type'] || '') as string;
@@ -110,10 +117,14 @@ export class RestaurantController {
                 map_link: extractedBody.map_link || undefined,
                 latitude: parseNumber(extractedBody.latitude, 'latitude'),
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
-                vendor_id: authUserId,
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendorId || extractedBody.vendor_id || authUserId) : authUserId,
             };
         } else {
-            restaurantData = { ...(req.body as ICreateRestaurantDTO), vendor_id: authUserId };
+            const body = req.body as ICreateRestaurantDTO;
+            restaurantData = { 
+                ...body, 
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendorId || (body as any).vendor_id || authUserId) : authUserId 
+            };
         }
 
         const restaurant = await this.restaurantService.createRestaurant(restaurantData);

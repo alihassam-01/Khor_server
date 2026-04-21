@@ -467,14 +467,17 @@ export class LocationService {
       .select("category.categoryId", "categoryId")
       .addSelect("COUNT(DISTINCT article.article_id)", "count")
       .leftJoin("category.articleMappings", "articleMapping")
+      .leftJoin("articleMapping.article", "directArticle")
       .leftJoin("category.categoryMappings", "mapping")
       .leftJoin("mapping.location", "location")
-      .leftJoin("article_locations", "al", "al.location_id = location.location_id")
+      .leftJoin("location.articles", "locationArticle")
       .leftJoin(
         "articles", 
         "article", 
-        "(article.article_id = articleMapping.article_id OR article.article_id = al.article_id) AND article.published_at IS NOT NULL"
+        "(article.article_id = directArticle.article_id OR article.article_id = locationArticle.article_id) AND article.published_at IS NOT NULL AND article.is_deleted = false"
       )
+      .where("category.is_deleted = false")
+      .andWhere("(location.is_deleted = false OR location.location_id IS NULL)")
       .groupBy("category.categoryId")
       .getRawMany();
 

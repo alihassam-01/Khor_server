@@ -10,10 +10,11 @@ import {
 } from "@modules/user/dtos";
 import { RoomType, PropertyType, SubscriptionType, PaymentStatus, PaymentMethod } from "@common/enums";
 import { PAGINATION_DEFAULTS, SUBSCRIPTION_DURATION_DAYS, FEATURED_AD_PRICE } from "@common/constants";
-import { logError, logInfo } from "@lib/logger";
+import { logError, logInfo, logWarn } from "@lib/logger";
 import { R2ClientService } from "@modules/user/service/r2client.service";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { isValidUuid } from "@common/utils/uuid.util";
 
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
@@ -23,6 +24,11 @@ export class HotelService {
     // DB FK expects hotels.vendor_id -> user.id. Accept either user id or legacy vendor profile id.
     private async resolveVendorUserId(candidateId?: string): Promise<string | undefined> {
         if (!candidateId) return undefined;
+
+        if (!isValidUuid(candidateId)) {
+            logWarn(`Invalid UUID passed as vendor candidate ID: "${candidateId}". Skipping database lookup.`);
+            return undefined; 
+        }
 
         const vendor = await this.vendorRepository.findOne({
             where: [{ id: candidateId }, { user: { id: candidateId } }],
