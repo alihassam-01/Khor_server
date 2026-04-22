@@ -43,7 +43,7 @@ export const analyticsReportTemplate = (vendorName: string, reportPeriod: string
                 <table>
                     <thead>
                         <tr>
-                            <th style="text-align: left;">Advertisement</th>
+                            <th style="text-align: left;">Ads</th>
                             <th style="text-align: center;">Views</th>
                             <th style="text-align: center;">Clicks</th>
                             <th style="text-align: center;">Unique</th>
@@ -56,6 +56,7 @@ export const analyticsReportTemplate = (vendorName: string, reportPeriod: string
                 </table>
                 
                 <p style="margin-top: 30px;">Keep your ads active and featured to reach more travelers in Baltistan!</p>
+                <p style="font-size: 11px; color: #718096; text-align: center; margin-top: 10px;">* CTR = Click through rate (Clicks / Views)</p>
             </div>
             <div class="footer">
                 <p>&copy; ${new Date().getFullYear()} Travel Baltistan (Khor). All rights reserved.</p>
