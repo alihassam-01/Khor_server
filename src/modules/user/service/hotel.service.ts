@@ -10,10 +10,11 @@ import {
 } from "@modules/user/dtos";
 import { RoomType, PropertyType, SubscriptionType, PaymentStatus, PaymentMethod } from "@common/enums";
 import { PAGINATION_DEFAULTS, SUBSCRIPTION_DURATION_DAYS, FEATURED_AD_PRICE } from "@common/constants";
-import { logError, logInfo } from "@lib/logger";
+import { logError, logInfo, logWarn } from "@lib/logger";
 import { R2ClientService } from "@modules/user/service/r2client.service";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { isValidUuid } from "@common/utils/uuid.util";
 
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
@@ -23,6 +24,11 @@ export class HotelService {
     // DB FK expects hotels.vendor_id -> user.id. Accept either user id or legacy vendor profile id.
     private async resolveVendorUserId(candidateId?: string): Promise<string | undefined> {
         if (!candidateId) return undefined;
+
+        if (!isValidUuid(candidateId)) {
+            logWarn(`Invalid UUID passed as vendor candidate ID: "${candidateId}". Skipping database lookup.`);
+            return undefined; 
+        }
 
         const vendor = await this.vendorRepository.findOne({
             where: [{ id: candidateId }, { user: { id: candidateId } }],
@@ -69,6 +75,7 @@ export class HotelService {
             reviews: hotel.reviews,
             price: Number(hotel.price),
             location: hotel.location_name,
+            address: hotel.address,
             image: hotel.image,
             images: hotel.image ? [hotel.image] : [],
             active: hotel.is_active,
@@ -141,6 +148,7 @@ export class HotelService {
             hotel.name = hotelData.name;
             hotel.price = hotelData.price;
             hotel.location_name = hotelData.location_name;
+            hotel.address = hotelData.address || null;
             hotel.description = hotelData.description;
             hotel.image = hotelData.image;
             hotel.logo = hotelData.logo || null;
@@ -170,7 +178,7 @@ export class HotelService {
 
             if (subscriptionType === SubscriptionType.FREE && !hotel.is_featured) {
                 hotel.is_paid = false;
-                hotel.is_active = hotelData.is_active !== undefined ? hotelData.is_active : true;
+                hotel.is_active = false; // All ads require admin activation by default
 
                 const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                 const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
@@ -345,6 +353,8 @@ export class HotelService {
         if (hotelData.price !== undefined) hotel.price = hotelData.price;
         if (hotelData.location_name !== undefined)
             hotel.location_name = hotelData.location_name;
+        if (hotelData.address !== undefined)
+            hotel.address = hotelData.address;
 
         // Image cleanup logic
         const r2Client = new R2ClientService();

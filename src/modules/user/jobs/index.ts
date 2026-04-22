@@ -8,8 +8,8 @@ export const initJobs = () => {
 
     const analyticsJob = new AnalyticsJobService();
 
-    // Schedule daily reports (Checks every hour, runs every night at 01:00 AM)
-    SimpleScheduler.schedule(SchedulePattern.DAILY, () => analyticsJob.generateAndSendReports(1));
+    // Schedule monthly reports
+    SimpleScheduler.schedule(SchedulePattern.MONTHLY, () => analyticsJob.generateAndSendReports(30));
     
     logInfo("Background jobs initialized.");
 };

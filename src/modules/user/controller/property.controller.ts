@@ -1,8 +1,10 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { HotelController } from "./hotel.controller";
 import { RestaurantController } from "./restaurant.controller";
-import { logInfo, logError } from "@lib/logger";
+import { logInfo, logError, logWarn } from "@lib/logger";
 import { ICreateProperty } from "@modules/user/dtos";
+import { isValidUuid } from "@common/utils/uuid.util";
+import { UserRole } from "@common/enums";
 
 export class PropertyController {
     private hotelController = new HotelController();
@@ -18,9 +20,22 @@ export class PropertyController {
             const user = req.user as { id?: string; userId?: string } | undefined;
             const authUserId = user?.id || user?.userId;
 
+            logInfo(`Property creation request`, { 
+                type, 
+                authUserId, 
+                userObject: user 
+            });
+
             if (!authUserId) {
                 return reply.code(401).send({
                     message: "Authentication required. Please log in.",
+                });
+            }
+
+            if (!isValidUuid(authUserId)) {
+                logWarn(`Invalid authUserId (non-UUID): "${authUserId}"`);
+                return reply.code(400).send({
+                    message: `Invalid user identity format. Please re-login. (ID: ${authUserId})`,
                 });
             }
 
@@ -29,11 +44,12 @@ export class PropertyController {
             // Map frontend fields (ICreateProperty) to backend expected fields
             const mappedBody = {
                 ...body,
-                location_name: (body as any).location_name || body.streetAddress || "",
+                location_name: (body as any).location_name || "",
+                address: body.streetAddress || (body as any).address || "",
                 location_id: (body as any).location_id || Number(body.localityId),
                 image: body.images && body.images.length > 0 ? body.images[0] : "",
                 price: body.price || 0, // Default for routing, will be handled by sub-controllers if needed
-                vendor_id: authUserId,
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || authUserId) : authUserId,
             };
 
             // Update request body with mapped data for sub-controllers

@@ -1,8 +1,10 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { HotelService } from "@modules/user/service/hotel.service";
 import { ICreateHotelDTO, IUpdateHotelDTO, IPaginatedHotelsResponse } from "@modules/user/dtos";
+import { UserRole } from "@common/enums";
 import { R2ClientService } from "@modules/user/service/r2client.service";
-import { logInfo } from "@lib/logger";
+import { logInfo, logWarn } from "@lib/logger";
+import { isValidUuid } from "@common/utils/uuid.util";
 import { extractMultipartFields, isMultipartRequest } from "@common/utils/multipart.util";
 import { PAGINATION_DEFAULTS } from "@common/constants";
 import { AppError } from "@common/errors/AppError";
@@ -29,6 +31,11 @@ export class HotelController {
 
         if (!userId) {
             throw new AppError('Authentication required. Please log in.', 401, ErrorCodes.UNAUTHORIZED);
+        }
+
+        if (!isValidUuid(userId)) {
+            logWarn(`Invalid userId (non-UUID) in HotelController: "${userId}"`);
+            throw new AppError(`Invalid user identity format. Please re-login.`, 400, ErrorCodes.VALIDATION_ERROR);
         }
 
         const contentType = (req.headers['content-type'] || '') as string;
@@ -122,8 +129,17 @@ export class HotelController {
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 subscription_type: extractedBody.subscription_type || undefined,
-                vendor_id: userId, // Enforce current user
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || userId) : userId,
             };
+
+            // Validate phone and whatsapp formats if provided
+            const phoneRegex = /^\+?[0-9\s-]+$/;
+            if (hotelData.phone && !phoneRegex.test(hotelData.phone)) {
+                throw new AppError('Phone number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
+            }
+            if (hotelData.whatsapp && !phoneRegex.test(hotelData.whatsapp)) {
+                throw new AppError('WhatsApp number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
+            }
         } else {
             // JSON request body
             const body = req.body as ICreateHotelDTO;
@@ -140,7 +156,10 @@ export class HotelController {
                 throw new AppError(`Missing required fields: ${missing.join(', ')}`, 400, ErrorCodes.VALIDATION_ERROR);
             }
             
-            hotelData = { ...body, vendor_id: userId };
+            hotelData = { 
+                ...body, 
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || userId) : userId 
+            };
         }
 
         logInfo('Creating hotel', { name: hotelData.name, location_id: hotelData.location_id });

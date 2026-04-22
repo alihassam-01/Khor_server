@@ -29,6 +29,7 @@ export interface IHotelDTO {
     reviews: number;
     price: number;
     location: string;
+    address?: string | null;
     image: string;
     images: string[];
     active: boolean;
@@ -63,6 +64,7 @@ export interface ICreateHotelDTO {
     reviews?: number;
     price: number;
     location_name: string;
+    address?: string | null;
     image: string;
     images?: string[];
     description: string;
@@ -93,6 +95,7 @@ export interface IUpdateHotelDTO {
     reviews?: number;
     price?: number;
     location_name?: string;
+    address?: string | null;
     image?: string;
     description?: string;
     amenities?: string[];

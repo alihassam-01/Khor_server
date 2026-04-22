@@ -76,6 +76,13 @@ export class UserController {
   ) {
     const userId = req.params.id;
     const userData = req.body.updates;
+
+    // Validate phoneNumber format if provided
+    const phoneRegex = /^\+?[0-9\s-]+$/;
+    if (userData.phoneNumber && !phoneRegex.test(userData.phoneNumber)) {
+        throw new AppError('Phone number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
+    }
+
     const updatedUser = await this.userService.updateUser(userId, userData);
     reply.send(updatedUser);
   }

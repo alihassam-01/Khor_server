@@ -8,6 +8,7 @@ export interface IUpdateUserBody {
   updates: {
     phoneNumber?: string;
     profilePicture?: string;
+    username?: string;
   };
 }
 

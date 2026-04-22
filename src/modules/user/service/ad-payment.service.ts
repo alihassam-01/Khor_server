@@ -7,6 +7,10 @@ import {
 } from "@modules/user/dtos";
 import { PaymentStatus, PropertyType } from "@common/enums";
 import { SUBSCRIPTION_DURATION_DAYS } from "@common/constants";
+import { isValidUuid } from "@common/utils/uuid.util";
+import { logInfo, logWarn } from "@lib/logger";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
 
 export class AdPaymentService {
     private paymentRepository = AppDataSource.getRepository(AdPayment);
@@ -39,6 +43,22 @@ export class AdPaymentService {
     async createPayment(
         paymentData: ICreateAdPaymentDTO
     ): Promise<IAdPaymentDTO> {
+        logInfo("Creating ad payment", { 
+            ad_id: paymentData.ad_id, 
+            vendor_id: paymentData.vendor_id, 
+            amount: paymentData.amount 
+        });
+
+        if (!isValidUuid(paymentData.ad_id)) {
+            logWarn(`Invalid ad_id UUID: "${paymentData.ad_id}"`);
+            throw new AppError(`Invalid ad_id format. Must be a UUID. Received: "${paymentData.ad_id}"`, 400, ErrorCodes.VALIDATION_ERROR);
+        }
+
+        if (!isValidUuid(paymentData.vendor_id)) {
+            logWarn(`Invalid vendor_id UUID: "${paymentData.vendor_id}"`);
+            throw new AppError(`Invalid vendor_id format. Must be a UUID. Received: "${paymentData.vendor_id}"`, 400, ErrorCodes.VALIDATION_ERROR);
+        }
+
         const payment = new AdPayment();
         payment.ad_id = paymentData.ad_id;
         payment.ad_type = paymentData.ad_type;

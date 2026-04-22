@@ -32,6 +32,9 @@ export class Hotel {
     @Column("text")
     location_name!: string;
 
+    @Column("text", { nullable: true })
+    address!: string | null;
+
     @Column("text")
     image!: string;
 

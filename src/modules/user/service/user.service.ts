@@ -249,7 +249,7 @@ export class UserService {
     return this.getUserById(user.id);
   }
 
-  async updateUser(userId: string, updateData: { phoneNumber?: string; profilePicture?: string }): Promise<IUserProfileDto> {
+  async updateUser(userId: string, updateData: { phoneNumber?: string; profilePicture?: string; username?: string }): Promise<IUserProfileDto> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
@@ -260,23 +260,35 @@ export class UserService {
       });
       if (vendor) {
         if (updateData.phoneNumber != null && updateData.phoneNumber !== "") {
+          if (!/^\+?[0-9]+$/.test(updateData.phoneNumber)) {
+            throw new AppError("Invalid phone number format", 400, ErrorCodes.VALIDATION_ERROR);
+          }
           vendor.phone_number = updateData.phoneNumber;
         }
         if (updateData.profilePicture != null && updateData.profilePicture !== "") {
           vendor.profile_picture = updateData.profilePicture;
         }
+        if (updateData.username != null && updateData.username !== "") {
+          vendor.username = updateData.username;
+        }
         await this.vendorRepo.save(vendor);
       }
-    } else if (user?.userType === UserRole.CUSTOMER) {
+    } else {
       const customer = await this.customerRepo.findOne({
         where: { user: { id: user.id } },
       });
       if (customer) {
         if (updateData.phoneNumber != null && updateData.phoneNumber !== "") {
+          if (!/^\+?[0-9]+$/.test(updateData.phoneNumber)) {
+            throw new AppError("Invalid phone number format", 400, ErrorCodes.VALIDATION_ERROR);
+          }
           customer.phone_number = updateData.phoneNumber;
         }
         if (updateData.profilePicture != null && updateData.profilePicture !== "") {
           customer.profile_picture = updateData.profilePicture;
+        }
+        if (updateData.username != null && updateData.username !== "") {
+          customer.username = updateData.username;
         }
         await this.customerRepo.save(customer);
       }

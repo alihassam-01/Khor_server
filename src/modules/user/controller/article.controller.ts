@@ -151,7 +151,8 @@ export class ArticleController {
   ) {
     try {
       const includeAll = req.query.all === 'true';
-      const articles: IArticleDTO[] = await this.articleService.getAllArticles(includeAll);
+      const categoryId = req.query.categoryId ? Number(req.query.categoryId) : undefined;
+      const articles: IArticleDTO[] = await this.articleService.getAllArticles(includeAll, categoryId);
       reply.send(articles);
     } catch (error: unknown) {
       const err = error as Error;

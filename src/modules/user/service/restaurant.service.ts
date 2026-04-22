@@ -11,9 +11,10 @@ import {
 import { PropertyType, SubscriptionType, PaymentStatus, PaymentMethod } from "@common/enums";
 import { PAGINATION_DEFAULTS, SUBSCRIPTION_DURATION_DAYS, FEATURED_AD_PRICE } from "@common/constants";
 import { R2ClientService } from "@modules/user/service/r2client.service";
-import { logError, logInfo } from "@lib/logger";
+import { logError, logInfo, logWarn } from "@lib/logger";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { isValidUuid } from "@common/utils/uuid.util";
 
 export class RestaurantService {
     private restaurantRepository = AppDataSource.getRepository(Restaurant);
@@ -23,6 +24,11 @@ export class RestaurantService {
     // DB FK expects restaurants.vendor_id -> user.id. Accept either user id or legacy vendor profile id.
     private async resolveVendorUserId(candidateId?: string): Promise<string | undefined> {
         if (!candidateId) return undefined;
+
+        if (!isValidUuid(candidateId)) {
+            logWarn(`Invalid UUID passed as vendor candidate ID: "${candidateId}". Skipping database lookup.`);
+            return undefined; 
+        }
 
         const vendor = await this.vendorRepository.findOne({
             where: [{ id: candidateId }, { user: { id: candidateId } }],
@@ -46,6 +52,7 @@ export class RestaurantService {
             name: restaurant.name,
             type: "restaurant",
             location: restaurant.location_name,
+            address: restaurant.address,
             price: Number(restaurant.price),
             rating: Number(restaurant.rating),
             reviews: restaurant.reviews,
@@ -106,6 +113,7 @@ export class RestaurantService {
             const restaurant = new Restaurant();
             restaurant.name = restaurantData.name;
             restaurant.location_name = restaurantData.location_name;
+            restaurant.address = restaurantData.address || null;
             restaurant.price = restaurantData.price;
             restaurant.rating = restaurantData.rating || 0;
             restaurant.reviews = restaurantData.reviews || 0;
@@ -126,10 +134,7 @@ export class RestaurantService {
             restaurant.menu_images = restaurantData.menu_images || [];
             restaurant.location = location;
             restaurant.location_id = restaurantData.location_id;
-            restaurant.is_active =
-                restaurantData.is_active !== undefined
-                    ? restaurantData.is_active
-                    : true;
+            restaurant.is_active = false; // Default to inactive for admin review
             restaurant.is_featured =
                 restaurantData.is_featured !== undefined
                     ? restaurantData.is_featured
@@ -141,7 +146,7 @@ export class RestaurantService {
 
             if (subscriptionType === SubscriptionType.FREE && !restaurant.is_featured) {
                 restaurant.is_paid = false;
-                restaurant.is_active = restaurantData.is_active !== undefined ? restaurantData.is_active : true;
+                restaurant.is_active = false; // All ads require admin activation by default
 
                 const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                 const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
@@ -292,6 +297,8 @@ export class RestaurantService {
             restaurant.name = restaurantData.name;
         if (restaurantData.location_name !== undefined)
             restaurant.location_name = restaurantData.location_name;
+        if (restaurantData.address !== undefined)
+            restaurant.address = restaurantData.address;
         if (restaurantData.price !== undefined)
             restaurant.price = restaurantData.price;
         if (restaurantData.rating !== undefined)

@@ -56,7 +56,7 @@ export class AuthController {
 
     async handleGoogleVerify(req: FastifyRequest<{ Body: IGoogleVerifyDto }>, reply: FastifyReply) {
         const { accessToken, userType } = req.body;
-        const preferredRole = userType === "customer" ? UserRole.CUSTOMER : UserRole.VENDOR;
+        const preferredRole = userType === "vendor" ? UserRole.VENDOR : UserRole.CUSTOMER;
         const result: IGoogleLoginResponseDto = await this.authService.googleLoginOrRegister(accessToken, preferredRole);
         reply.send(result);
     }

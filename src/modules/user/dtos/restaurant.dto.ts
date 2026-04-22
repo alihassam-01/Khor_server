@@ -6,6 +6,7 @@ export interface IRestaurantDTO {
     name: string;
     type: "restaurant";
     location: string;
+    address?: string | null;
     price: number;
     rating: number;
     reviews: number;
@@ -37,6 +38,7 @@ export interface IRestaurantDTO {
 export interface ICreateRestaurantDTO {
     name: string;
     location_name: string;
+    address?: string | null;
     price: number;
     rating?: number;
     reviews?: number;
@@ -64,6 +66,7 @@ export interface ICreateRestaurantDTO {
 export interface IUpdateRestaurantDTO {
     name?: string;
     location_name?: string;
+    address?: string | null;
     price?: number;
     rating?: number;
     reviews?: number;
