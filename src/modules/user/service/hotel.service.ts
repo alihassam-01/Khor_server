@@ -15,6 +15,7 @@ import { R2ClientService } from "@modules/user/service/r2client.service";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { isValidUuid } from "@common/utils/uuid.util";
+import { In } from "typeorm";
 
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
@@ -323,9 +324,12 @@ export class HotelService {
         };
     }
 
-    async getHotelsByLocation(locationId: number): Promise<IHotelDTO[]> {
+    async getHotelsByLocation(locationId: number | number[]): Promise<IHotelDTO[]> {
         const hotels = await this.hotelRepository.find({
-            where: { location_id: locationId, is_active: true },
+            where: { 
+                location_id: Array.isArray(locationId) ? In(locationId) : locationId, 
+                is_active: true 
+            },
             relations: ["location", "detailed_reviews", "room_types"],
             order: { created_at: "DESC" },
         });
