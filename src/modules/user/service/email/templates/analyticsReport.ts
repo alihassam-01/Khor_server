@@ -59,7 +59,7 @@ export const analyticsReportTemplate = (vendorName: string, reportPeriod: string
                 <p style="font-size: 11px; color: #718096; text-align: center; margin-top: 10px;">* CTR = Click through rate (Clicks / Views)</p>
             </div>
             <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} Travel Baltistan (Khor). All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Khor. All rights reserved.</p>
                 <p>You received this because you are a registered vendor on our platform.</p>
             </div>
         </div>

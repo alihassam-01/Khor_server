@@ -269,9 +269,13 @@ export class RestaurantService {
         };
     }
 
-    async getRestaurantsByLocation(locationId: number): Promise<IRestaurantDTO[]> {
+    async getRestaurantsByLocation(locationId: number | number[]): Promise<IRestaurantDTO[]> {
+        const { In } = await import("typeorm");
         const restaurants = await this.restaurantRepository.find({
-            where: { location_id: locationId, is_active: true },
+            where: { 
+                location_id: Array.isArray(locationId) ? In(locationId) : locationId, 
+                is_active: true 
+            },
             relations: ["location", "detailed_reviews"],
             order: { created_at: "DESC" },
         });

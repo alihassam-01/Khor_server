@@ -21,13 +21,20 @@ export class AdsController {
     ) {
         try {
             const { location_id } = req.params;
-            const locationId = parseInt(location_id, 10);
+            
+            // Handle multiple IDs if provided as comma-separated string
+            const locationIds = String(location_id)
+                .split(',')
+                .map(id => parseInt(id.trim(), 10))
+                .filter(id => !isNaN(id));
 
-            if (isNaN(locationId)) {
+            if (locationIds.length === 0) {
                 return reply.code(400).send({ message: "Invalid location_id" });
             }
 
-            const ads: IAdsResponseDTO = await this.adsService.getAdsByLocation(locationId);
+            // Use array if multiple, otherwise single ID
+            const targetId = locationIds.length === 1 ? locationIds[0] : locationIds;
+            const ads: IAdsResponseDTO = await this.adsService.getAdsByLocation(targetId);
             reply.send(ads);
         } catch (error: unknown) {
             const err = error as Error;

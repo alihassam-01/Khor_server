@@ -30,9 +30,8 @@ async function startServer() {
     origin: [
       CONFIG.web_domain.url as string, 
       CONFIG.admin_domain.url as string,
-      "http://localhost:5173", 
-      "http://localhost:5174",
-      "http://localhost:5175"
+      "http://localhost:9010", 
+      "http://localhost:9002",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
