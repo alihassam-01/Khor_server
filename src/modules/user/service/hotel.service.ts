@@ -178,7 +178,7 @@ export class HotelService {
 
             if (subscriptionType === SubscriptionType.FREE && !hotel.is_featured) {
                 hotel.is_paid = false;
-                hotel.is_active = hotelData.is_active !== undefined ? hotelData.is_active : true;
+                hotel.is_active = false; // All ads require admin activation by default
 
                 const durationKey = subscriptionType.toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                 const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;

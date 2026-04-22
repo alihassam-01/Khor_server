@@ -134,10 +134,7 @@ export class RestaurantService {
             restaurant.menu_images = restaurantData.menu_images || [];
             restaurant.location = location;
             restaurant.location_id = restaurantData.location_id;
-            restaurant.is_active =
-                restaurantData.is_active !== undefined
-                    ? restaurantData.is_active
-                    : true;
+            restaurant.is_active = false; // Default to inactive for admin review
             restaurant.is_featured =
                 restaurantData.is_featured !== undefined
                     ? restaurantData.is_featured
@@ -149,7 +146,7 @@ export class RestaurantService {
 
             if (subscriptionType === SubscriptionType.FREE && !restaurant.is_featured) {
                 restaurant.is_paid = false;
-                restaurant.is_active = restaurantData.is_active !== undefined ? restaurantData.is_active : true;
+                restaurant.is_active = false; // All ads require admin activation by default
 
                 const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                 const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
