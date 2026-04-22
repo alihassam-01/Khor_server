@@ -52,6 +52,7 @@ export class RestaurantService {
             name: restaurant.name,
             type: "restaurant",
             location: restaurant.location_name,
+            address: restaurant.address,
             price: Number(restaurant.price),
             rating: Number(restaurant.rating),
             reviews: restaurant.reviews,
@@ -112,6 +113,7 @@ export class RestaurantService {
             const restaurant = new Restaurant();
             restaurant.name = restaurantData.name;
             restaurant.location_name = restaurantData.location_name;
+            restaurant.address = restaurantData.address || null;
             restaurant.price = restaurantData.price;
             restaurant.rating = restaurantData.rating || 0;
             restaurant.reviews = restaurantData.reviews || 0;
@@ -298,6 +300,8 @@ export class RestaurantService {
             restaurant.name = restaurantData.name;
         if (restaurantData.location_name !== undefined)
             restaurant.location_name = restaurantData.location_name;
+        if (restaurantData.address !== undefined)
+            restaurant.address = restaurantData.address;
         if (restaurantData.price !== undefined)
             restaurant.price = restaurantData.price;
         if (restaurantData.rating !== undefined)

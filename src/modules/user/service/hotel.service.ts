@@ -75,6 +75,7 @@ export class HotelService {
             reviews: hotel.reviews,
             price: Number(hotel.price),
             location: hotel.location_name,
+            address: hotel.address,
             image: hotel.image,
             images: hotel.image ? [hotel.image] : [],
             active: hotel.is_active,
@@ -147,6 +148,7 @@ export class HotelService {
             hotel.name = hotelData.name;
             hotel.price = hotelData.price;
             hotel.location_name = hotelData.location_name;
+            hotel.address = hotelData.address || null;
             hotel.description = hotelData.description;
             hotel.image = hotelData.image;
             hotel.logo = hotelData.logo || null;
@@ -351,6 +353,8 @@ export class HotelService {
         if (hotelData.price !== undefined) hotel.price = hotelData.price;
         if (hotelData.location_name !== undefined)
             hotel.location_name = hotelData.location_name;
+        if (hotelData.address !== undefined)
+            hotel.address = hotelData.address;
 
         // Image cleanup logic
         const r2Client = new R2ClientService();

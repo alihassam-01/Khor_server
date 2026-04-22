@@ -54,6 +54,9 @@ export class R2ClientService {
     mimetype: string,
     folder: string = "uploads"
   ): Promise<{ url: string; key: string }> => {
+    const isDev = CONFIG.env === 'development';
+    const uploadFolder = isDev ? `development/${folder}` : folder;
+    
     const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
     const existing = await this.s3Image.findOne({ where: { hash, isDeleted: false } });
 
@@ -84,7 +87,7 @@ export class R2ClientService {
       }
     }
 
-    const key = `${folder}/${uuidv4()}${extension}`;
+    const key = `${uploadFolder}/${uuidv4()}${extension}`;
     const command = new PutObjectCommand({
       Bucket: this.getBucketName(),
       Key: key,
@@ -147,8 +150,11 @@ export class R2ClientService {
     mimeType: string,
     folder: string = "uploads"
   ): Promise<IPresignedUrlResponseDTO> => {
+    const isDev = CONFIG.env === 'development';
+    const uploadFolder = isDev ? `development/${folder}` : folder;
+    
     const extension = path.extname(fileName) || "";
-    const key = `${folder}/${uuidv4()}${extension}`;
+    const key = `${uploadFolder}/${uuidv4()}${extension}`;
 
     const command = new PutObjectCommand({
       Bucket: this.getBucketName(),

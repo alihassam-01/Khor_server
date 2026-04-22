@@ -131,6 +131,15 @@ export class HotelController {
                 subscription_type: extractedBody.subscription_type || undefined,
                 vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || userId) : userId,
             };
+
+            // Validate phone and whatsapp formats if provided
+            const phoneRegex = /^\+?[0-9\s-]+$/;
+            if (hotelData.phone && !phoneRegex.test(hotelData.phone)) {
+                throw new AppError('Phone number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
+            }
+            if (hotelData.whatsapp && !phoneRegex.test(hotelData.whatsapp)) {
+                throw new AppError('WhatsApp number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
+            }
         } else {
             // JSON request body
             const body = req.body as ICreateHotelDTO;

@@ -476,8 +476,7 @@ export class LocationService {
         "article", 
         "(article.article_id = directArticle.article_id OR article.article_id = locationArticle.article_id) AND article.published_at IS NOT NULL AND article.is_deleted = false"
       )
-      .where("category.is_deleted = false")
-      .andWhere("(location.is_deleted = false OR location.location_id IS NULL)")
+      .where("(location.is_deleted = false OR location.location_id IS NULL)")
       .groupBy("category.categoryId")
       .getRawMany();
 

@@ -23,6 +23,9 @@ export class Restaurant {
     @Column("text")
     location_name!: string;
 
+    @Column("text", { nullable: true })
+    address!: string | null;
+
     @Column("decimal", { precision: 10, scale: 2 })
     price!: number;
 

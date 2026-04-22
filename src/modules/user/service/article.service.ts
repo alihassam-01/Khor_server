@@ -414,24 +414,32 @@ export class ArticleService {
     };
   }
 
-  async getAllArticles(includeAll: boolean = false): Promise<IArticleDTO[]> {
-    const whereClause: FindOptionsWhere<Article> = {};
-    if (!includeAll) whereClause.published_at = Not(IsNull());
+  async getAllArticles(includeAll: boolean = false, categoryId?: number): Promise<IArticleDTO[]> {
+    const query = this.articleRepository
+      .createQueryBuilder("article")
+      .leftJoinAndSelect("article.articleTags", "articleTags")
+      .leftJoinAndSelect("articleTags.tag", "tag")
+      .leftJoinAndSelect("article.locations", "location")
+      .leftJoinAndSelect("article.categoryMappings", "categoryMappings")
+      .leftJoinAndSelect("categoryMappings.category", "category")
+      .leftJoinAndSelect("location.categoryMappings", "locationCategoryMappings")
+      .leftJoinAndSelect("locationCategoryMappings.category", "locationCategory")
+      .leftJoinAndSelect("location.attributes", "locationAttributes");
 
-    const articles = await this.articleRepository.find({
-      where: whereClause,
-      relations: [
-        "articleTags",
-        "articleTags.tag",
-        "locations",
-        "categoryMappings",
-        "categoryMappings.category",
-        "locations.categoryMappings",
-        "locations.categoryMappings.category",
-        "locations.attributes",
-      ],
-      order: { published_at: "DESC" },
-    });
+    if (!includeAll) {
+      query.andWhere("article.published_at IS NOT NULL");
+    }
+
+    if (categoryId) {
+      query.andWhere(
+        "(categoryMappings.category_id = :categoryId OR locationCategoryMappings.category_id = :categoryId)",
+        { categoryId }
+      );
+    }
+
+    query.orderBy("article.published_at", "DESC");
+
+    const articles = await query.getMany();
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
       articles
     );

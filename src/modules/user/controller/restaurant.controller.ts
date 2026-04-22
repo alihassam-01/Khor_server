@@ -119,6 +119,15 @@ export class RestaurantController {
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || authUserId) : authUserId,
             };
+
+            // Validate phone and whatsapp formats if provided
+            const phoneRegex = /^\+?[0-9\s-]+$/;
+            if (restaurantData.phone && !phoneRegex.test(restaurantData.phone)) {
+                throw new AppError('Phone number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
+            }
+            if (restaurantData.whatsapp && !phoneRegex.test(restaurantData.whatsapp)) {
+                throw new AppError('WhatsApp number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
+            }
         } else {
             const body = req.body as ICreateRestaurantDTO;
             restaurantData = {

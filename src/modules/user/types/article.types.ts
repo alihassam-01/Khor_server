@@ -8,6 +8,7 @@ export interface IArticleSlugParams {
 
 export interface IGetArticleQuery {
     all?: string;
+    categoryId?: string;
 }
 
 export interface IListArticlesQuery {
