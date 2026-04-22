@@ -156,11 +156,14 @@ export class AnalyticsService {
                 const adStats = adStatsResult.filter(s => String(s.ad_id || s.analytics_ad_id) === String(ad.id));
                 const views = adStats.find(s => (s.type || s.analytics_event_type) === AnalyticsEventType.VIEW)?.count || 0;
                 const clicks = adStats.find(s => (s.type || s.analytics_event_type) === AnalyticsEventType.CLICK)?.count || 0;
+                const isActive = (ad as any).active;
+                const status = isActive ? 'active' : 'pending_approval';
+
                 return {
                     id: ad.id,
                     name: ad.name,
                     type: ad.type,
-                    status: (ad as any).status || "unknown",
+                    status: status,
                     views: parseInt(String(views)),
                     clicks: parseInt(String(clicks))
                 };
