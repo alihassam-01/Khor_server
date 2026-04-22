@@ -40,4 +40,15 @@ export class AnalyticsController {
         const stats = await this.analyticsService.getAdStats(adId);
         reply.send(stats);
     }
+    getVendorStats = async (request: FastifyRequest<{ Params: { vendorId: string }, Querystring: { startDate?: string, endDate?: string } }>, reply: FastifyReply) => {
+        const { vendorId } = request.params;
+        const { startDate, endDate } = request.query;
+        
+        if (!vendorId) {
+            throw new AppError("Vendor ID is required", 400, ErrorCodes.BAD_REQUEST);
+        }
+
+        const stats = await this.analyticsService.getVendorAnalytics(vendorId, startDate, endDate);
+        reply.send(stats);
+    }
 }

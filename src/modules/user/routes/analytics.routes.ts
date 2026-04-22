@@ -9,4 +9,7 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
     
     // Get stats for a specific ad
     fastify.get("/analytics/stats/:adId", controller.getStats);
+
+    // Get stats for a vendor
+    fastify.get("/analytics/vendor/:vendorId", controller.getVendorStats);
 }
