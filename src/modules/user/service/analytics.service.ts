@@ -143,20 +143,36 @@ export class AnalyticsService {
             const charts = Array.from(chartsMap.values());
 
             // Ad level metrics
-            const adStatsQuery = queryBuilder.clone()
-                .select("analytics.ad_id", "ad_id")
+            // Using a fresh query builder to avoid any inherited state from previous clones
+            const adStatsResult = await this.analyticsRepository.createQueryBuilder("analytics")
+                .select("analytics.ad_id", "adId")
                 .addSelect("analytics.event_type", "type")
                 .addSelect("COUNT(*)", "count")
+                .where("analytics.ad_id IN (:...adIds)", { adIds })
                 .groupBy("analytics.ad_id")
-                .addGroupBy("analytics.event_type");
-            
-            const adStatsResult = await adStatsQuery.getRawMany();
+                .addGroupBy("analytics.event_type")
+                .getRawMany();
 
-            const adsWithStats = ads.map(ad => {
-                const adStats = adStatsResult.filter(s => String(s.ad_id || s.analytics_ad_id) === String(ad.id));
-                const views = adStats.find(s => (s.type || s.analytics_event_type) === AnalyticsEventType.VIEW)?.count || 0;
-                const clicks = adStats.find(s => (s.type || s.analytics_event_type) === AnalyticsEventType.CLICK)?.count || 0;
-                const isActive = (ad as any).active;
+            // Ensure we use unique ads to prevent duplicate entries in the breakdown table
+            const uniqueAds = Array.from(new Map(ads.map(ad => [ad.id, ad])).values());
+
+            const adsWithStats = uniqueAds.map(ad => {
+                // Find stats for this specific ad
+                // We check multiple potential result keys because TypeORM's getRawMany 
+                // can vary based on driver/naming strategies
+                const adStats = adStatsResult.filter(s => {
+                    const rowAdId = s.adId || s.ad_id || s.analytics_ad_id || s.analytics_adId;
+                    return String(rowAdId) === String(ad.id);
+                });
+                
+                const viewsRow = adStats.find(s => (s.type || s.analytics_event_type) === AnalyticsEventType.VIEW);
+                const clicksRow = adStats.find(s => (s.type || s.analytics_event_type) === AnalyticsEventType.CLICK);
+                
+                const views = viewsRow ? parseInt(String(viewsRow.count)) : 0;
+                const clicks = clicksRow ? parseInt(String(clicksRow.count)) : 0;
+                
+                // Determine status - checking common active flag naming patterns
+                const isActive = (ad as any).active || (ad as any).is_active;
                 const status = isActive ? 'active' : 'pending_approval';
 
                 return {
@@ -164,8 +180,8 @@ export class AnalyticsService {
                     name: ad.name,
                     type: ad.type,
                     status: status,
-                    views: parseInt(String(views)),
-                    clicks: parseInt(String(clicks))
+                    views,
+                    clicks
                 };
             });
 
