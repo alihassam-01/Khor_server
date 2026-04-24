@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { CustomerProfile } from './customer-profile.entity';
 import { UserRole } from '@common/enums/user.enums';
 import { Vendor } from '@modules/user/entity/business';
@@ -27,7 +27,7 @@ export class User {
   @Column({ nullable: true })
   verificationToken?: string;
 
-  @Column({ nullable: true, type: 'timestamp' })
+  @Column({ nullable: true, type: 'timestamptz' })
   otpExpiresAt?: Date;
 
   @Column({ default: false })
@@ -47,8 +47,11 @@ export class User {
   @OneToOne(() => CustomerProfile, (profile) => profile.user, { nullable: true })
   customerProfile?: CustomerProfile;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
+
+  @UpdateDateColumn({ type: 'timestamptz' })
+  updatedAt!: Date;
 
   @Column({ default: true })
   isActive!: boolean;

@@ -42,9 +42,9 @@ export class SubscriptionPlan {
     @Column("int", { default: 0 })
     display_order!: number;
 
-    @CreateDateColumn({ type: "timestamp" })
+    @CreateDateColumn({ type: "timestamptz" })
     created_at!: Date;
 
-    @UpdateDateColumn({ type: "timestamp" })
+    @UpdateDateColumn({ type: "timestamptz" })
     updated_at!: Date;
 }

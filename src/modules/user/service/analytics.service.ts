@@ -67,7 +67,7 @@ export class AnalyticsService {
             throw new AppError("Failed to retrieve analytics data", 500, ErrorCodes.ANALYTICS_FAILED);
         }
     }
-    async getVendorAnalytics(vendorId: string, startDate?: string, endDate?: string) {
+    async getVendorAnalytics(vendorId: string, startDate?: string, endDate?: string, timezone?: string) {
         try {
             const { AdsService } = await import("./ads.service");
             const adsService = new AdsService();
@@ -98,9 +98,9 @@ export class AnalyticsService {
                 queryBuilder.andWhere("analytics.created_at >= :startDate", { startDate: new Date(startDate) });
             }
             if (endDate) {
-                // To include the end date fully
+                // Include the full end date in UTC
                 const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
+                end.setUTCHours(23, 59, 59, 999);
                 queryBuilder.andWhere("analytics.created_at <= :endDate", { endDate: end });
             }
 
@@ -118,14 +118,19 @@ export class AnalyticsService {
             }, { totalViews: 0, totalClicks: 0 });
 
             // Time series (charts)
-            // Note: Postgres DATE() or TO_CHAR might be needed depending on DB. Assuming Postgres syntax `DATE(created_at)`.
+            // If a user timezone is provided (IANA name, e.g. "Asia/Karachi"), group by the
+            // user's local calendar day so chart buckets match what the user sees on their
+            // clock. Falls back to plain UTC DATE() when no timezone is supplied.
+            const tz = timezone || 'UTC';
+            const dateTruncExpr = `(analytics.created_at AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date`;
             const timeSeriesQuery = queryBuilder.clone()
-                .select("DATE(analytics.created_at)", "date")
+                .select(dateTruncExpr, "date")
                 .addSelect("analytics.event_type", "type")
                 .addSelect("COUNT(*)", "count")
-                .groupBy("DATE(analytics.created_at)")
+                .setParameter("tz", tz)
+                .groupBy(dateTruncExpr)
                 .addGroupBy("analytics.event_type")
-                .orderBy("DATE(analytics.created_at)", "ASC");
+                .orderBy(dateTruncExpr, "ASC");
             
             const timeSeriesResult = await timeSeriesQuery.getRawMany();
 

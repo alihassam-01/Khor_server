@@ -21,7 +21,7 @@ export class RestaurantReview {
     @Column("text")
     comment!: string;
 
-    @Column("timestamp")
+    @Column("timestamptz")
     date!: Date;
 
     @ManyToOne(() => Restaurant, (restaurant) => restaurant.detailed_reviews, {

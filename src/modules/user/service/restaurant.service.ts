@@ -401,47 +401,51 @@ export class RestaurantService {
     // ========== ADMIN METHODS ==========
 
     async toggleAdStatus(id: string, isActive: boolean): Promise<IRestaurantDTO> {
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["location", "detailed_reviews"],
-        });
-
-        if (!restaurant) {
+        // Targeted UPDATE — no need to load relations just to flip a boolean
+        const result = await this.restaurantRepository.update({ id }, { is_active: isActive });
+        if (result.affected === 0) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
-
-        restaurant.is_active = isActive;
-        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
-        return this.toRestaurantDTO(updatedRestaurant);
+        const restaurant = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews"],
+        });
+        return this.toRestaurantDTO(restaurant!);
     }
 
     async renewAd(
         id: string,
         subscriptionType: SubscriptionType
     ): Promise<IRestaurantDTO> {
+        // Fetch only the scalar columns needed — no relations
         const restaurant = await this.restaurantRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews"],
+            select: ["id", "expires_at", "subscription_type", "is_paid", "is_active"],
         });
 
         if (!restaurant) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        // Map subscription type to constant key
         const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
 
         const now = new Date();
         const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+        const newExpiry = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-        restaurant.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
-        restaurant.subscription_type = subscriptionType;
-        restaurant.is_paid = true;
-        restaurant.is_active = true;
+        await this.restaurantRepository.update({ id }, {
+            expires_at: newExpiry,
+            subscription_type: subscriptionType,
+            is_paid: true,
+            is_active: true,
+        });
 
-        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
-        return this.toRestaurantDTO(updatedRestaurant);
+        const updated = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews"],
+        });
+        return this.toRestaurantDTO(updated!);
     }
 
     async renewAdByVendor(
@@ -538,26 +542,27 @@ export class RestaurantService {
     }
 
     async setFeaturedStatus(id: string, isFeatured: boolean): Promise<IRestaurantDTO> {
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["location", "detailed_reviews"],
-        });
-
-        if (!restaurant) {
+        // Targeted UPDATE — avoids loading reviews just to flip a flag
+        const result = await this.restaurantRepository.update({ id }, { is_featured: isFeatured });
+        if (result.affected === 0) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
-
-        restaurant.is_featured = isFeatured;
-        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
-        return this.toRestaurantDTO(updatedRestaurant);
+        const restaurant = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews"],
+        });
+        return this.toRestaurantDTO(restaurant!);
     }
 
-    async getAllRestaurantsAdmin(): Promise<IRestaurantDTO[]> {
+    async getAllRestaurantsAdmin(page = 1, limit = 50): Promise<IRestaurantDTO[]> {
+        const skip = (page - 1) * Math.min(limit, 200); // hard cap at 200
+        const take = Math.min(limit, 200);
         const restaurants = await this.restaurantRepository.find({
-            relations: ["location", "detailed_reviews"],
+            relations: ["detailed_reviews"],
             order: { created_at: "DESC" },
+            skip,
+            take,
         });
-
         return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
     }
 

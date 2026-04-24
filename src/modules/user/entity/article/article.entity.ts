@@ -46,13 +46,13 @@ export class Article {
   @Column("boolean", { default: false })
   is_deleted!: boolean;
 
-  @Column("timestamp", { nullable: true })
+  @Column("timestamptz", { nullable: true })
   published_at!: Date | null;
 
-  @CreateDateColumn({ type: "timestamp" })
+  @CreateDateColumn({ type: "timestamptz" })
   created_at!: Date;
 
-  @UpdateDateColumn({ type: "timestamp" })
+  @UpdateDateColumn({ type: "timestamptz" })
   updated_at!: Date;
 
   @ManyToMany(() => Location, (location) => location.articles)

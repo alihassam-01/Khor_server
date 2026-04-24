@@ -78,7 +78,7 @@ export class Restaurant {
     @JoinColumn({ name: "vendor_id" })
     vendor?: User;
 
-    @Column("timestamp", { nullable: true })
+    @Column("timestamptz", { nullable: true })
     expires_at?: Date;
 
     @Column({
@@ -106,9 +106,9 @@ export class Restaurant {
     })
     detailed_reviews!: any[];
 
-    @CreateDateColumn({ type: "timestamp" })
+    @CreateDateColumn({ type: "timestamptz" })
     created_at!: Date;
 
-    @UpdateDateColumn({ type: "timestamp" })
+    @UpdateDateColumn({ type: "timestamptz" })
     updated_at!: Date;
 }

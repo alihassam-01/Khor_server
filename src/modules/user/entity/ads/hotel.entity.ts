@@ -84,7 +84,7 @@ export class Hotel {
     @JoinColumn({ name: "vendor_id" })
     vendor?: User;
 
-    @Column("timestamp", { nullable: true })
+    @Column("timestamptz", { nullable: true })
     expires_at?: Date;
 
     @Column({
@@ -113,9 +113,9 @@ export class Hotel {
     @OneToMany("HotelRoomType", "hotel", { cascade: true })
     room_types!: any[];
 
-    @CreateDateColumn({ type: "timestamp" })
+    @CreateDateColumn({ type: "timestamptz" })
     created_at!: Date;
 
-    @UpdateDateColumn({ type: "timestamp" })
+    @UpdateDateColumn({ type: "timestamptz" })
     updated_at!: Date;
 }

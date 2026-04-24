@@ -470,27 +470,26 @@ export class HotelService {
     // ========== ADMIN METHODS ==========
 
     async toggleAdStatus(id: string, isActive: boolean): Promise<IHotelDTO> {
-        const hotel = await this.hotelRepository.findOne({
-            where: { id },
-            relations: ["location", "detailed_reviews", "room_types"],
-        });
-
-        if (!hotel) {
+        // Use a targeted UPDATE — no need to load relations just to flip a boolean
+        const result = await this.hotelRepository.update({ id }, { is_active: isActive });
+        if (result.affected === 0) {
             throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
-
-        hotel.is_active = isActive;
-        const updatedHotel = await this.hotelRepository.save(hotel);
-        return this.toHotelDTO(updatedHotel);
+        const hotel = await this.hotelRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews", "room_types"],
+        });
+        return this.toHotelDTO(hotel!);
     }
 
     async renewAd(
         id: string,
         subscriptionType: SubscriptionType
     ): Promise<IHotelDTO> {
+        // Fetch only the scalar columns needed to compute the new expiry — no relations
         const hotel = await this.hotelRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews", "room_types"],
+            select: ["id", "expires_at", "subscription_type", "is_paid", "is_active"],
         });
 
         if (!hotel) {
@@ -503,14 +502,20 @@ export class HotelService {
 
         const now = new Date();
         const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
+        const newExpiry = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-        hotel.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
-        hotel.subscription_type = subscriptionType;
-        hotel.is_paid = true;
-        hotel.is_active = true;
+        await this.hotelRepository.update({ id }, {
+            expires_at: newExpiry,
+            subscription_type: subscriptionType,
+            is_paid: true,
+            is_active: true,
+        });
 
-        const updatedHotel = await this.hotelRepository.save(hotel);
-        return this.toHotelDTO(updatedHotel);
+        const updated = await this.hotelRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews", "room_types"],
+        });
+        return this.toHotelDTO(updated!);
     }
 
     async renewAdByVendor(
@@ -608,26 +613,27 @@ export class HotelService {
     }
 
     async setFeaturedStatus(id: string, isFeatured: boolean): Promise<IHotelDTO> {
-        const hotel = await this.hotelRepository.findOne({
-            where: { id },
-            relations: ["location", "detailed_reviews", "room_types"],
-        });
-
-        if (!hotel) {
+        // Targeted UPDATE — avoids loading all reviews and room types to flip a flag
+        const result = await this.hotelRepository.update({ id }, { is_featured: isFeatured });
+        if (result.affected === 0) {
             throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
-
-        hotel.is_featured = isFeatured;
-        const updatedHotel = await this.hotelRepository.save(hotel);
-        return this.toHotelDTO(updatedHotel);
+        const hotel = await this.hotelRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews", "room_types"],
+        });
+        return this.toHotelDTO(hotel!);
     }
 
-    async getAllHotelsAdmin(): Promise<IHotelDTO[]> {
+    async getAllHotelsAdmin(page = 1, limit = 50): Promise<IHotelDTO[]> {
+        const skip = (page - 1) * Math.min(limit, 200); // hard cap at 200
+        const take = Math.min(limit, 200);
         const hotels = await this.hotelRepository.find({
-            relations: ["location", "detailed_reviews", "room_types"],
+            relations: ["detailed_reviews", "room_types"],
             order: { created_at: "DESC" },
+            skip,
+            take,
         });
-
         return hotels.map((hotel) => this.toHotelDTO(hotel));
     }
 
