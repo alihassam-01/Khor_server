@@ -11,4 +11,8 @@ export interface IGetCombinedAdsQuery {
     limit?: string;
     searchQuery?: string;
     type?: "hotel" | "restaurant" | "all";
+    location_id?: string;
+    rating?: string;
+    priceMax?: string;
+    isFeatured?: string;
 }

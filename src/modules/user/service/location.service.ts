@@ -434,17 +434,41 @@ export class LocationService {
   }
 
   async getAllDescendants(locationId: number): Promise<ILocationDTO[]> {
-    const descendants: ILocationDTO[] = [];
-    const stack: number[] = [locationId];
-    while (stack.length > 0) {
-      const currentId = stack.pop()!;
-      const children = await this.getLocationChildren(currentId);
-      descendants.push(...children);
-      for (const child of children) {
-        stack.push(child.location_id);
-      }
-    }
-    return descendants;
+    const descendantIds = await this.getDescendantIds(locationId);
+    if (descendantIds.length <= 1) return []; // Only the parent itself or nothing
+    
+    // Fetch full objects for the descendants (excluding the parent if needed, but usually descendants include children)
+    const childrenIds = descendantIds.filter(id => id !== locationId);
+    if (childrenIds.length === 0) return [];
+    
+    const locations = await this.locationRepository.find({
+      where: { location_id: In(childrenIds) },
+      relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
+      order: { location_order: "ASC" },
+    });
+    return locations.map(l => this.toLocationDTO(l));
+  }
+
+  /**
+   * Returns an array of location IDs containing the input IDs and all their descendants.
+   */
+  async getDescendantIds(locationIds: number | number[]): Promise<number[]> {
+    const ids = Array.isArray(locationIds) ? locationIds : [locationIds];
+    if (ids.length === 0) return [];
+
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+    const rows: Array<{ location_id: number }> = await this.locationRepository.query(
+      `WITH RECURSIVE descendants AS (
+         SELECT location_id FROM "location" WHERE location_id IN (${placeholders})
+         UNION ALL
+         SELECT l.location_id FROM "location" l
+         INNER JOIN descendants d ON l.parent_location_id = d.location_id
+       )
+       SELECT DISTINCT location_id FROM descendants`,
+      ids
+    );
+
+    return rows.map(row => row.location_id);
   }
 
   /**

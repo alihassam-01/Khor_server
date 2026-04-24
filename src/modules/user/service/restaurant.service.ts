@@ -15,6 +15,7 @@ import { logError, logInfo, logWarn } from "@lib/logger";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { isValidUuid } from "@common/utils/uuid.util";
+import { LocationService } from "./location.service";
 
 export class RestaurantService {
     private restaurantRepository = AppDataSource.getRepository(Restaurant);
@@ -247,8 +248,20 @@ export class RestaurantService {
     async getAllRestaurants({ 
         page = PAGINATION_DEFAULTS.PAGE, 
         limit = PAGINATION_DEFAULTS.LIMIT, 
-        searchQuery = "" 
-    }: { page?: number; limit?: number; searchQuery?: string } = {}): Promise<IPaginatedRestaurantsResponse> {
+        searchQuery = "",
+        location_id,
+        rating,
+        priceMax,
+        isFeatured
+    }: { 
+        page?: number; 
+        limit?: number; 
+        searchQuery?: string;
+        location_id?: number | number[];
+        rating?: number;
+        priceMax?: number;
+        isFeatured?: boolean;
+    } = {}): Promise<IPaginatedRestaurantsResponse> {
         const skip = (page - 1) * limit;
         const queryBuilder = this.restaurantRepository.createQueryBuilder("restaurant")
             .leftJoinAndSelect("restaurant.location", "location")
@@ -258,6 +271,27 @@ export class RestaurantService {
 
         if (searchQuery && searchQuery.trim() !== "") {
             queryBuilder.andWhere("(restaurant.name ILIKE :search OR restaurant.description ILIKE :search)", { search: `%${searchQuery}%` });
+        }
+
+        if (location_id) {
+            const locationService = new LocationService(AppDataSource);
+            const expandedIds = await locationService.getDescendantIds(location_id);
+            
+            if (expandedIds.length > 0) {
+                queryBuilder.andWhere("restaurant.location_id IN (:...location_ids)", { location_ids: expandedIds });
+            }
+        }
+
+        if (rating) {
+            queryBuilder.andWhere("restaurant.rating >= :rating", { rating });
+        }
+
+        if (priceMax) {
+            queryBuilder.andWhere("restaurant.price <= :priceMax", { priceMax });
+        }
+
+        if (isFeatured !== undefined) {
+            queryBuilder.andWhere("restaurant.is_featured = :isFeatured", { isFeatured });
         }
 
         const [restaurants, total] = await queryBuilder.skip(skip).take(limit).getManyAndCount();

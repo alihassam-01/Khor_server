@@ -16,6 +16,10 @@ export interface IGetAllHotelsQuery {
     page?: string;
     limit?: string;
     searchQuery?: string;
+    location_id?: string;
+    rating?: string;
+    priceMax?: string;
+    isFeatured?: string;
 }
 
 export interface IToggleAdStatusBody {

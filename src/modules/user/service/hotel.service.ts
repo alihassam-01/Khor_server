@@ -16,6 +16,7 @@ import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { isValidUuid } from "@common/utils/uuid.util";
 import { In } from "typeorm";
+import { LocationService } from "./location.service";
 
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
@@ -301,8 +302,20 @@ export class HotelService {
     async getAllHotels({ 
         page = PAGINATION_DEFAULTS.PAGE, 
         limit = PAGINATION_DEFAULTS.LIMIT, 
-        searchQuery = "" 
-    }: { page?: number; limit?: number; searchQuery?: string }): Promise<IPaginatedHotelsResponse> {
+        searchQuery = "",
+        location_id,
+        rating,
+        priceMax,
+        isFeatured
+    }: { 
+        page?: number; 
+        limit?: number; 
+        searchQuery?: string;
+        location_id?: number | number[];
+        rating?: number;
+        priceMax?: number;
+        isFeatured?: boolean;
+    }): Promise<IPaginatedHotelsResponse> {
         const skip = (page - 1) * limit;
         const queryBuilder = this.hotelRepository.createQueryBuilder("hotel")
             .leftJoinAndSelect("hotel.location", "location")
@@ -313,6 +326,27 @@ export class HotelService {
 
         if (searchQuery && searchQuery.trim() !== "") {
             queryBuilder.andWhere("(hotel.name ILIKE :search OR hotel.description ILIKE :search)", { search: `%${searchQuery}%` });
+        }
+
+        if (location_id) {
+            const locationService = new LocationService(AppDataSource);
+            const expandedIds = await locationService.getDescendantIds(location_id);
+            
+            if (expandedIds.length > 0) {
+                queryBuilder.andWhere("hotel.location_id IN (:...location_ids)", { location_ids: expandedIds });
+            }
+        }
+
+        if (rating) {
+            queryBuilder.andWhere("hotel.rating >= :rating", { rating });
+        }
+
+        if (priceMax) {
+            queryBuilder.andWhere("hotel.price <= :priceMax", { priceMax });
+        }
+
+        if (isFeatured !== undefined) {
+            queryBuilder.andWhere("hotel.is_featured = :isFeatured", { isFeatured });
         }
 
         const [hotels, total] = await queryBuilder.skip(skip).take(limit).getManyAndCount();

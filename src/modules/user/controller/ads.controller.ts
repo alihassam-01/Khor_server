@@ -49,7 +49,17 @@ export class AdsController {
         reply: FastifyReply
     ) {
         try {
-            const { page = "1", limit = "10", searchQuery = "", type = "all" } = req.query;
+            const { 
+                page = "1", 
+                limit = "10", 
+                searchQuery = "", 
+                type = "all",
+                location_id,
+                rating,
+                priceMax,
+                isFeatured
+            } = req.query;
+
             const pageNum = parseInt(page, 10) || 1;
             const limitNum = parseInt(limit, 10) || 10;
             const typeValue = type.toLowerCase() as "hotel" | "restaurant" | "all";
@@ -58,11 +68,29 @@ export class AdsController {
                 return reply.code(400).send({ message: "Invalid type. Use 'hotel', 'restaurant', or 'all'" });
             }
 
+            // Handle multiple location IDs if provided as comma-separated string
+            let parsedLocationId: number | number[] | undefined = undefined;
+            if (location_id) {
+                const locStr = String(location_id);
+                if (locStr.includes(',')) {
+                    parsedLocationId = locStr.split(',')
+                        .map(id => parseInt(id.trim(), 10))
+                        .filter(id => !isNaN(id));
+                } else {
+                    const parsed = parseInt(locStr, 10);
+                    if (!isNaN(parsed)) parsedLocationId = parsed;
+                }
+            }
+
             const result: ICombinedAdsResponseDTO = await this.adsService.getCombinedAds({
                 page: pageNum,
                 limit: limitNum,
                 searchQuery: searchQuery,
                 type: typeValue,
+                location_id: parsedLocationId as any,
+                rating: rating ? parseFloat(rating) : undefined,
+                priceMax: priceMax ? parseFloat(priceMax) : undefined,
+                isFeatured: isFeatured === 'true' || isFeatured === '1' ? true : (isFeatured === 'false' || isFeatured === '0' ? false : undefined),
             });
             reply.send(result);
         } catch (error: unknown) {

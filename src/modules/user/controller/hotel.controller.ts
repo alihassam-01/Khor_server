@@ -189,14 +189,38 @@ export class HotelController {
         const { 
             page = String(PAGINATION_DEFAULTS.PAGE), 
             limit = String(PAGINATION_DEFAULTS.LIMIT), 
-            searchQuery = "" 
+            searchQuery = "",
+            location_id,
+            rating,
+            priceMax,
+            isFeatured
         } = req.query;
+        
         const pageNum = parseInt(page, 10) || PAGINATION_DEFAULTS.PAGE;
         const limitNum = parseInt(limit, 10) || PAGINATION_DEFAULTS.LIMIT;
+        
+        // Handle multiple location IDs if provided as comma-separated string
+        let parsedLocationId: number | number[] | undefined = undefined;
+        if (location_id) {
+            const locStr = String(location_id);
+            if (locStr.includes(',')) {
+                parsedLocationId = locStr.split(',')
+                    .map(id => parseInt(id.trim(), 10))
+                    .filter(id => !isNaN(id));
+            } else {
+                const parsed = parseInt(locStr, 10);
+                if (!isNaN(parsed)) parsedLocationId = parsed;
+            }
+        }
+
         const result: IPaginatedHotelsResponse = await this.hotelService.getAllHotels({
             page: pageNum,
             limit: limitNum,
             searchQuery: searchQuery,
+            location_id: parsedLocationId,
+            rating: rating ? parseFloat(rating) : undefined,
+            priceMax: priceMax ? parseFloat(priceMax) : undefined,
+            isFeatured: isFeatured === 'true',
         });
         reply.send(result);
     }
