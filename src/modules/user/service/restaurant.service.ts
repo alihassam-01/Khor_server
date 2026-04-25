@@ -325,12 +325,13 @@ export class RestaurantService {
     ): Promise<IRestaurantDTO> {
         const restaurant = await this.restaurantRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews"],
+            relations: ["location", "detailed_reviews", "vendor", "vendor.vendor", "vendor.customerProfile"],
         });
 
         if (!restaurant) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
+        const wasActive = restaurant.is_active;
 
         // Update fields if provided
         if (restaurantData.name !== undefined)
@@ -365,8 +366,35 @@ export class RestaurantService {
             imagesToDelete.push(...removedMenuImages);
             restaurant.menu_images = newImages;
         }
-        if (restaurantData.is_active !== undefined)
+        if (restaurantData.is_active !== undefined) {
+            const becomingActive = restaurantData.is_active && !restaurant.is_active;
+            const isAlreadyActiveButExpired = restaurantData.is_active && restaurant.is_active && (restaurant.expires_at && restaurant.expires_at < new Date());
+            
+            if (becomingActive || isAlreadyActiveButExpired) {
+                // If activating an expired ad, set new expiry
+                if (!restaurant.expires_at || restaurant.expires_at < new Date()) {
+                    let durationDays = 30;
+                    const planId = restaurantData.plan_id || restaurant.plan_id;
+                    
+                    if (planId) {
+                        const { SubscriptionPlanService } = await import("./subscription-plan.service");
+                        const planService = new SubscriptionPlanService();
+                        const plan = await planService.getPlanById(planId);
+                        if (plan) {
+                            durationDays = plan.duration_days;
+                        }
+                    } else {
+                        const typeStr = (restaurantData.subscription_type || restaurant.subscription_type || 'free').toUpperCase();
+                        durationDays = SUBSCRIPTION_DURATION_DAYS[typeStr as keyof typeof SUBSCRIPTION_DURATION_DAYS] || 30;
+                    }
+                    
+                    const now = new Date();
+                    restaurant.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                    logInfo(`Updating expiry for Restaurant ${id} during update: ${restaurant.expires_at}`);
+                }
+            }
             restaurant.is_active = restaurantData.is_active;
+        }
         if (restaurantData.is_featured !== undefined)
             restaurant.is_featured = restaurantData.is_featured;
         if (restaurantData.facebook !== undefined)
@@ -410,6 +438,22 @@ export class RestaurantService {
             r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Restaurant image cleanup on update'));
         }
 
+        // Send activation email if we just activated the ad
+        if (updatedRestaurant.is_active && !wasActive && updatedRestaurant.vendor?.email) {
+            logInfo(`Sending activation email for Restaurant: ${updatedRestaurant.name}`);
+            const { SendEmail } = await import("@modules/user/service/email/sendEmail");
+            const emailService = new SendEmail();
+            const vendorName = updatedRestaurant.vendor?.customerProfile?.username || updatedRestaurant.vendor?.vendor?.username || "Vendor";
+            
+            await emailService.sendAdActivationEmail(
+                vendorName,
+                updatedRestaurant.vendor.email,
+                updatedRestaurant.name,
+                "Restaurant",
+                updatedRestaurant.expires_at || new Date()
+            ).catch(e => logError(e, `Failed to send activation email for Restaurant: ${updatedRestaurant.name}`));
+        }
+
         return this.toRestaurantDTO(updatedRestaurant);
     }
 
@@ -441,7 +485,7 @@ export class RestaurantService {
     async toggleAdStatus(id: string, isActive: boolean, planId?: string): Promise<IRestaurantDTO> {
         const restaurant = await this.restaurantRepository.findOne({
             where: { id },
-            select: ["id", "expires_at", "subscription_type", "is_active", "name"],
+            relations: ["vendor", "vendor.vendor", "vendor.customerProfile"],
         });
 
         if (!restaurant) {
@@ -472,11 +516,28 @@ export class RestaurantService {
             
             const now = new Date();
             updateData.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-            
             logInfo(`Setting expiration for Restaurant "${restaurant.name}": ${durationDays} days (Plan: ${planType})`);
         }
 
+        logInfo(`Toggling ad status for Restaurant ${id}: ${restaurant.is_active} -> ${isActive}. Vendor Email: ${restaurant.vendor?.email}`);
+
         await this.restaurantRepository.update({ id }, updateData);
+        
+        // Send activation email if we just activated the ad
+        if (isActive && !restaurant.is_active && restaurant.vendor?.email) {
+            logInfo(`Sending activation email for Restaurant: ${restaurant.name}`);
+            const { SendEmail } = await import("@modules/user/service/email/sendEmail");
+            const emailService = new SendEmail();
+            const vendorName = restaurant.vendor?.customerProfile?.username || restaurant.vendor?.vendor?.username || "Vendor";
+            
+            await emailService.sendAdActivationEmail(
+                vendorName,
+                restaurant.vendor.email,
+                restaurant.name,
+                "Restaurant",
+                updateData.expires_at || restaurant.expires_at || new Date()
+            ).catch(e => logError(e, `Failed to send activation email for Restaurant: ${restaurant.name}`));
+        }
 
         const updated = await this.restaurantRepository.findOne({
             where: { id },
@@ -518,8 +579,10 @@ export class RestaurantService {
         }
 
         const now = new Date();
-        const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
-        const newExpiry = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+        const baseDate = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+        const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+        
+        logInfo(`Renewing Restaurant ${id}. Old Expiry: ${restaurant.expires_at}, Base Date: ${baseDate}, New Expiry: ${newExpiry}`);
 
         await this.restaurantRepository.update({ id }, {
             expires_at: newExpiry,
@@ -584,7 +647,8 @@ export class RestaurantService {
         }
 
         const now = new Date();
-        const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+        const baseDate = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+        const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
         restaurant.subscription_type = finalSubscriptionType;
         restaurant.plan_id = planId || (plan?.plan_id);
@@ -593,7 +657,7 @@ export class RestaurantService {
         const amount = plan ? Number(plan.price) : 0;
 
         if ((finalSubscriptionType === SubscriptionType.FREE && !restaurant.is_featured) || amount <= 0) {
-            restaurant.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+            restaurant.expires_at = newExpiry;
             restaurant.is_active = true;
             restaurant.is_paid = true;
         } else {

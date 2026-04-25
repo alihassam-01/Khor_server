@@ -121,13 +121,6 @@ export function bookingConfirmationEmailTemplate(
     </head>
     <body>
       <div class="email-container">
-        <div class="email-header">
-          <div class="logo">
-            <img src="https://i.ibb.co/N6xw569R/Logo-Bg-Removed-Fixed.png" alt="Khor Logo" />
-          </div>
-          <div class="company-tagline">Realize Your Utopia</div>
-        </div>
-
         <div class="email-body">
           <h2 class="greeting">Your Booking is Confirmed!</h2>
           <p>Dear <span class="highlight">${customerName}</span>,</p>

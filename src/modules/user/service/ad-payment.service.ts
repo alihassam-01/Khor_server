@@ -118,10 +118,10 @@ export class AdPaymentService {
                         const durationKey = (hotel.subscription_type as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30; // fallback
                         const now = new Date();
-                        const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
+                        const baseDate = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
                         hotel.is_active = true;
                         hotel.is_paid = true;
-                        hotel.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                        hotel.expires_at = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
                         await hotelRepo.save(hotel);
 
                         // Send activation email
@@ -142,10 +142,10 @@ export class AdPaymentService {
                         const durationKey = (rest.subscription_type as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
                         const now = new Date();
-                        const currentExpiry = rest.expires_at && rest.expires_at > now ? rest.expires_at : now;
+                        const baseDate = rest.expires_at && rest.expires_at > now ? rest.expires_at : now;
                         rest.is_active = true;
                         rest.is_paid = true;
-                        rest.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                        rest.expires_at = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
                         await restRepo.save(rest);
 
                         // Send activation email

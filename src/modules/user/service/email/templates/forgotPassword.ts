@@ -136,16 +136,6 @@ export function forgotPasswordTemplate(
     </head>
     <body>
         <div class="email-container">
-            <div class="email-header">
-                <div class="logo-container">
-                    <div class="logo">
-                        <span class="logo-icon">
-                            <img src="https://i.ibb.co/N6xw569R/Logo-Bg-Removed-Fixed.png" alt="Khor Logo" style="height:32px;vertical-align:middle;" />
-                        </span> KHOR
-                    </div>
-                </div>
-                <div class="company-tagline">Realize Your Utopia</div>
-            </div>
             <div class="email-body">
                 <h2 class="greeting">Hello, ${name}!</h2>
                 <p class="message">We received a request to reset your password for your Khor account.</p>

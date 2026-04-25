@@ -30,16 +30,6 @@ export function otpVerificationTemplate(name: string, otp: string, expiryMinutes
     </head>
     <body>
         <div class="email-container">
-            <div class="email-header">
-                <div class="logo-container">
-                    <div class="logo">
-                        <span><img src="https://i.ibb.co/N6xw569R/Logo-Bg-Removed-Fixed.png" alt="Khor Logo" style="height:32px;vertical-align:middle;" /></span>
-                        KHOR
-                    </div>
-                </div>
-                <div class="company-tagline">Realize Your Utopia</div>
-            </div>
-
             <div class="email-body">
                 <h2 class="greeting">Welcome, ${name}!</h2>
                 <p class="message">Thank you for signing up with Khor. Use the code below to verify your account.</p>

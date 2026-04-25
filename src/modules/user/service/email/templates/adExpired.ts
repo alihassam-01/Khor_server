@@ -160,19 +160,8 @@ export function adExpiredTemplate(
     </head>
     <body>
         <div class="email-container">
-            <div class="email-header">
-                <div class="logo-container">
-                    <div class="logo">
-                        <span class="logo-icon">
-                            <img src="https://i.ibb.co/N6xw569R/Logo-Bg-Removed-Fixed.png" alt="Khor Logo" style="height:32px;vertical-align:middle;" />
-                        </span> KHOR
-                    </div>
-                </div>
-                <div class="company-tagline">Realize Your Utopia</div>
-            </div>
-            
             <div class="email-body">
-                <h2 class="greeting">Subscription Expired</h2>
+                <h2 class="greeting">Hello ${vendorName}, Subscription Expired</h2>
                 
                 <p class="message">Your ${adType} listing "<strong>${adName}</strong>" has expired and is no longer visible to travelers.</p>
                 
@@ -195,7 +184,7 @@ export function adExpiredTemplate(
                 
                 <p class="message">Once renewed, your listing will immediately become active again.</p>
                 
-                <a href="https://admin.gokhor.com" class="action-button">RENEW NOW</a>
+                <a href="https://gokhor.com/owner-dashboard" class="action-button">RENEW NOW</a>
                 
                 <div class="divider"></div>
                 

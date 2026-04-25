@@ -160,17 +160,6 @@ export function adActivationTemplate(
     </head>
     <body>
         <div class="email-container">
-            <div class="email-header">
-                <div class="logo-container">
-                    <div class="logo">
-                        <span class="logo-icon">
-                            <img src="https://i.ibb.co/N6xw569R/Logo-Bg-Removed-Fixed.png" alt="Khor Logo" style="height:32px;vertical-align:middle;" />
-                        </span> KHOR
-                    </div>
-                </div>
-                <div class="company-tagline">Realize Your Utopia</div>
-            </div>
-            
             <div class="email-body">
                 <h2 class="greeting">Great news, ${vendorName}!</h2>
                 
@@ -195,7 +184,7 @@ export function adActivationTemplate(
                 
                 <p class="message">You can manage your listing and view performance analytics from your vendor dashboard.</p>
                 
-                <a href="https://admin.gokhor.com" class="action-button">GO TO DASHBOARD</a>
+                <a href="https://gokhor.com/owner-dashboard" class="action-button">GO TO DASHBOARD</a>
                 
                 <div class="divider"></div>
                 
