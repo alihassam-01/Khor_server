@@ -1,4 +1,4 @@
-import { PaymentMethod } from "../entity/ENUM/ad-payment.enum";
+import { PaymentMethod } from "@common/enums/payment.enums";
 
 export interface IPaymentSettingDTO {
     id: string;

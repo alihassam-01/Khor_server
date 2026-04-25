@@ -1,57 +1,72 @@
 import { AppDataSource } from "@config/ormconfig";
-import { User } from "@entity/user/user.entity";
-import { Hotel, Restaurant } from "@entity/ads";
-import { AdAnalytics } from "@entity/ads/ad-analytics.entity";
-import { AnalyticsEventType } from "@entity/ENUM/enum";
+import { User } from "@modules/user/entity/user/user.entity";
+import { Listing } from "@modules/user/entity/listing/listing.entity";
+import { AdAnalytics } from "@modules/user/entity/payment/ad-analytics.entity";
+import { AnalyticsEventType } from "@common/enums/analytics.enums";
+import { ListingType } from "@common/enums/listing.enums";
+import { UserRole } from "@common/enums/user.enums";
 import { SendEmail } from "@modules/user/service/email/sendEmail";
 import { logInfo, logError } from "@lib/logger";
 
+const TYPE_LABEL: Record<ListingType, string> = {
+    [ListingType.HOTEL]: "Hotel",
+    [ListingType.RESTAURANT]: "Restaurant",
+    [ListingType.TOUR]: "Tour",
+    [ListingType.VEHICLE]: "Vehicle",
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Periodic job that emails each vendor a summary of their listing
+ * performance over the last N days. Walks the unified `listings` +
+ * `ad_analytics` tables — one path for every listing type.
+ */
 export class AnalyticsJobService {
     private userRepository = AppDataSource.getRepository(User);
-    private hotelRepository = AppDataSource.getRepository(Hotel);
-    private restaurantRepository = AppDataSource.getRepository(Restaurant);
+    private listingRepository = AppDataSource.getRepository(Listing);
     private analyticsRepository = AppDataSource.getRepository(AdAnalytics);
     private emailService = new SendEmail();
 
-    async generateAndSendReports(days: number = 7) {
+    async generateAndSendReports(days: number = 7): Promise<void> {
         logInfo(`Starting analytics report generation for the last ${days} days...`);
-        
+
         const now = new Date();
-        const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+        const startDate = new Date(now.getTime() - days * DAY_MS);
         const reportType = days === 1 ? "Daily" : days === 7 ? "Weekly" : "Monthly";
         const period = `${reportType} Report (${startDate.toLocaleDateString()} - ${now.toLocaleDateString()})`;
 
         try {
-            // 1. Get all users who are vendors
             const vendors = await this.userRepository.find({
-                where: { userType: 'vendor' as any },
-                relations: ["vendor"]
+                where: { userType: UserRole.VENDOR },
+                relations: ["profile"],
             });
 
             for (const vendorUser of vendors) {
-                // 2. Get ads for this vendor
-                const hotels = await this.hotelRepository.find({ where: { vendor_id: vendorUser.id } });
-                const restaurants = await this.restaurantRepository.find({ where: { vendor_id: vendorUser.id } });
-                
-                const allAds = [
-                    ...hotels.map(h => ({ id: h.id, name: h.name, type: 'Hotel' })),
-                    ...restaurants.map(r => ({ id: r.id, name: r.name, type: 'Restaurant' }))
-                ];
+                const listings = await this.listingRepository.find({
+                    where: { vendor_id: vendorUser.id },
+                });
 
-                if (allAds.length === 0) continue;
+                if (listings.length === 0) continue;
 
-                const adsStats = [];
+                const adsStats: Array<{
+                    name: string;
+                    type: string;
+                    views: number;
+                    clicks: number;
+                    unique_visitors: number;
+                    ctr: string;
+                }> = [];
 
-                // 3. Collect stats for each ad
-                for (const ad of allAds) {
+                for (const ad of listings) {
                     const stats = await this.analyticsRepository
                         .createQueryBuilder("analytics")
                         .select("analytics.event_type", "type")
                         .addSelect("COUNT(*)", "count")
-                        .where("analytics.ad_id = :adId", { adId: ad.id })
-                        .andWhere("analytics.created_at BETWEEN :start AND :end", { 
-                            start: startDate, 
-                            end: now 
+                        .where("analytics.listing_id = :adId", { adId: ad.id })
+                        .andWhere("analytics.created_at BETWEEN :start AND :end", {
+                            start: startDate,
+                            end: now,
                         })
                         .groupBy("analytics.event_type")
                         .getRawMany();
@@ -59,17 +74,20 @@ export class AnalyticsJobService {
                     const uniqueVisitors = await this.analyticsRepository
                         .createQueryBuilder("analytics")
                         .select("COUNT(DISTINCT analytics.ip_hash)", "count")
-                        .where("analytics.ad_id = :adId", { adId: ad.id })
-                        .andWhere("analytics.created_at BETWEEN :start AND :end", { 
-                            start: startDate, 
-                            end: now 
+                        .where("analytics.listing_id = :adId", { adId: ad.id })
+                        .andWhere("analytics.created_at BETWEEN :start AND :end", {
+                            start: startDate,
+                            end: now,
                         })
                         .getRawOne();
 
-                    const formatted = stats.reduce((acc, curr) => {
-                        acc[curr.type] = parseInt(curr.count);
-                        return acc;
-                    }, { [AnalyticsEventType.VIEW]: 0, [AnalyticsEventType.CLICK]: 0 });
+                    const formatted = stats.reduce(
+                        (acc, curr) => {
+                            acc[curr.type] = parseInt(curr.count);
+                            return acc;
+                        },
+                        { [AnalyticsEventType.VIEW]: 0, [AnalyticsEventType.CLICK]: 0 } as Record<string, number>,
+                    );
 
                     const views = formatted[AnalyticsEventType.VIEW] || 0;
                     const clicks = formatted[AnalyticsEventType.CLICK] || 0;
@@ -77,29 +95,27 @@ export class AnalyticsJobService {
 
                     adsStats.push({
                         name: ad.name,
-                        type: ad.type,
+                        type: TYPE_LABEL[ad.type] ?? "Listing",
                         views,
                         clicks,
                         unique_visitors: parseInt(uniqueVisitors?.count || "0"),
-                        ctr
+                        ctr,
                     });
                 }
 
-                // 4. Send email
-                const vendorName = vendorUser.vendor?.username || vendorUser.email.split('@')[0];
+                const vendorName =
+                    vendorUser.profile?.username || vendorUser.email.split("@")[0];
                 await this.emailService.sendAnalyticsReportEmail(
                     vendorName,
                     vendorUser.email,
                     period,
-                    adsStats
+                    adsStats,
                 );
-                
-
             }
-            
-            logInfo("Weekly analytics report generation completed successfully.");
+
+            logInfo("Analytics report generation completed successfully.");
         } catch (error) {
-            logError(error as Error, "Failed to generate weekly analytics reports");
+            logError(error as Error, "Failed to generate analytics reports");
         }
     }
 }

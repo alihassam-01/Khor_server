@@ -1,60 +1,83 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
+    Column,
+    CreateDateColumn,
+    Entity,
+    Index,
+    JoinColumn,
+    ManyToOne,
+    OneToMany,
+    PrimaryGeneratedColumn,
+    Unique,
+    UpdateDateColumn,
 } from "typeorm";
-import { ReviewStatus } from "@common/enums/review.enums";
-import { User } from "@modules/user/entity/user";
+import { ReviewStatus, ReviewTargetType } from "@common/enums/review.enums";
+import { User } from "@modules/user/entity/user/user.entity";
+import { ReviewVote } from "./review-vote.entity";
 
-@Entity()
+/**
+ * The single, polymorphic reviews table. Replaces `hotel_reviews` and
+ * `restaurant_reviews`. Targets any reviewable entity via
+ * `(target_type, target_id)`.
+ *
+ * `target_id` is `text` so it can hold both UUIDs (listings, room types) and
+ * numeric IDs (articles, locations) without forcing a join table per target.
+ *
+ * Cached counters (`helpful_count`, `not_helpful_count`) are kept consistent
+ * by ReviewService inside the same transaction as the underlying
+ * `review_votes` write.
+ */
+@Entity("reviews")
+@Index("idx_reviews_target_status", ["target_type", "target_id", "status", "created_at"])
+@Index("idx_reviews_user", ["user_id"])
+@Unique("uq_reviews_user_target", ["user_id", "target_type", "target_id"])
 export class Review {
-  @PrimaryGeneratedColumn()
-  review_id!: number;
+    @PrimaryGeneratedColumn("uuid")
+    id!: string;
 
-  //customer link to user table
-  @ManyToOne(() => User, { nullable: false, onDelete: "CASCADE" })
-  @JoinColumn({ name: "user_id" })
-  user!: User;
+    @Column({ type: "uuid" })
+    user_id!: string;
 
-  // Polymorphic Relation
-  @Column({ type: "text", nullable: true })
-  target_id!: string | null;
+    @ManyToOne(() => User, { nullable: false, onDelete: "CASCADE" })
+    @JoinColumn({ name: "user_id" })
+    user!: User;
 
-  @Column({ type: "text", nullable: true })
-  target_type!: "property" | "room_type" | "tour_package" | "article" | "location" | null;
+    @Column({ type: "enum", enum: ReviewTargetType })
+    target_type!: ReviewTargetType;
 
-  @Column({ type: "text", nullable: true })
-  review_text!: string;
+    @Column({ type: "varchar", length: 64 })
+    target_id!: string;
 
-  @Column({ type: "int", nullable: true })
-  rating!: number;
+    @Column({ type: "smallint" })
+    rating!: number;
 
-  @Column({ type: "date", default: () => "CURRENT_DATE" })
-  review_date!: string;
+    @Column({ type: "varchar", length: 255, nullable: true })
+    title?: string | null;
 
-  @Column({
-    type: "enum",
-    enum: ReviewStatus,
-    default: ReviewStatus.NOT_REVIEWED,
-  })
-  review_status!: ReviewStatus;
+    @Column({ type: "text" })
+    content!: string;
 
-  @Column({ default: 0 })
-  helpful_count!: number;
+    @Column({ type: "enum", enum: ReviewStatus, default: ReviewStatus.PENDING })
+    status!: ReviewStatus;
 
-  @Column({ default: 0 })
-  not_helpful_count!: number;
+    /**
+     * True if this reviewer has a confirmed booking/payment for the target
+     * (currently always false; reserved for when bookings are introduced).
+     */
+    @Column({ type: "boolean", default: false })
+    is_verified_booking!: boolean;
 
-  @Column({ default: false })
-  is_deleted!: boolean;
+    @Column({ type: "int", default: 0 })
+    helpful_count!: number;
 
-  @CreateDateColumn()
-  created_at!: Date;
+    @Column({ type: "int", default: 0 })
+    not_helpful_count!: number;
 
-  @UpdateDateColumn()
-  updated_at!: Date;
+    @OneToMany(() => ReviewVote, (vote) => vote.review)
+    votes!: ReviewVote[];
+
+    @CreateDateColumn({ type: "timestamptz" })
+    created_at!: Date;
+
+    @UpdateDateColumn({ type: "timestamptz" })
+    updated_at!: Date;
 }

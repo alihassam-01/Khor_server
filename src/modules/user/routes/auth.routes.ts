@@ -4,7 +4,8 @@ import { AuthService } from "@modules/user/service/auth.service";
 
 import "fastify";
 import { Repository } from "typeorm";
-import { User, CustomerProfile, Vendor } from "@modules/user/entity";
+import { User } from "@modules/user/entity/user/user.entity";
+import { UserProfile } from "@modules/user/entity/user/user-profile.entity";
 import { AppDataSource } from "@config/ormconfig";
 import {
     loginSchema,
@@ -19,17 +20,15 @@ import { authenticate } from "@middlewares/authenticate";
 declare module "fastify" {
     interface FastifyInstance {
         userRepository: Repository<User>;
-        vendor: Repository<Vendor>;
-        customerProfileRepository: Repository<CustomerProfile>;
+        userProfileRepository: Repository<UserProfile>;
     }
 }
 
 const userRepository = AppDataSource.getRepository(User);
-const vendor = AppDataSource.getRepository(Vendor);
-const customerProfileRepository = AppDataSource.getRepository(CustomerProfile);
+const userProfileRepository = AppDataSource.getRepository(UserProfile);
 
 export default async function authRoutes(fastify: FastifyInstance) {
-    const authService = new AuthService(userRepository, vendor, customerProfileRepository);
+    const authService = new AuthService(userRepository, userProfileRepository);
     const authController = new AuthController(authService);
 
     fastify.post("/auth/register", { schema: registerSchema }, authController.register.bind(authController));

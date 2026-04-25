@@ -46,14 +46,22 @@ export class R2ClientService {
   }
 
   /**
-   * Upload a file to R2
+   * Upload a file to R2.
+   *
+   * Returns the public URL, the bucket key, and the `s3_image_id` of the
+   * registry row. Callers (e.g. ListingMediaService) can pass `s3_image_id`
+   * straight into `listing_media.s3_image_id` instead of having to look it
+   * up by URL after the fact.
+   *
+   * The MD5 hash of the bytes is used to dedupe identical uploads — a
+   * second upload of the same file just returns the existing record.
    */
   uploadFileToR2 = async (
     fileBuffer: Buffer,
     originalName: string,
     mimetype: string,
     folder: string = "uploads"
-  ): Promise<{ url: string; key: string }> => {
+  ): Promise<{ url: string; key: string; s3_image_id: string }> => {
     const isDev = CONFIG.env === 'development';
     const uploadFolder = isDev ? `development/${folder}` : folder;
     
@@ -61,7 +69,7 @@ export class R2ClientService {
     const existing = await this.s3Image.findOne({ where: { hash, isDeleted: false } });
 
     if (existing) {
-      return { url: existing.url, key: existing.key };
+      return { url: existing.url, key: existing.key, s3_image_id: existing.id };
     }
 
     // If image, process to WebP and resize; otherwise upload as-is
@@ -108,9 +116,9 @@ export class R2ClientService {
       dateUploaded: new Date(),
       isDeleted: false,
     });
-    await this.s3Image.save(imageEntity);
+    const saved = await this.s3Image.save(imageEntity);
 
-    return { url, key };
+    return { url, key, s3_image_id: saved.id };
   };
 
   /**

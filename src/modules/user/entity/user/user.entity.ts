@@ -1,58 +1,65 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { CustomerProfile } from './customer-profile.entity';
-import { UserRole } from '@common/enums/user.enums';
-import { Vendor } from '@modules/user/entity/business';
-import { Address } from '@modules/user/entity/address';
+import {
+    Column,
+    CreateDateColumn,
+    Entity,
+    JoinColumn,
+    OneToOne,
+    PrimaryGeneratedColumn,
+    UpdateDateColumn,
+} from "typeorm";
+import { UserRole } from "@common/enums/user.enums";
+import { Address } from "@modules/user/entity/address";
+import { UserProfile } from "./user-profile.entity";
 
-@Entity()
+/**
+ * Authentication-side user record. The actual display fields (username,
+ * phone, profile picture) live on `user_profiles` (1:1).
+ */
+@Entity("user")
 export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+    @PrimaryGeneratedColumn("uuid")
+    id!: string;
 
-  @Column({ unique: true })
-  email!: string;
+    @Column({ unique: true })
+    email!: string;
 
-  @Column({ nullable: true })
-  password?: string; // Will be hashed (null for OAuth users)
+    @Column({ nullable: true })
+    password?: string;
 
-  @Column({ nullable: true })
-  googleId?: string;
+    @Column({ nullable: true })
+    googleId?: string;
 
-  @Column({ default: 'local' })
-  authProvider: string = 'local';
+    @Column({ default: "local" })
+    authProvider: string = "local";
 
-  @Column({ type: 'enum', enum: UserRole })
-  userType!: UserRole;
+    @Column({ type: "enum", enum: UserRole })
+    userType!: UserRole;
 
-  @Column({ nullable: true })
-  verificationToken?: string;
+    @Column({ nullable: true })
+    verificationToken?: string;
 
-  @Column({ nullable: true, type: 'timestamptz' })
-  otpExpiresAt?: Date;
+    @Column({ nullable: true, type: "timestamptz" })
+    otpExpiresAt?: Date;
 
-  @Column({ default: false })
-  isVerified: boolean = false;
+    @Column({ default: false })
+    isVerified: boolean = false;
 
-  @Column({ name: 'address_id', nullable: true })
-  addressId?: number;
+    @Column({ name: "address_id", nullable: true })
+    addressId?: number;
 
-  // Relationship with explicit JoinColumn
-  @OneToOne(() => Address, { nullable: true })
-  @JoinColumn({ name: 'address_id' })
-  address?: Address;
+    @OneToOne(() => Address, { nullable: true })
+    @JoinColumn({ name: "address_id" })
+    address?: Address;
 
-  @OneToOne(() => Vendor, (vendor) => vendor.user, { nullable: true })
-  vendor?: Vendor;
+    @OneToOne(() => UserProfile, (profile) => profile.user, { nullable: true, cascade: true })
+    profile?: UserProfile;
 
-  @OneToOne(() => CustomerProfile, (profile) => profile.user, { nullable: true })
-  customerProfile?: CustomerProfile;
+    @CreateDateColumn({ type: "timestamptz" })
+    createdAt!: Date;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date;
+    @UpdateDateColumn({ type: "timestamptz" })
+    updatedAt!: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt!: Date;
-
-  @Column({ default: true })
-  isActive!: boolean;
+    @Column({ default: true })
+    isActive!: boolean;
 }

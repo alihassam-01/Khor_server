@@ -1,5 +1,5 @@
 import { AppDataSource } from "@config/ormconfig";
-import { PaymentSetting } from "@modules/user/entity/ads/payment-setting.entity";
+import { PaymentSetting } from "@modules/user/entity/payment/payment-setting.entity";
 import {
     ICreatePaymentSettingDTO,
     IUpdatePaymentSettingDTO,
