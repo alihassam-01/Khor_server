@@ -11,9 +11,11 @@ import { isValidUuid } from "@common/utils/uuid.util";
 import { logInfo, logWarn } from "@lib/logger";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { SendEmail } from "./email/sendEmail";
 
 export class AdPaymentService {
     private paymentRepository = AppDataSource.getRepository(AdPayment);
+    private emailService = new SendEmail();
 
     private async toPaymentDTO(payment: AdPayment, ad?: Hotel | Restaurant | null): Promise<IAdPaymentDTO> {
         return {
@@ -121,6 +123,17 @@ export class AdPaymentService {
                         hotel.is_paid = true;
                         hotel.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
                         await hotelRepo.save(hotel);
+
+                        // Send activation email
+                        if (payment.vendor?.email) {
+                            this.emailService.sendAdActivationEmail(
+                                payment.vendor?.customerProfile?.username || payment.vendor?.vendor?.username || "Vendor",
+                                payment.vendor.email,
+                                hotel.name,
+                                "Hotel",
+                                hotel.expires_at
+                            ).catch(e => console.error("Failed to send ad activation email", e));
+                        }
                     }
                 } else if (payment.ad_type === PropertyType.RESTAURANT) {
                     const restRepo = AppDataSource.getRepository(Restaurant);
@@ -134,6 +147,17 @@ export class AdPaymentService {
                         rest.is_paid = true;
                         rest.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
                         await restRepo.save(rest);
+
+                        // Send activation email
+                        if (payment.vendor?.email) {
+                            this.emailService.sendAdActivationEmail(
+                                payment.vendor?.customerProfile?.username || payment.vendor?.vendor?.username || "Vendor",
+                                payment.vendor.email,
+                                rest.name,
+                                "Restaurant",
+                                rest.expires_at
+                            ).catch(e => console.error("Failed to send ad activation email", e));
+                        }
                     }
                 }
             }

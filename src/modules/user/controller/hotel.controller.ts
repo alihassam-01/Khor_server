@@ -129,6 +129,7 @@ export class HotelController {
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 subscription_type: extractedBody.subscription_type || undefined,
+                plan_id: extractedBody.plan_id || undefined,
                 vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || userId) : userId,
             };
 
@@ -245,6 +246,7 @@ export class HotelController {
                 is_featured: 'boolean',
                 amenities: 'array',
                 roomTypes: 'json',
+                plan_id: 'string',
             });
             // Handle image file upload
             if (body.image && typeof body.image !== 'string') {
@@ -283,8 +285,8 @@ export class HotelController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { is_active } = req.body;
-        const hotel = await this.hotelService.toggleAdStatus(id, is_active);
+        const { is_active, plan_id } = req.body;
+        const hotel = await this.hotelService.toggleAdStatus(id, is_active, plan_id);
         reply.send(hotel);
     }
 
@@ -293,8 +295,8 @@ export class HotelController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { subscription_type } = req.body;
-        const hotel = await this.hotelService.renewAd(id, subscription_type);
+        const { subscription_type, plan_id } = req.body;
+        const hotel = await this.hotelService.renewAd(id, subscription_type, plan_id);
         reply.send(hotel);
     }
 
@@ -308,8 +310,8 @@ export class HotelController {
             throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
         }
 
-        const { subscription_type } = req.body;
-        const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type);
+        const { subscription_type, plan_id } = req.body;
+        const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
         reply.send(hotel);
     }
 

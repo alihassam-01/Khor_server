@@ -24,10 +24,12 @@ export interface IGetAllHotelsQuery {
 
 export interface IToggleAdStatusBody {
     is_active: boolean;
+    plan_id?: string;
 }
 
 export interface IRenewAdBody {
-    subscription_type: SubscriptionType;
+    subscription_type?: SubscriptionType;
+    plan_id?: string;
 }
 
 export interface ISetFeaturedStatusBody {

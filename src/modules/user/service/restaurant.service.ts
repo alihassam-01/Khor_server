@@ -81,6 +81,7 @@ export class RestaurantService {
                 })) || [],
             vendor_id: restaurant.vendor_id,
             subscription_type: restaurant.subscription_type,
+            plan_id: restaurant.plan_id,
             is_paid: restaurant.is_paid,
             is_featured: restaurant.is_featured,
             is_active: restaurant.is_active,
@@ -144,6 +145,7 @@ export class RestaurantService {
             // Default to FREE if not specified
             const subscriptionType = restaurantData.subscription_type || SubscriptionType.FREE;
             restaurant.subscription_type = subscriptionType;
+            restaurant.plan_id = restaurantData.plan_id;
 
             if (subscriptionType === SubscriptionType.FREE && !restaurant.is_featured) {
                 restaurant.is_paid = false;
@@ -385,6 +387,8 @@ export class RestaurantService {
         }
         if (restaurantData.subscription_type !== undefined)
             restaurant.subscription_type = restaurantData.subscription_type;
+        if (restaurantData.plan_id !== undefined)
+            restaurant.plan_id = restaurantData.plan_id;
 
         // Update location if changed
         if (
@@ -434,22 +438,58 @@ export class RestaurantService {
 
     // ========== ADMIN METHODS ==========
 
-    async toggleAdStatus(id: string, isActive: boolean): Promise<IRestaurantDTO> {
-        // Targeted UPDATE — no need to load relations just to flip a boolean
-        const result = await this.restaurantRepository.update({ id }, { is_active: isActive });
-        if (result.affected === 0) {
+    async toggleAdStatus(id: string, isActive: boolean, planId?: string): Promise<IRestaurantDTO> {
+        const restaurant = await this.restaurantRepository.findOne({
+            where: { id },
+            select: ["id", "expires_at", "subscription_type", "is_active", "name"],
+        });
+
+        if (!restaurant) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
-        const restaurant = await this.restaurantRepository.findOne({
+
+        const updateData: Partial<Restaurant> = { is_active: isActive };
+
+        // Set expiry if: We are activating AND (it has no expiry OR it's already expired)
+        if (isActive && (!restaurant.expires_at || restaurant.expires_at < new Date())) {
+            let durationDays = 30;
+            let planType = restaurant.subscription_type;
+
+            if (planId) {
+                const { SubscriptionPlanService } = await import("./subscription-plan.service");
+                const planService = new SubscriptionPlanService();
+                const plan = await planService.getPlanById(planId);
+                if (plan) {
+                    durationDays = plan.duration_days;
+                    planType = plan.type;
+                    updateData.subscription_type = planType;
+                    updateData.plan_id = planId;
+                }
+            } else {
+                const typeStr = (restaurant.subscription_type || 'free').toUpperCase();
+                durationDays = SUBSCRIPTION_DURATION_DAYS[typeStr as keyof typeof SUBSCRIPTION_DURATION_DAYS] || 30;
+            }
+            
+            const now = new Date();
+            updateData.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+            
+            logInfo(`Setting expiration for Restaurant "${restaurant.name}": ${durationDays} days (Plan: ${planType})`);
+        }
+
+        await this.restaurantRepository.update({ id }, updateData);
+
+        const updated = await this.restaurantRepository.findOne({
             where: { id },
             relations: ["detailed_reviews"],
         });
-        return this.toRestaurantDTO(restaurant!);
+        
+        return this.toRestaurantDTO(updated!);
     }
 
     async renewAd(
         id: string,
-        subscriptionType: SubscriptionType
+        subscriptionType?: SubscriptionType,
+        planId?: string
     ): Promise<IRestaurantDTO> {
         // Fetch only the scalar columns needed — no relations
         const restaurant = await this.restaurantRepository.findOne({
@@ -461,8 +501,21 @@ export class RestaurantService {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        let durationDays = 30;
+        let finalSubscriptionType = subscriptionType || restaurant.subscription_type;
+
+        if (planId) {
+            const { SubscriptionPlanService } = await import("./subscription-plan.service");
+            const planService = new SubscriptionPlanService();
+            const plan = await planService.getPlanById(planId);
+            if (plan) {
+                durationDays = plan.duration_days;
+                finalSubscriptionType = plan.type;
+            }
+        } else if (subscriptionType) {
+            const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+            durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        }
 
         const now = new Date();
         const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
@@ -470,7 +523,8 @@ export class RestaurantService {
 
         await this.restaurantRepository.update({ id }, {
             expires_at: newExpiry,
-            subscription_type: subscriptionType,
+            subscription_type: finalSubscriptionType,
+            plan_id: planId,
             is_paid: true,
             is_active: true,
         });
@@ -485,7 +539,8 @@ export class RestaurantService {
     async renewAdByVendor(
         id: string,
         vendorId: string,
-        subscriptionType: SubscriptionType | string
+        subscriptionType?: SubscriptionType | string,
+        planId?: string
     ): Promise<IRestaurantDTO> {
         const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
         if (!resolvedVendorUserId) {
@@ -504,30 +559,43 @@ export class RestaurantService {
         const { SubscriptionPlanService } = await import("./subscription-plan.service");
         const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
 
-        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        let durationDays = 30;
+        let finalSubscriptionType = (subscriptionType as SubscriptionType) || restaurant.subscription_type;
+        const planService = new SubscriptionPlanService();
+        let plan = null;
+
+        // Determine duration and plan details
+        if (planId) {
+            plan = await planService.getPlanById(planId);
+        } else if (subscriptionType) {
+            if (subscriptionType.length > 20) { // Likely a UUID
+                plan = await planService.getPlanById(subscriptionType as string);
+            } else {
+                plan = await planService.getPlanByType(subscriptionType as any);
+            }
+        }
+
+        if (plan) {
+            durationDays = plan.duration_days;
+            finalSubscriptionType = plan.type;
+        } else if (subscriptionType) {
+            const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+            durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        }
 
         const now = new Date();
         const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
 
-        restaurant.subscription_type = subscriptionType as SubscriptionType;
+        restaurant.subscription_type = finalSubscriptionType;
+        restaurant.plan_id = planId || (plan?.plan_id);
         restaurant.is_paid = false;
 
-        const planService = new SubscriptionPlanService();
-        
-        // Get plan by ID if provided, otherwise fallback to type
-        let plan = null;
-        if (subscriptionType.length > 20) { // Checking if it looks like a UUID
-            plan = await planService.getPlanById(subscriptionType as string);
-        } else {
-            plan = await planService.getPlanByType(subscriptionType as any);
-        }
-        
         const amount = plan ? Number(plan.price) : 0;
 
-        if (subscriptionType === SubscriptionType.FREE || amount <= 0) {
+        if ((finalSubscriptionType === SubscriptionType.FREE && !restaurant.is_featured) || amount <= 0) {
             restaurant.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
             restaurant.is_active = true;
+            restaurant.is_paid = true;
         } else {
             restaurant.is_active = false;
             const payment = new AdPayment();

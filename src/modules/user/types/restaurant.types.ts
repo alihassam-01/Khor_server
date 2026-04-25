@@ -16,10 +16,12 @@ export interface IGetAllRestaurantsQuery {
 
 export interface IToggleRestaurantAdStatusBody {
     is_active: boolean;
+    plan_id?: string;
 }
 
 export interface IRenewRestaurantAdBody {
-    subscription_type: SubscriptionType;
+    subscription_type?: SubscriptionType;
+    plan_id?: string;
 }
 
 export interface ISetRestaurantFeaturedStatusBody {

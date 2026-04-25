@@ -94,6 +94,9 @@ export class Hotel {
     })
     subscription_type!: SubscriptionType;
 
+    @Column("uuid", { nullable: true })
+    plan_id?: string;
+
     @Column("boolean", { default: false })
     is_paid!: boolean;
 

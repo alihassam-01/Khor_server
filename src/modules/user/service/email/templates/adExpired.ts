@@ -1,0 +1,221 @@
+export function adExpiredTemplate(
+    vendorName: string,
+    adName: string,
+    adType: string,
+    expiryDate: string
+) {
+    return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Ad Expired - Khor</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: 'Arial', sans-serif;
+            }
+            
+            body {
+                background-color: #F3F4F6;
+                padding: 20px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+            }
+            
+            .email-container {
+                max-width: 600px;
+                background-color: #FFFFFF;
+                border-radius: 10px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            
+            .email-header {
+                background-color: #F8F8F8;
+                padding: 25px;
+                text-align: center;
+            }
+            
+            .logo-container {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin-bottom: 15px;
+            }
+            
+            .logo {
+                font-size: 36px;
+                font-weight: bold;
+                color: #36454F;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .logo-icon {
+                margin-right: 10px;
+            }
+            
+            .company-tagline {
+                color: #36454F;
+                font-size: 14px;
+                margin-top: 5px;
+            }
+            
+            .email-body {
+                padding: 30px;
+                color: #36454F;
+                line-height: 1.6;
+            }
+            
+            .greeting {
+                font-size: 22px;
+                margin-bottom: 20px;
+                color: #B22222; /* Firebrick red for expired */
+                text-align: center;
+            }
+            
+            .message {
+                margin-bottom: 25px;
+                font-size: 16px;
+                text-align: center;
+            }
+            
+            .summary-box {
+                background-color: #FEF2F2;
+                padding: 20px;
+                border-radius: 8px;
+                margin-bottom: 25px;
+                border-left: 4px solid #B22222;
+            }
+            
+            .summary-item {
+                margin-bottom: 10px;
+                font-size: 15px;
+            }
+            
+            .summary-label {
+                font-weight: bold;
+                color: #666;
+            }
+            
+            .action-button {
+                display: block;
+                width: 250px;
+                margin: 30px auto;
+                padding: 14px 0;
+                background-color: #008080;
+                color: white !important;
+                text-align: center;
+                text-decoration: none;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            
+            .divider {
+                height: 1px;
+                background-color: #C0C0C0;
+                margin: 25px 0;
+            }
+            
+            .footer {
+                text-align: center;
+                padding: 20px;
+                font-size: 12px;
+                color: #666;
+                background-color: #F8F8F8;
+                border-top: 1px solid #C0C0C0;
+            }
+            
+            .website-link {
+                color: #008080;
+                text-decoration: none;
+                font-weight: bold;
+            }
+            
+            .social-links {
+                margin-top: 15px;
+            }
+            
+            .social-icon {
+                display: inline-block;
+                width: 32px;
+                height: 32px;
+                background-color: #36454F;
+                color: white !important;
+                border-radius: 50%;
+                line-height: 32px;
+                text-align: center;
+                margin: 0 5px;
+                text-decoration: none;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="email-header">
+                <div class="logo-container">
+                    <div class="logo">
+                        <span class="logo-icon">
+                            <img src="https://i.ibb.co/N6xw569R/Logo-Bg-Removed-Fixed.png" alt="Khor Logo" style="height:32px;vertical-align:middle;" />
+                        </span> KHOR
+                    </div>
+                </div>
+                <div class="company-tagline">Realize Your Utopia</div>
+            </div>
+            
+            <div class="email-body">
+                <h2 class="greeting">Subscription Expired</h2>
+                
+                <p class="message">Your ${adType} listing "<strong>${adName}</strong>" has expired and is no longer visible to travelers.</p>
+                
+                <p class="message">Don't miss out on potential customers! Renew your subscription now to restore your listing's visibility.</p>
+                
+                <div class="summary-box">
+                    <div class="summary-item">
+                        <span class="summary-label">Listing:</span> ${adName}
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Type:</span> ${adType}
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Expiry Date:</span> ${expiryDate}
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Status:</span> <span style="color: #B22222; font-weight: bold;">Expired</span>
+                    </div>
+                </div>
+                
+                <p class="message">Once renewed, your listing will immediately become active again.</p>
+                
+                <a href="https://admin.gokhor.com" class="action-button">RENEW NOW</a>
+                
+                <div class="divider"></div>
+                
+                <p class="message" style="font-size: 14px; color: #666;">
+                    If you have already renewed your subscription, please ignore this email.
+                </p>
+            </div>
+            
+            <div class="footer">
+                <p>© ${new Date().getFullYear()} <a href="https://www.gokhor.com" class="website-link">Khor</a>. All rights reserved.</p>
+                <p>Contact us: <a href="mailto:info@gokhor.com" class="website-link">info@gokhor.com</a></p>
+                
+                <div class="social-links">
+                    <a href="https://web.facebook.com/people/GoKhor/61586037316500/" class="social-icon">f</a>
+                    <a href="https://www.linkedin.com/company/gokhor" class="social-icon">in</a>
+                    <a href="https://www.instagram.com/khor.explore" class="social-icon">ig</a>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+}

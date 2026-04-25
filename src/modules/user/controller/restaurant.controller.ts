@@ -114,6 +114,7 @@ export class RestaurantController {
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 is_featured: extractedBody.is_featured === 'true' || extractedBody.is_featured === true,
                 subscription_type: extractedBody.subscription_type || undefined,
+                plan_id: extractedBody.plan_id || undefined,
                 map_link: extractedBody.map_link || undefined,
                 latitude: parseNumber(extractedBody.latitude, 'latitude'),
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
@@ -214,6 +215,7 @@ export class RestaurantController {
                 reviews: 'number',
                 is_active: 'boolean',
                 is_featured: 'boolean',
+                plan_id: 'string',
             });
             // Handle main image file upload
             if (body.image && typeof body.image !== 'string') {
@@ -260,8 +262,8 @@ export class RestaurantController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { is_active } = req.body;
-        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active);
+        const { is_active, plan_id } = req.body;
+        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active, plan_id);
         reply.send(restaurant);
     }
 
@@ -270,8 +272,8 @@ export class RestaurantController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { subscription_type } = req.body;
-        const restaurant = await this.restaurantService.renewAd(id, subscription_type);
+        const { subscription_type, plan_id } = req.body;
+        const restaurant = await this.restaurantService.renewAd(id, subscription_type, plan_id);
         reply.send(restaurant);
     }
 
@@ -285,8 +287,8 @@ export class RestaurantController {
             throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
         }
 
-        const { subscription_type } = req.body;
-        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type);
+        const { subscription_type, plan_id } = req.body;
+        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
         reply.send(restaurant);
     }
 
