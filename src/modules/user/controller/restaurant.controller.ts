@@ -114,6 +114,7 @@ export class RestaurantController {
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 is_featured: extractedBody.is_featured === 'true' || extractedBody.is_featured === true,
                 subscription_type: extractedBody.subscription_type || undefined,
+                plan_id: extractedBody.plan_id || undefined,
                 map_link: extractedBody.map_link || undefined,
                 latitude: parseNumber(extractedBody.latitude, 'latitude'),
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
@@ -161,14 +162,38 @@ export class RestaurantController {
         const {
             page = String(PAGINATION_DEFAULTS.PAGE),
             limit = String(PAGINATION_DEFAULTS.LIMIT),
-            searchQuery = ""
+            searchQuery = "",
+            location_id,
+            rating,
+            priceMax,
+            isFeatured
         } = req.query;
+
         const pageNum = parseInt(page, 10) || PAGINATION_DEFAULTS.PAGE;
         const limitNum = parseInt(limit, 10) || PAGINATION_DEFAULTS.LIMIT;
+
+        // Handle multiple location IDs if provided as comma-separated string
+        let parsedLocationId: number | number[] | undefined = undefined;
+        if (location_id) {
+            const locStr = String(location_id);
+            if (locStr.includes(',')) {
+                parsedLocationId = locStr.split(',')
+                    .map(id => parseInt(id.trim(), 10))
+                    .filter(id => !isNaN(id));
+            } else {
+                const parsed = parseInt(locStr, 10);
+                if (!isNaN(parsed)) parsedLocationId = parsed;
+            }
+        }
+
         const result: IPaginatedRestaurantsResponse = await this.restaurantService.getAllRestaurants({
             page: pageNum,
             limit: limitNum,
             searchQuery: searchQuery,
+            location_id: parsedLocationId,
+            rating: rating ? parseFloat(rating) : undefined,
+            priceMax: priceMax ? parseFloat(priceMax) : undefined,
+            isFeatured: isFeatured === 'true',
         });
         reply.send(result);
     }
@@ -190,6 +215,7 @@ export class RestaurantController {
                 reviews: 'number',
                 is_active: 'boolean',
                 is_featured: 'boolean',
+                plan_id: 'string',
             });
             // Handle main image file upload
             if (body.image && typeof body.image !== 'string') {
@@ -236,8 +262,8 @@ export class RestaurantController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { is_active } = req.body;
-        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active);
+        const { is_active, plan_id } = req.body;
+        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active, plan_id);
         reply.send(restaurant);
     }
 
@@ -246,8 +272,8 @@ export class RestaurantController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { subscription_type } = req.body;
-        const restaurant = await this.restaurantService.renewAd(id, subscription_type);
+        const { subscription_type, plan_id } = req.body;
+        const restaurant = await this.restaurantService.renewAd(id, subscription_type, plan_id);
         reply.send(restaurant);
     }
 
@@ -261,8 +287,8 @@ export class RestaurantController {
             throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
         }
 
-        const { subscription_type } = req.body;
-        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type);
+        const { subscription_type, plan_id } = req.body;
+        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
         reply.send(restaurant);
     }
 

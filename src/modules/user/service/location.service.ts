@@ -307,26 +307,35 @@ export class LocationService {
   }
 
   async setLocationAttributes(locationId: number, attributes: Record<string, string>): Promise<void> {
-    const currentAttributes = await this.getLocationAttributes(locationId);
+    const keys = Object.keys(attributes);
 
-    for (const [key, value] of Object.entries(attributes)) {
-      const existingAttr = currentAttributes.find((a) => a.attributeKey === key);
-      if (existingAttr) {
-        existingAttr.attributeValue = value;
-        await this.attributesRepository.save(existingAttr);
-      } else {
-        const newAttr = new LocationAttributes();
-        newAttr.location_id = locationId;
-        newAttr.attributeKey = key;
-        newAttr.attributeValue = value;
-        await this.attributesRepository.save(newAttr);
-      }
+    if (keys.length > 0) {
+      // Single bulk upsert: INSERT ... ON CONFLICT DO UPDATE for all provided attributes
+      const values = keys
+        .map((_, i) => `($${i * 3 + 1}::int, $${i * 3 + 2}, $${i * 3 + 3})`)
+        .join(", ");
+      const params: (string | number)[] = [];
+      keys.forEach((key) => {
+        params.push(locationId, key, attributes[key]);
+      });
+      await this.attributesRepository.query(
+        `INSERT INTO "location_attributes" ("location_id", "attributeKey", "attributeValue")
+         VALUES ${values}
+         ON CONFLICT ("location_id", "attributeKey") DO UPDATE SET "attributeValue" = EXCLUDED."attributeValue"`,
+        params
+      );
     }
 
-    for (const attr of currentAttributes) {
-      if (!(attr.attributeKey in attributes)) {
-        await this.attributesRepository.remove(attr);
-      }
+    // Single bulk DELETE for any keys no longer in the new attribute set
+    if (keys.length > 0) {
+      await this.attributesRepository
+        .createQueryBuilder()
+        .delete()
+        .where('"location_id" = :locationId AND "attributeKey" NOT IN (:...keys)', { locationId, keys })
+        .execute();
+    } else {
+      // All attributes removed — delete everything for this location
+      await this.attributesRepository.delete({ location_id: locationId });
     }
   }
 
@@ -361,9 +370,17 @@ export class LocationService {
   }
 
   async addLocationToCategories(locationId: number, categoryIds: number[]): Promise<void> {
-    for (const categoryId of categoryIds) {
-      await this.addLocationToCategory(locationId, categoryId);
-    }
+    if (categoryIds.length === 0) return;
+    // Single INSERT ... ON CONFLICT DO NOTHING — one round-trip regardless of how many categories
+    const values = categoryIds.map((_, i) => `($${i * 2 + 1}::int, $${i * 2 + 2}::int)`).join(", ");
+    const params: number[] = [];
+    categoryIds.forEach((catId) => params.push(locationId, catId));
+    await this.categoryMappingRepository.query(
+      `INSERT INTO "location_category_mappings" ("location_id", "category_id")
+       VALUES ${values}
+       ON CONFLICT DO NOTHING`,
+      params
+    );
   }
 
   async setLocationCategories(locationId: number, categoryIds: number[]): Promise<void> {
@@ -417,20 +434,91 @@ export class LocationService {
   }
 
   async getAllDescendants(locationId: number): Promise<ILocationDTO[]> {
-    const descendants: ILocationDTO[] = [];
-    const stack: number[] = [locationId];
-    while (stack.length > 0) {
-      const currentId = stack.pop()!;
-      const children = await this.getLocationChildren(currentId);
-      descendants.push(...children);
-      for (const child of children) {
-        stack.push(child.location_id);
-      }
-    }
-    return descendants;
+    const descendantIds = await this.getDescendantIds(locationId);
+    if (descendantIds.length <= 1) return []; // Only the parent itself or nothing
+    
+    // Fetch full objects for the descendants (excluding the parent if needed, but usually descendants include children)
+    const childrenIds = descendantIds.filter(id => id !== locationId);
+    if (childrenIds.length === 0) return [];
+    
+    const locations = await this.locationRepository.find({
+      where: { location_id: In(childrenIds) },
+      relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
+      order: { location_order: "ASC" },
+    });
+    return locations.map(l => this.toLocationDTO(l));
   }
 
-  // Category CRUD Operations
+  /**
+   * Returns an array of location IDs containing the input IDs and all their descendants.
+   */
+  async getDescendantIds(locationIds: number | number[]): Promise<number[]> {
+    const ids = Array.isArray(locationIds) ? locationIds : [locationIds];
+    if (ids.length === 0) return [];
+
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+    const rows: Array<{ location_id: number }> = await this.locationRepository.query(
+      `WITH RECURSIVE descendants AS (
+         SELECT location_id FROM "location" WHERE location_id IN (${placeholders})
+         UNION ALL
+         SELECT l.location_id FROM "location" l
+         INNER JOIN descendants d ON l.parent_location_id = d.location_id
+       )
+       SELECT DISTINCT location_id FROM descendants`,
+      ids
+    );
+
+    return rows.map(row => row.location_id);
+  }
+
+  /**
+   * Fetches the full ancestor chain for multiple location IDs in a SINGLE query
+   * using a PostgreSQL recursive CTE. Returns a Map of locationId -> Location[]
+   * ordered from the location itself up to the root.
+   *
+   * This eliminates the N+1 loop in getLocationHierarchy when called for many
+   * locations at once (e.g. enriching a list of articles or properties).
+   */
+  async getAncestorsByLocationIds(locationIds: number[]): Promise<Map<number, Location[]>> {
+    if (locationIds.length === 0) return new Map();
+
+    const placeholders = locationIds.map((_, i) => `$${i + 1}`).join(", ");
+    const rows: Array<{ location_id: number; name: string; slug: string; location_type: string; parent_id: number | null; root_id: number }> =
+      await this.locationRepository.query(
+        `WITH RECURSIVE ancestor_chain AS (
+           -- Seed: start from the requested locations
+           SELECT l.location_id, l.name, l.slug, l.location_type,
+                  l.parent_location_id as parent_id, l.location_id AS root_id
+           FROM   "location" l
+           WHERE  l.location_id IN (${placeholders})
+           UNION ALL
+           -- Recurse: walk up to parent
+           SELECT p.location_id, p.name, p.slug, p.location_type,
+                  p.parent_location_id as parent_id, ac.root_id
+           FROM   "location" p
+           JOIN   ancestor_chain ac ON ac.parent_id = p.location_id
+         )
+         SELECT * FROM ancestor_chain`,
+        locationIds
+      );
+
+    // Group rows by the root_id (the originally requested location)
+    const map = new Map<number, Location[]>();
+    for (const row of rows) {
+      const entry = map.get(row.root_id) ?? [];
+      // Build a minimal Location object from raw row data
+      const loc = new Location();
+      loc.location_id = row.location_id;
+      loc.name = row.name;
+      loc.slug = row.slug;
+      loc.location_type = row.location_type as any;
+      entry.push(loc);
+      map.set(row.root_id, entry);
+    }
+    return map;
+  }
+
+
   async createCategory(categoryData: ICreateLocationCategoryDto): Promise<LocationCategory> {
     const category = new LocationCategory();
     category.name = categoryData.name;

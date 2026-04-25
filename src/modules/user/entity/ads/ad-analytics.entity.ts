@@ -32,7 +32,7 @@ export class AdAnalytics {
     @Column("varchar", { length: 255, nullable: true })
     ip_hash?: string;
 
-    @CreateDateColumn({ type: "timestamp" })
+    @CreateDateColumn({ type: "timestamptz" })
     @Index()
     created_at!: Date;
 }

@@ -15,6 +15,7 @@ import { logError, logInfo, logWarn } from "@lib/logger";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { isValidUuid } from "@common/utils/uuid.util";
+import { LocationService } from "./location.service";
 
 export class RestaurantService {
     private restaurantRepository = AppDataSource.getRepository(Restaurant);
@@ -80,6 +81,7 @@ export class RestaurantService {
                 })) || [],
             vendor_id: restaurant.vendor_id,
             subscription_type: restaurant.subscription_type,
+            plan_id: restaurant.plan_id,
             is_paid: restaurant.is_paid,
             is_featured: restaurant.is_featured,
             is_active: restaurant.is_active,
@@ -143,6 +145,7 @@ export class RestaurantService {
             // Default to FREE if not specified
             const subscriptionType = restaurantData.subscription_type || SubscriptionType.FREE;
             restaurant.subscription_type = subscriptionType;
+            restaurant.plan_id = restaurantData.plan_id;
 
             if (subscriptionType === SubscriptionType.FREE && !restaurant.is_featured) {
                 restaurant.is_paid = false;
@@ -247,8 +250,20 @@ export class RestaurantService {
     async getAllRestaurants({ 
         page = PAGINATION_DEFAULTS.PAGE, 
         limit = PAGINATION_DEFAULTS.LIMIT, 
-        searchQuery = "" 
-    }: { page?: number; limit?: number; searchQuery?: string } = {}): Promise<IPaginatedRestaurantsResponse> {
+        searchQuery = "",
+        location_id,
+        rating,
+        priceMax,
+        isFeatured
+    }: { 
+        page?: number; 
+        limit?: number; 
+        searchQuery?: string;
+        location_id?: number | number[];
+        rating?: number;
+        priceMax?: number;
+        isFeatured?: boolean;
+    } = {}): Promise<IPaginatedRestaurantsResponse> {
         const skip = (page - 1) * limit;
         const queryBuilder = this.restaurantRepository.createQueryBuilder("restaurant")
             .leftJoinAndSelect("restaurant.location", "location")
@@ -258,6 +273,27 @@ export class RestaurantService {
 
         if (searchQuery && searchQuery.trim() !== "") {
             queryBuilder.andWhere("(restaurant.name ILIKE :search OR restaurant.description ILIKE :search)", { search: `%${searchQuery}%` });
+        }
+
+        if (location_id) {
+            const locationService = new LocationService(AppDataSource);
+            const expandedIds = await locationService.getDescendantIds(location_id);
+            
+            if (expandedIds.length > 0) {
+                queryBuilder.andWhere("restaurant.location_id IN (:...location_ids)", { location_ids: expandedIds });
+            }
+        }
+
+        if (rating) {
+            queryBuilder.andWhere("restaurant.rating >= :rating", { rating });
+        }
+
+        if (priceMax) {
+            queryBuilder.andWhere("restaurant.price <= :priceMax", { priceMax });
+        }
+
+        if (isFeatured !== undefined) {
+            queryBuilder.andWhere("restaurant.is_featured = :isFeatured", { isFeatured });
         }
 
         const [restaurants, total] = await queryBuilder.skip(skip).take(limit).getManyAndCount();
@@ -289,12 +325,13 @@ export class RestaurantService {
     ): Promise<IRestaurantDTO> {
         const restaurant = await this.restaurantRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews"],
+            relations: ["location", "detailed_reviews", "vendor", "vendor.vendor", "vendor.customerProfile"],
         });
 
         if (!restaurant) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
+        const wasActive = restaurant.is_active;
 
         // Update fields if provided
         if (restaurantData.name !== undefined)
@@ -329,8 +366,35 @@ export class RestaurantService {
             imagesToDelete.push(...removedMenuImages);
             restaurant.menu_images = newImages;
         }
-        if (restaurantData.is_active !== undefined)
+        if (restaurantData.is_active !== undefined) {
+            const becomingActive = restaurantData.is_active && !restaurant.is_active;
+            const isAlreadyActiveButExpired = restaurantData.is_active && restaurant.is_active && (restaurant.expires_at && restaurant.expires_at < new Date());
+            
+            if (becomingActive || isAlreadyActiveButExpired) {
+                // If activating an expired ad, set new expiry
+                if (!restaurant.expires_at || restaurant.expires_at < new Date()) {
+                    let durationDays = 30;
+                    const planId = restaurantData.plan_id || restaurant.plan_id;
+                    
+                    if (planId) {
+                        const { SubscriptionPlanService } = await import("./subscription-plan.service");
+                        const planService = new SubscriptionPlanService();
+                        const plan = await planService.getPlanById(planId);
+                        if (plan) {
+                            durationDays = plan.duration_days;
+                        }
+                    } else {
+                        const typeStr = (restaurantData.subscription_type || restaurant.subscription_type || 'free').toUpperCase();
+                        durationDays = SUBSCRIPTION_DURATION_DAYS[typeStr as keyof typeof SUBSCRIPTION_DURATION_DAYS] || 30;
+                    }
+                    
+                    const now = new Date();
+                    restaurant.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                    logInfo(`Updating expiry for Restaurant ${id} during update: ${restaurant.expires_at}`);
+                }
+            }
             restaurant.is_active = restaurantData.is_active;
+        }
         if (restaurantData.is_featured !== undefined)
             restaurant.is_featured = restaurantData.is_featured;
         if (restaurantData.facebook !== undefined)
@@ -351,6 +415,8 @@ export class RestaurantService {
         }
         if (restaurantData.subscription_type !== undefined)
             restaurant.subscription_type = restaurantData.subscription_type;
+        if (restaurantData.plan_id !== undefined)
+            restaurant.plan_id = restaurantData.plan_id;
 
         // Update location if changed
         if (
@@ -370,6 +436,22 @@ export class RestaurantService {
 
         if (imagesToDelete.length > 0) {
             r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Restaurant image cleanup on update'));
+        }
+
+        // Send activation email if we just activated the ad
+        if (updatedRestaurant.is_active && !wasActive && updatedRestaurant.vendor?.email) {
+            logInfo(`Sending activation email for Restaurant: ${updatedRestaurant.name}`);
+            const { SendEmail } = await import("@modules/user/service/email/sendEmail");
+            const emailService = new SendEmail();
+            const vendorName = updatedRestaurant.vendor?.customerProfile?.username || updatedRestaurant.vendor?.vendor?.username || "Vendor";
+            
+            await emailService.sendAdActivationEmail(
+                vendorName,
+                updatedRestaurant.vendor.email,
+                updatedRestaurant.name,
+                "Restaurant",
+                updatedRestaurant.expires_at || new Date()
+            ).catch(e => logError(e, `Failed to send activation email for Restaurant: ${updatedRestaurant.name}`));
         }
 
         return this.toRestaurantDTO(updatedRestaurant);
@@ -400,54 +482,128 @@ export class RestaurantService {
 
     // ========== ADMIN METHODS ==========
 
-    async toggleAdStatus(id: string, isActive: boolean): Promise<IRestaurantDTO> {
+    async toggleAdStatus(id: string, isActive: boolean, planId?: string): Promise<IRestaurantDTO> {
         const restaurant = await this.restaurantRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews"],
+            relations: ["vendor", "vendor.vendor", "vendor.customerProfile"],
         });
 
         if (!restaurant) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        restaurant.is_active = isActive;
-        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
-        return this.toRestaurantDTO(updatedRestaurant);
+        const updateData: Partial<Restaurant> = { is_active: isActive };
+
+        // Set expiry if: We are activating AND (it has no expiry OR it's already expired)
+        if (isActive && (!restaurant.expires_at || restaurant.expires_at < new Date())) {
+            let durationDays = 30;
+            let planType = restaurant.subscription_type;
+
+            if (planId) {
+                const { SubscriptionPlanService } = await import("./subscription-plan.service");
+                const planService = new SubscriptionPlanService();
+                const plan = await planService.getPlanById(planId);
+                if (plan) {
+                    durationDays = plan.duration_days;
+                    planType = plan.type;
+                    updateData.subscription_type = planType;
+                    updateData.plan_id = planId;
+                }
+            } else {
+                const typeStr = (restaurant.subscription_type || 'free').toUpperCase();
+                durationDays = SUBSCRIPTION_DURATION_DAYS[typeStr as keyof typeof SUBSCRIPTION_DURATION_DAYS] || 30;
+            }
+            
+            const now = new Date();
+            updateData.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+            logInfo(`Setting expiration for Restaurant "${restaurant.name}": ${durationDays} days (Plan: ${planType})`);
+        }
+
+        logInfo(`Toggling ad status for Restaurant ${id}: ${restaurant.is_active} -> ${isActive}. Vendor Email: ${restaurant.vendor?.email}`);
+
+        await this.restaurantRepository.update({ id }, updateData);
+        
+        // Send activation email if we just activated the ad
+        if (isActive && !restaurant.is_active && restaurant.vendor?.email) {
+            logInfo(`Sending activation email for Restaurant: ${restaurant.name}`);
+            const { SendEmail } = await import("@modules/user/service/email/sendEmail");
+            const emailService = new SendEmail();
+            const vendorName = restaurant.vendor?.customerProfile?.username || restaurant.vendor?.vendor?.username || "Vendor";
+            
+            await emailService.sendAdActivationEmail(
+                vendorName,
+                restaurant.vendor.email,
+                restaurant.name,
+                "Restaurant",
+                updateData.expires_at || restaurant.expires_at || new Date()
+            ).catch(e => logError(e, `Failed to send activation email for Restaurant: ${restaurant.name}`));
+        }
+
+        const updated = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews"],
+        });
+        
+        return this.toRestaurantDTO(updated!);
     }
 
     async renewAd(
         id: string,
-        subscriptionType: SubscriptionType
+        subscriptionType?: SubscriptionType,
+        planId?: string
     ): Promise<IRestaurantDTO> {
+        // Fetch only the scalar columns needed — no relations
         const restaurant = await this.restaurantRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews"],
+            select: ["id", "expires_at", "subscription_type", "is_paid", "is_active"],
         });
 
         if (!restaurant) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        // Map subscription type to constant key
-        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        let durationDays = 30;
+        let finalSubscriptionType = subscriptionType || restaurant.subscription_type;
+
+        if (planId) {
+            const { SubscriptionPlanService } = await import("./subscription-plan.service");
+            const planService = new SubscriptionPlanService();
+            const plan = await planService.getPlanById(planId);
+            if (plan) {
+                durationDays = plan.duration_days;
+                finalSubscriptionType = plan.type;
+            }
+        } else if (subscriptionType) {
+            const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+            durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        }
 
         const now = new Date();
-        const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+        const baseDate = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+        const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+        
+        logInfo(`Renewing Restaurant ${id}. Old Expiry: ${restaurant.expires_at}, Base Date: ${baseDate}, New Expiry: ${newExpiry}`);
 
-        restaurant.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
-        restaurant.subscription_type = subscriptionType;
-        restaurant.is_paid = true;
-        restaurant.is_active = true;
+        await this.restaurantRepository.update({ id }, {
+            expires_at: newExpiry,
+            subscription_type: finalSubscriptionType,
+            plan_id: planId,
+            is_paid: true,
+            is_active: true,
+        });
 
-        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
-        return this.toRestaurantDTO(updatedRestaurant);
+        const updated = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews"],
+        });
+        return this.toRestaurantDTO(updated!);
     }
 
     async renewAdByVendor(
         id: string,
         vendorId: string,
-        subscriptionType: SubscriptionType | string
+        subscriptionType?: SubscriptionType | string,
+        planId?: string
     ): Promise<IRestaurantDTO> {
         const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
         if (!resolvedVendorUserId) {
@@ -466,30 +622,44 @@ export class RestaurantService {
         const { SubscriptionPlanService } = await import("./subscription-plan.service");
         const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
 
-        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        let durationDays = 30;
+        let finalSubscriptionType = (subscriptionType as SubscriptionType) || restaurant.subscription_type;
+        const planService = new SubscriptionPlanService();
+        let plan = null;
+
+        // Determine duration and plan details
+        if (planId) {
+            plan = await planService.getPlanById(planId);
+        } else if (subscriptionType) {
+            if (subscriptionType.length > 20) { // Likely a UUID
+                plan = await planService.getPlanById(subscriptionType as string);
+            } else {
+                plan = await planService.getPlanByType(subscriptionType as any);
+            }
+        }
+
+        if (plan) {
+            durationDays = plan.duration_days;
+            finalSubscriptionType = plan.type;
+        } else if (subscriptionType) {
+            const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+            durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        }
 
         const now = new Date();
-        const currentExpiry = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+        const baseDate = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
+        const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-        restaurant.subscription_type = subscriptionType as SubscriptionType;
+        restaurant.subscription_type = finalSubscriptionType;
+        restaurant.plan_id = planId || (plan?.plan_id);
         restaurant.is_paid = false;
 
-        const planService = new SubscriptionPlanService();
-        
-        // Get plan by ID if provided, otherwise fallback to type
-        let plan = null;
-        if (subscriptionType.length > 20) { // Checking if it looks like a UUID
-            plan = await planService.getPlanById(subscriptionType as string);
-        } else {
-            plan = await planService.getPlanByType(subscriptionType as any);
-        }
-        
         const amount = plan ? Number(plan.price) : 0;
 
-        if (subscriptionType === SubscriptionType.FREE || amount <= 0) {
-            restaurant.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+        if ((finalSubscriptionType === SubscriptionType.FREE && !restaurant.is_featured) || amount <= 0) {
+            restaurant.expires_at = newExpiry;
             restaurant.is_active = true;
+            restaurant.is_paid = true;
         } else {
             restaurant.is_active = false;
             const payment = new AdPayment();
@@ -538,26 +708,27 @@ export class RestaurantService {
     }
 
     async setFeaturedStatus(id: string, isFeatured: boolean): Promise<IRestaurantDTO> {
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["location", "detailed_reviews"],
-        });
-
-        if (!restaurant) {
+        // Targeted UPDATE — avoids loading reviews just to flip a flag
+        const result = await this.restaurantRepository.update({ id }, { is_featured: isFeatured });
+        if (result.affected === 0) {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
-
-        restaurant.is_featured = isFeatured;
-        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
-        return this.toRestaurantDTO(updatedRestaurant);
+        const restaurant = await this.restaurantRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews"],
+        });
+        return this.toRestaurantDTO(restaurant!);
     }
 
-    async getAllRestaurantsAdmin(): Promise<IRestaurantDTO[]> {
+    async getAllRestaurantsAdmin(page = 1, limit = 50): Promise<IRestaurantDTO[]> {
+        const skip = (page - 1) * Math.min(limit, 200); // hard cap at 200
+        const take = Math.min(limit, 200);
         const restaurants = await this.restaurantRepository.find({
-            relations: ["location", "detailed_reviews"],
+            relations: ["detailed_reviews"],
             order: { created_at: "DESC" },
+            skip,
+            take,
         });
-
         return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
     }
 

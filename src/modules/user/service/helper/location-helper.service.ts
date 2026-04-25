@@ -91,31 +91,47 @@ export class LocationHelperService {
   }
 
   /**
-   * Enrich articles with city and locality based on their location_id
+   * Enrich articles with city and locality based on their location_id.
+   * Uses a single recursive CTE to fetch ALL ancestor chains in one DB round-trip.
    */
   public async enrichArticlesWithCities<T extends { locations?: Location[] | any[] }>(articles: T[]): Promise<(T & IEnrichedLocation)[]> {
-    return Promise.all(
-      articles.map(async (article) => {
-        const locations = article.locations || [];
-        const locationId = locations.length > 0 ? (locations[0].location_id || locations[0]) : null;
+    // Collect all unique location IDs from every article
+    const locationIds = new Set<number>();
+    articles.forEach((article) => {
+      const locations = article.locations || [];
+      const locationId = locations.length > 0 ? (locations[0].location_id ?? locations[0]) : null;
+      if (locationId) locationIds.add(Number(locationId));
+    });
 
-        if (!locationId) {
-          return { ...article, city: null, locality: null };
-        }
-        const { city, locality } = await this.getCityAndLocality(
-          Number(locationId)
-        );
-        return { ...article, city, locality };
-      })
-    );
+    if (locationIds.size === 0) {
+      return articles.map((a) => ({ ...a, city: null, locality: null } as T & IEnrichedLocation));
+    }
+
+    // ONE query to get all ancestor chains
+    const ancestorMap = await this.locationService.getAncestorsByLocationIds(Array.from(locationIds));
+
+    return articles.map((article) => {
+      const locations = article.locations || [];
+      const locationId = locations.length > 0 ? Number(locations[0].location_id ?? locations[0]) : null;
+      if (!locationId) return { ...article, city: null, locality: null } as T & IEnrichedLocation;
+
+      const hierarchy = ancestorMap.get(locationId) ?? [];
+      return {
+        ...article,
+        city: this.findCityInHierarchy(hierarchy),
+        locality: this.findLocalityInHierarchy(hierarchy),
+      } as T & IEnrichedLocation;
+    });
   }
 
   /**
-   * Batch enriches properties with location hierarchy data (city and locality)
+   * Batch enriches properties with location hierarchy data (city and locality).
+   * Uses a single recursive CTE to resolve all hierarchies in one DB round-trip.
    */
   public async enrichPropertiesWithLocationData<
     T extends { address?: { location?: Location | { location_id: number } } }
   >(properties: T[]): Promise<(T & IEnrichedLocation)[]> {
+    // Collect unique location IDs across all properties
     const locationIds = new Set<number>();
     properties.forEach((property) => {
       const loc = property.address?.location;
@@ -129,43 +145,21 @@ export class LocationHelperService {
       return properties.map((p) => ({ ...p, city: null, locality: null } as T & IEnrichedLocation));
     }
 
-    const hierarchyMap: Map<number, Location[]> = new Map<number, Location[]>();
-
-    await Promise.all(
-      Array.from(locationIds).map(async (id) => {
-        const property = properties.find((p) => {
-          const loc = p.address?.location;
-          if (!loc) return false;
-          const lid = 'location_id' in loc ? loc.location_id : (loc as any).location_id;
-          return lid === id;
-        });
-        if (property?.address?.location) {
-          const hierarchy = await this.locationService.getLocationHierarchy(
-            property.address.location
-          );
-          hierarchyMap.set(id, hierarchy);
-        }
-      })
-    );
-
-    const cityMapByHierarchy: Map<number, Location | null> = new Map<number, Location | null>();
-    hierarchyMap.forEach((hierarchy, id) => {
-      const cityNode = hierarchy.find((n) => n.location_type === LocationType.CITY) || null;
-      cityMapByHierarchy.set(id, cityNode);
-    });
+    // ONE query to get all ancestor chains via recursive CTE
+    const ancestorMap = await this.locationService.getAncestorsByLocationIds(Array.from(locationIds));
 
     return properties.map((property) => {
       const loc = property.address?.location;
-      if (!loc) {
-        return { ...property, city: null, locality: null } as T & IEnrichedLocation;
-      }
+      if (!loc) return { ...property, city: null, locality: null } as T & IEnrichedLocation;
 
       const locationId = 'location_id' in loc ? loc.location_id : (loc as any).location_id;
-      const hierarchy = hierarchyMap.get(locationId) || [];
-      const cityNode = cityMapByHierarchy.get(locationId) || null;
-      
-      const locality = hierarchy.find((node) => node.location_type === LocationType.LOCALITY) || null;
-      return { ...property, city: cityNode, locality } as T & IEnrichedLocation;
+      const hierarchy = ancestorMap.get(locationId) ?? [];
+
+      return {
+        ...property,
+        city: this.findCityInHierarchy(hierarchy),
+        locality: this.findLocalityInHierarchy(hierarchy),
+      } as T & IEnrichedLocation;
     });
   }
 

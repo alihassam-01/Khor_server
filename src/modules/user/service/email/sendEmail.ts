@@ -152,4 +152,86 @@ export class SendEmail {
     
     return success ? { status: "ok" } : { status: "error" };
   }
+
+  async sendAdActivationEmail(
+    vendorName: string,
+    email: string,
+    adName: string,
+    adType: string,
+    expiryDate: Date
+  ) {
+    const { adActivationTemplate } = await import("./templates/adActivation");
+    const html = adActivationTemplate(vendorName, adName, adType, expiryDate.toLocaleDateString());
+    
+    const success = await sendEmail({
+      to: email,
+      subject: EMAIL_SUBJECTS.AD_ACTIVATION,
+      html,
+    });
+
+    await this.auditLogService.log(
+      AuditLogEventType.AD_ACTIVATION,
+      email,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { vendorName, adName, adType, expiryDate }
+    );
+
+    return success ? { status: "ok" } : { status: "error" };
+  }
+
+  async sendAdExpirationWarningEmail(
+    vendorName: string,
+    email: string,
+    adName: string,
+    adType: string,
+    expiryDate: Date,
+    daysRemaining: number
+  ) {
+    const { adExpirationWarningTemplate } = await import("./templates/adExpirationWarning");
+    const html = adExpirationWarningTemplate(vendorName, adName, adType, expiryDate.toLocaleDateString(), daysRemaining);
+    
+    const success = await sendEmail({
+      to: email,
+      subject: EMAIL_SUBJECTS.AD_EXPIRATION_WARNING,
+      html,
+    });
+
+    await this.auditLogService.log(
+      AuditLogEventType.AD_EXPIRATION_WARNING,
+      email,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { vendorName, adName, adType, expiryDate, daysRemaining }
+    );
+
+    return success ? { status: "ok" } : { status: "error" };
+  }
+
+  async sendAdExpiredEmail(
+    vendorName: string,
+    email: string,
+    adName: string,
+    adType: string,
+    expiryDate: Date
+  ) {
+    const { adExpiredTemplate } = await import("./templates/adExpired");
+    const html = adExpiredTemplate(vendorName, adName, adType, expiryDate.toLocaleDateString());
+    
+    const success = await sendEmail({
+      to: email,
+      subject: EMAIL_SUBJECTS.AD_EXPIRED,
+      html,
+    });
+
+    await this.auditLogService.log(
+      AuditLogEventType.AD_EXPIRED,
+      email,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      { vendorName, adName, adType, expiryDate }
+    );
+
+    return success ? { status: "ok" } : { status: "error" };
+  }
 }

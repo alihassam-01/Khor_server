@@ -84,7 +84,7 @@ export class Hotel {
     @JoinColumn({ name: "vendor_id" })
     vendor?: User;
 
-    @Column("timestamp", { nullable: true })
+    @Column("timestamptz", { nullable: true })
     expires_at?: Date;
 
     @Column({
@@ -93,6 +93,9 @@ export class Hotel {
         default: SubscriptionType.FREE,
     })
     subscription_type!: SubscriptionType;
+
+    @Column("uuid", { nullable: true })
+    plan_id?: string;
 
     @Column("boolean", { default: false })
     is_paid!: boolean;
@@ -113,9 +116,9 @@ export class Hotel {
     @OneToMany("HotelRoomType", "hotel", { cascade: true })
     room_types!: any[];
 
-    @CreateDateColumn({ type: "timestamp" })
+    @CreateDateColumn({ type: "timestamptz" })
     created_at!: Date;
 
-    @UpdateDateColumn({ type: "timestamp" })
+    @UpdateDateColumn({ type: "timestamptz" })
     updated_at!: Date;
 }

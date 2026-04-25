@@ -129,6 +129,7 @@ export class HotelController {
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 subscription_type: extractedBody.subscription_type || undefined,
+                plan_id: extractedBody.plan_id || undefined,
                 vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || userId) : userId,
             };
 
@@ -189,14 +190,38 @@ export class HotelController {
         const { 
             page = String(PAGINATION_DEFAULTS.PAGE), 
             limit = String(PAGINATION_DEFAULTS.LIMIT), 
-            searchQuery = "" 
+            searchQuery = "",
+            location_id,
+            rating,
+            priceMax,
+            isFeatured
         } = req.query;
+        
         const pageNum = parseInt(page, 10) || PAGINATION_DEFAULTS.PAGE;
         const limitNum = parseInt(limit, 10) || PAGINATION_DEFAULTS.LIMIT;
+        
+        // Handle multiple location IDs if provided as comma-separated string
+        let parsedLocationId: number | number[] | undefined = undefined;
+        if (location_id) {
+            const locStr = String(location_id);
+            if (locStr.includes(',')) {
+                parsedLocationId = locStr.split(',')
+                    .map(id => parseInt(id.trim(), 10))
+                    .filter(id => !isNaN(id));
+            } else {
+                const parsed = parseInt(locStr, 10);
+                if (!isNaN(parsed)) parsedLocationId = parsed;
+            }
+        }
+
         const result: IPaginatedHotelsResponse = await this.hotelService.getAllHotels({
             page: pageNum,
             limit: limitNum,
             searchQuery: searchQuery,
+            location_id: parsedLocationId,
+            rating: rating ? parseFloat(rating) : undefined,
+            priceMax: priceMax ? parseFloat(priceMax) : undefined,
+            isFeatured: isFeatured === 'true',
         });
         reply.send(result);
     }
@@ -221,6 +246,7 @@ export class HotelController {
                 is_featured: 'boolean',
                 amenities: 'array',
                 roomTypes: 'json',
+                plan_id: 'string',
             });
             // Handle image file upload
             if (body.image && typeof body.image !== 'string') {
@@ -259,8 +285,8 @@ export class HotelController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { is_active } = req.body;
-        const hotel = await this.hotelService.toggleAdStatus(id, is_active);
+        const { is_active, plan_id } = req.body;
+        const hotel = await this.hotelService.toggleAdStatus(id, is_active, plan_id);
         reply.send(hotel);
     }
 
@@ -269,8 +295,8 @@ export class HotelController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { subscription_type } = req.body;
-        const hotel = await this.hotelService.renewAd(id, subscription_type);
+        const { subscription_type, plan_id } = req.body;
+        const hotel = await this.hotelService.renewAd(id, subscription_type, plan_id);
         reply.send(hotel);
     }
 
@@ -284,8 +310,8 @@ export class HotelController {
             throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
         }
 
-        const { subscription_type } = req.body;
-        const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type);
+        const { subscription_type, plan_id } = req.body;
+        const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
         reply.send(hotel);
     }
 

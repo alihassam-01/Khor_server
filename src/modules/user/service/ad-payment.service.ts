@@ -11,9 +11,11 @@ import { isValidUuid } from "@common/utils/uuid.util";
 import { logInfo, logWarn } from "@lib/logger";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { SendEmail } from "./email/sendEmail";
 
 export class AdPaymentService {
     private paymentRepository = AppDataSource.getRepository(AdPayment);
+    private emailService = new SendEmail();
 
     private async toPaymentDTO(payment: AdPayment, ad?: Hotel | Restaurant | null): Promise<IAdPaymentDTO> {
         return {
@@ -116,11 +118,22 @@ export class AdPaymentService {
                         const durationKey = (hotel.subscription_type as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30; // fallback
                         const now = new Date();
-                        const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
+                        const baseDate = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
                         hotel.is_active = true;
                         hotel.is_paid = true;
-                        hotel.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                        hotel.expires_at = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
                         await hotelRepo.save(hotel);
+
+                        // Send activation email
+                        if (payment.vendor?.email) {
+                            this.emailService.sendAdActivationEmail(
+                                payment.vendor?.customerProfile?.username || payment.vendor?.vendor?.username || "Vendor",
+                                payment.vendor.email,
+                                hotel.name,
+                                "Hotel",
+                                hotel.expires_at
+                            ).catch(e => console.error("Failed to send ad activation email", e));
+                        }
                     }
                 } else if (payment.ad_type === PropertyType.RESTAURANT) {
                     const restRepo = AppDataSource.getRepository(Restaurant);
@@ -129,11 +142,22 @@ export class AdPaymentService {
                         const durationKey = (rest.subscription_type as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
                         const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
                         const now = new Date();
-                        const currentExpiry = rest.expires_at && rest.expires_at > now ? rest.expires_at : now;
+                        const baseDate = rest.expires_at && rest.expires_at > now ? rest.expires_at : now;
                         rest.is_active = true;
                         rest.is_paid = true;
-                        rest.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                        rest.expires_at = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
                         await restRepo.save(rest);
+
+                        // Send activation email
+                        if (payment.vendor?.email) {
+                            this.emailService.sendAdActivationEmail(
+                                payment.vendor?.customerProfile?.username || payment.vendor?.vendor?.username || "Vendor",
+                                payment.vendor.email,
+                                rest.name,
+                                "Restaurant",
+                                rest.expires_at
+                            ).catch(e => console.error("Failed to send ad activation email", e));
+                        }
                     }
                 }
             }

@@ -16,6 +16,7 @@ import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { isValidUuid } from "@common/utils/uuid.util";
 import { In } from "typeorm";
+import { LocationService } from "./location.service";
 
 export class HotelService {
     private hotelRepository = AppDataSource.getRepository(Hotel);
@@ -118,6 +119,7 @@ export class HotelService {
             vendor_id: hotel.vendor_id,
             expires_at: hotel.expires_at,
             subscription_type: hotel.subscription_type,
+            plan_id: hotel.plan_id,
             is_paid: hotel.is_paid,
             is_featured: hotel.is_featured,
             is_active: hotel.is_active,
@@ -173,9 +175,10 @@ export class HotelService {
             hotel.longitude = hotelData.longitude ?? null;
             hotel.is_featured = hotelData.is_featured || false;
 
-            // Handle subscription logic
+            // Default to FREE if not specified
             const subscriptionType = hotelData.subscription_type || SubscriptionType.FREE;
             hotel.subscription_type = subscriptionType;
+            hotel.plan_id = hotelData.plan_id;
 
             if (subscriptionType === SubscriptionType.FREE && !hotel.is_featured) {
                 hotel.is_paid = false;
@@ -301,8 +304,20 @@ export class HotelService {
     async getAllHotels({ 
         page = PAGINATION_DEFAULTS.PAGE, 
         limit = PAGINATION_DEFAULTS.LIMIT, 
-        searchQuery = "" 
-    }: { page?: number; limit?: number; searchQuery?: string }): Promise<IPaginatedHotelsResponse> {
+        searchQuery = "",
+        location_id,
+        rating,
+        priceMax,
+        isFeatured
+    }: { 
+        page?: number; 
+        limit?: number; 
+        searchQuery?: string;
+        location_id?: number | number[];
+        rating?: number;
+        priceMax?: number;
+        isFeatured?: boolean;
+    }): Promise<IPaginatedHotelsResponse> {
         const skip = (page - 1) * limit;
         const queryBuilder = this.hotelRepository.createQueryBuilder("hotel")
             .leftJoinAndSelect("hotel.location", "location")
@@ -313,6 +328,27 @@ export class HotelService {
 
         if (searchQuery && searchQuery.trim() !== "") {
             queryBuilder.andWhere("(hotel.name ILIKE :search OR hotel.description ILIKE :search)", { search: `%${searchQuery}%` });
+        }
+
+        if (location_id) {
+            const locationService = new LocationService(AppDataSource);
+            const expandedIds = await locationService.getDescendantIds(location_id);
+            
+            if (expandedIds.length > 0) {
+                queryBuilder.andWhere("hotel.location_id IN (:...location_ids)", { location_ids: expandedIds });
+            }
+        }
+
+        if (rating) {
+            queryBuilder.andWhere("hotel.rating >= :rating", { rating });
+        }
+
+        if (priceMax) {
+            queryBuilder.andWhere("hotel.price <= :priceMax", { priceMax });
+        }
+
+        if (isFeatured !== undefined) {
+            queryBuilder.andWhere("hotel.is_featured = :isFeatured", { isFeatured });
         }
 
         const [hotels, total] = await queryBuilder.skip(skip).take(limit).getManyAndCount();
@@ -343,12 +379,13 @@ export class HotelService {
     ): Promise<IHotelDTO> {
         const hotel = await this.hotelRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews", "room_types"],
+            relations: ["location", "detailed_reviews", "room_types", "vendor", "vendor.vendor", "vendor.customerProfile"],
         });
 
         if (!hotel) {
             throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
+        const wasActive = hotel.is_active;
 
         // Update fields if provided
         if (hotelData.name !== undefined) hotel.name = hotelData.name;
@@ -394,10 +431,39 @@ export class HotelService {
         }
 
         if (hotelData.subscription_type !== undefined) hotel.subscription_type = hotelData.subscription_type;
-        if (hotelData.is_active !== undefined)
+        if (hotelData.is_active !== undefined) {
+            const becomingActive = hotelData.is_active && !hotel.is_active;
+            const isAlreadyActiveButExpired = hotelData.is_active && hotel.is_active && (hotel.expires_at && hotel.expires_at < new Date());
+            
+            if (becomingActive || isAlreadyActiveButExpired) {
+                // If activating an expired ad, set new expiry
+                if (!hotel.expires_at || hotel.expires_at < new Date()) {
+                    let durationDays = 30;
+                    const planId = hotelData.plan_id || hotel.plan_id;
+                    
+                    if (planId) {
+                        const { SubscriptionPlanService } = await import("./subscription-plan.service");
+                        const planService = new SubscriptionPlanService();
+                        const plan = await planService.getPlanById(planId);
+                        if (plan) {
+                            durationDays = plan.duration_days;
+                        }
+                    } else {
+                        const typeStr = (hotelData.subscription_type || hotel.subscription_type || 'free').toUpperCase();
+                        durationDays = SUBSCRIPTION_DURATION_DAYS[typeStr as keyof typeof SUBSCRIPTION_DURATION_DAYS] || 30;
+                    }
+                    
+                    const now = new Date();
+                    hotel.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                    logInfo(`Updating expiry for Hotel ${id} during update: ${hotel.expires_at}`);
+                }
+            }
             hotel.is_active = hotelData.is_active;
+        }
         if (hotelData.is_featured !== undefined)
             hotel.is_featured = hotelData.is_featured;
+        if (hotelData.plan_id !== undefined)
+            hotel.plan_id = hotelData.plan_id;
         
         if (hotelData.roomTypes !== undefined) {
             if (hotel.room_types && hotel.room_types.length > 0) {
@@ -445,6 +511,22 @@ export class HotelService {
             r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Hotel image cleanup on update'));
         }
 
+        // Send activation email if we just activated the ad
+        if (updatedHotel.is_active && !wasActive && updatedHotel.vendor?.email) {
+            logInfo(`Sending activation email for Hotel: ${updatedHotel.name}`);
+            const { SendEmail } = await import("@modules/user/service/email/sendEmail");
+            const emailService = new SendEmail();
+            const vendorName = updatedHotel.vendor?.customerProfile?.username || updatedHotel.vendor?.vendor?.username || "Vendor";
+            
+            await emailService.sendAdActivationEmail(
+                vendorName,
+                updatedHotel.vendor.email,
+                updatedHotel.name,
+                "Hotel",
+                updatedHotel.expires_at || new Date()
+            ).catch(e => logError(e, `Failed to send activation email for Hotel: ${updatedHotel.name}`));
+        }
+
         return this.toHotelDTO(updatedHotel);
     }
 
@@ -469,54 +551,129 @@ export class HotelService {
 
     // ========== ADMIN METHODS ==========
 
-    async toggleAdStatus(id: string, isActive: boolean): Promise<IHotelDTO> {
+    async toggleAdStatus(id: string, isActive: boolean, planId?: string): Promise<IHotelDTO> {
         const hotel = await this.hotelRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews", "room_types"],
+            relations: ["vendor", "vendor.vendor", "vendor.customerProfile"],
         });
 
         if (!hotel) {
             throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        hotel.is_active = isActive;
-        const updatedHotel = await this.hotelRepository.save(hotel);
-        return this.toHotelDTO(updatedHotel);
+        const updateData: Partial<Hotel> = { is_active: isActive };
+
+        // Set expiry if: We are activating AND (it has no expiry OR it's already expired)
+        if (isActive && (!hotel.expires_at || hotel.expires_at < new Date())) {
+            let durationDays = 30;
+            let planType = hotel.subscription_type;
+
+            if (planId) {
+                const { SubscriptionPlanService } = await import("./subscription-plan.service");
+                const planService = new SubscriptionPlanService();
+                const plan = await planService.getPlanById(planId);
+                if (plan) {
+                    durationDays = plan.duration_days;
+                    planType = plan.type;
+                    updateData.subscription_type = planType;
+                    updateData.plan_id = planId;
+                }
+            } else {
+                const typeStr = (hotel.subscription_type || 'free').toUpperCase();
+                durationDays = SUBSCRIPTION_DURATION_DAYS[typeStr as keyof typeof SUBSCRIPTION_DURATION_DAYS] || 30;
+            }
+            
+            const now = new Date();
+            updateData.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+            logInfo(`Setting expiration for Hotel "${hotel.name}": ${durationDays} days (Plan: ${planType})`);
+        }
+
+        logInfo(`Toggling ad status for Hotel ${id}: ${hotel.is_active} -> ${isActive}. Vendor Email: ${hotel.vendor?.email}`);
+
+        await this.hotelRepository.update({ id }, updateData);
+
+        // Send activation email if we just activated the ad
+        if (isActive && !hotel.is_active && hotel.vendor?.email) {
+            logInfo(`Sending activation email for Hotel: ${hotel.name}`);
+            const { SendEmail } = await import("@modules/user/service/email/sendEmail");
+            const emailService = new SendEmail();
+            const vendorName = hotel.vendor?.customerProfile?.username || hotel.vendor?.vendor?.username || "Vendor";
+            
+            await emailService.sendAdActivationEmail(
+                vendorName,
+                hotel.vendor.email,
+                hotel.name,
+                "Hotel",
+                updateData.expires_at || hotel.expires_at || new Date()
+            ).catch(e => logError(e, `Failed to send activation email for Hotel: ${hotel.name}`));
+        }
+
+        const updated = await this.hotelRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews", "room_types"],
+        });
+        
+        return this.toHotelDTO(updated!);
     }
 
     async renewAd(
         id: string,
-        subscriptionType: SubscriptionType
+        subscriptionType?: SubscriptionType,
+        planId?: string
     ): Promise<IHotelDTO> {
+        // Fetch only the scalar columns needed to compute the new expiry — no relations
         const hotel = await this.hotelRepository.findOne({
             where: { id },
-            relations: ["location", "detailed_reviews", "room_types"],
+            select: ["id", "expires_at", "subscription_type", "is_paid", "is_active"],
         });
 
         if (!hotel) {
             throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        // Map subscription type to constant key
-        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        let durationDays = 30;
+        let finalSubscriptionType = subscriptionType || hotel.subscription_type;
+
+        if (planId) {
+            const { SubscriptionPlanService } = await import("./subscription-plan.service");
+            const planService = new SubscriptionPlanService();
+            const plan = await planService.getPlanById(planId);
+            if (plan) {
+                durationDays = plan.duration_days;
+                finalSubscriptionType = plan.type;
+            }
+        } else if (subscriptionType) {
+            // Map subscription type to constant key
+            const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+            durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        }
 
         const now = new Date();
-        const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
+        const baseDate = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
+        const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-        hotel.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
-        hotel.subscription_type = subscriptionType;
-        hotel.is_paid = true;
-        hotel.is_active = true;
+        logInfo(`Renewing Hotel ${id}. Old Expiry: ${hotel.expires_at}, Base Date: ${baseDate}, New Expiry: ${newExpiry}`);
 
-        const updatedHotel = await this.hotelRepository.save(hotel);
-        return this.toHotelDTO(updatedHotel);
+        await this.hotelRepository.update({ id }, {
+            expires_at: newExpiry,
+            subscription_type: finalSubscriptionType,
+            plan_id: planId,
+            is_paid: true,
+            is_active: true,
+        });
+
+        const updated = await this.hotelRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews", "room_types"],
+        });
+        return this.toHotelDTO(updated!);
     }
 
     async renewAdByVendor(
         id: string,
         vendorId: string,
-        subscriptionType: SubscriptionType | string
+        subscriptionType?: SubscriptionType | string,
+        planId?: string
     ): Promise<IHotelDTO> {
         const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
         if (!resolvedVendorUserId) {
@@ -535,30 +692,44 @@ export class HotelService {
         const { SubscriptionPlanService } = await import("./subscription-plan.service");
         const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
 
-        const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-        const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        let durationDays = 30;
+        let finalSubscriptionType = (subscriptionType as SubscriptionType) || hotel.subscription_type;
+        const planService = new SubscriptionPlanService();
+        let plan = null;
+
+        // Determine duration and plan details
+        if (planId) {
+            plan = await planService.getPlanById(planId);
+        } else if (subscriptionType) {
+            if (subscriptionType.length > 20) { // Likely a UUID
+                plan = await planService.getPlanById(subscriptionType as string);
+            } else {
+                plan = await planService.getPlanByType(subscriptionType as any);
+            }
+        }
+
+        if (plan) {
+            durationDays = plan.duration_days;
+            finalSubscriptionType = plan.type;
+        } else if (subscriptionType) {
+            const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
+            durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
+        }
 
         const now = new Date();
-        const currentExpiry = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
+        const baseDate = hotel.expires_at && hotel.expires_at > now ? hotel.expires_at : now;
+        const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-        hotel.subscription_type = subscriptionType as SubscriptionType;
+        hotel.subscription_type = finalSubscriptionType;
+        hotel.plan_id = planId || (plan?.plan_id);
         hotel.is_paid = false;
 
-        const planService = new SubscriptionPlanService();
-        
-        // Get plan by ID if provided, otherwise fallback to type
-        let plan = null;
-        if (subscriptionType.length > 20) { // Checking if it looks like a uuid
-            plan = await planService.getPlanById(subscriptionType as string);
-        } else {
-            plan = await planService.getPlanByType(subscriptionType as any);
-        }
-        
         const amount = plan ? Number(plan.price) : 0;
 
-        if (subscriptionType === SubscriptionType.FREE || amount <= 0) {
-            hotel.expires_at = new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000);
+        if ((finalSubscriptionType === SubscriptionType.FREE && !hotel.is_featured) || amount <= 0) {
+            hotel.expires_at = newExpiry;
             hotel.is_active = true;
+            hotel.is_paid = true;
         } else {
             hotel.is_active = false;
             const payment = new AdPayment();
@@ -608,26 +779,27 @@ export class HotelService {
     }
 
     async setFeaturedStatus(id: string, isFeatured: boolean): Promise<IHotelDTO> {
-        const hotel = await this.hotelRepository.findOne({
-            where: { id },
-            relations: ["location", "detailed_reviews", "room_types"],
-        });
-
-        if (!hotel) {
+        // Targeted UPDATE — avoids loading all reviews and room types to flip a flag
+        const result = await this.hotelRepository.update({ id }, { is_featured: isFeatured });
+        if (result.affected === 0) {
             throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
-
-        hotel.is_featured = isFeatured;
-        const updatedHotel = await this.hotelRepository.save(hotel);
-        return this.toHotelDTO(updatedHotel);
+        const hotel = await this.hotelRepository.findOne({
+            where: { id },
+            relations: ["detailed_reviews", "room_types"],
+        });
+        return this.toHotelDTO(hotel!);
     }
 
-    async getAllHotelsAdmin(): Promise<IHotelDTO[]> {
+    async getAllHotelsAdmin(page = 1, limit = 50): Promise<IHotelDTO[]> {
+        const skip = (page - 1) * Math.min(limit, 200); // hard cap at 200
+        const take = Math.min(limit, 200);
         const hotels = await this.hotelRepository.find({
-            relations: ["location", "detailed_reviews", "room_types"],
+            relations: ["detailed_reviews", "room_types"],
             order: { created_at: "DESC" },
+            skip,
+            take,
         });
-
         return hotels.map((hotel) => this.toHotelDTO(hotel));
     }
 

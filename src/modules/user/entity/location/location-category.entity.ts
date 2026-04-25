@@ -38,6 +38,6 @@ export class LocationCategory {
   @OneToMany(() => ArticleCategoryMapping, (mapping) => mapping.category)
   articleMappings!: ArticleCategoryMapping[];
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

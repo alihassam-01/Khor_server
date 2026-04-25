@@ -1,3 +1,5 @@
+import { AppDataSource } from "@config/ormconfig";
+import { LocationService } from "./location.service";
 import { HotelService } from "./hotel.service";
 import { RestaurantService } from "./restaurant.service";
 import { 
@@ -10,11 +12,15 @@ import {
 export class AdsService {
     private hotelService = new HotelService();
     private restaurantService = new RestaurantService();
+    private locationService = new LocationService(AppDataSource);
 
     async getAdsByLocation(locationId: number | number[]): Promise<IAdsResponseDTO> {
+        // Expand location IDs to include descendants for recursive search
+        const expandedLocationIds = await this.locationService.getDescendantIds(locationId);
+        
         const [hotels, restaurants] = await Promise.all([
-            this.hotelService.getHotelsByLocation(locationId),
-            this.restaurantService.getRestaurantsByLocation(locationId),
+            this.hotelService.getHotelsByLocation(expandedLocationIds),
+            this.restaurantService.getRestaurantsByLocation(expandedLocationIds),
         ]);
 
         return {
@@ -28,48 +34,49 @@ export class AdsService {
         limit = 10,
         searchQuery = "",
         type = "all",
+        location_id,
+        rating,
+        priceMax,
+        isFeatured
     }: {
         page?: number;
         limit?: number;
         searchQuery?: string;
         type?: "hotel" | "restaurant" | "all";
+        location_id?: number | number[];
+        rating?: number;
+        priceMax?: number;
+        isFeatured?: boolean;
     }): Promise<ICombinedAdsResponseDTO> {
-        const results = { 
-            hotels: [] as IHotelDTO[], 
-            restaurants: [] as IRestaurantDTO[], 
-            totalHotels: 0, 
-            totalRestaurants: 0 
-        };
-
-        if (type === "hotel" || type === "all") {
-            const hotelResult = await this.hotelService.getAllHotels({
-                page,
-                limit,
-                searchQuery,
-            });
-            results.hotels = hotelResult.items;
-            results.totalHotels = hotelResult.total;
+        // Expand location IDs to include descendants for recursive search
+        let expandedLocationIds: number[] | undefined = undefined;
+        if (location_id) {
+            expandedLocationIds = await this.locationService.getDescendantIds(location_id);
         }
 
-        if (type === "restaurant" || type === "all") {
-            const restaurantResult = await this.restaurantService.getAllRestaurants({
-                page,
-                limit,
-                searchQuery,
-            });
-            results.restaurants = restaurantResult.items;
-            results.totalRestaurants = restaurantResult.total;
-        }
+        // Run hotel and restaurant queries in parallel — never sequentially
+        const [hotelResult, restaurantResult] = await Promise.all([
+            type !== "restaurant"
+                ? this.hotelService.getAllHotels({ 
+                    page, limit, searchQuery, location_id: expandedLocationIds, rating, priceMax, isFeatured 
+                })
+                : Promise.resolve({ items: [] as IHotelDTO[], total: 0 }),
+            type !== "hotel"
+                ? this.restaurantService.getAllRestaurants({ 
+                    page, limit, searchQuery, location_id: expandedLocationIds, rating, priceMax, isFeatured 
+                })
+                : Promise.resolve({ items: [] as IRestaurantDTO[], total: 0 }),
+        ]);
 
         return {
-            hotels: results.hotels,
-            restaurants: results.restaurants,
+            hotels: hotelResult.items,
+            restaurants: restaurantResult.items,
             pagination: {
                 page,
                 limit,
-                totalHotels: results.totalHotels,
-                totalRestaurants: results.totalRestaurants,
-                totalItems: results.totalHotels + results.totalRestaurants,
+                totalHotels: hotelResult.total,
+                totalRestaurants: restaurantResult.total,
+                totalItems: hotelResult.total + restaurantResult.total,
             },
         };
     }

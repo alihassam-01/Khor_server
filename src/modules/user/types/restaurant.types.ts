@@ -8,14 +8,20 @@ export interface IGetAllRestaurantsQuery {
     page?: string;
     limit?: string;
     searchQuery?: string;
+    location_id?: string;
+    rating?: string;
+    priceMax?: string;
+    isFeatured?: string;
 }
 
 export interface IToggleRestaurantAdStatusBody {
     is_active: boolean;
+    plan_id?: string;
 }
 
 export interface IRenewRestaurantAdBody {
-    subscription_type: SubscriptionType;
+    subscription_type?: SubscriptionType;
+    plan_id?: string;
 }
 
 export interface ISetRestaurantFeaturedStatusBody {

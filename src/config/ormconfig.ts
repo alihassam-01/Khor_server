@@ -16,6 +16,7 @@ const entities = isProduction
     join(projectRoot, "dist/modules/user/entity/business/*.js"),
     join(projectRoot, "dist/modules/user/entity/ads/*.js"),
     join(projectRoot, "dist/modules/user/entity/subscription-plan.entity.js"),
+    join(projectRoot, "dist/modules/user/entity/audit-log.entity.js"),
   ]
   : [
     join(projectRoot, "src/modules/user/entity/user/*.ts"),
@@ -27,6 +28,7 @@ const entities = isProduction
     join(projectRoot, "src/modules/user/entity/business/*.ts"),
     join(projectRoot, "src/modules/user/entity/ads/*.ts"),
     join(projectRoot, "src/modules/user/entity/subscription-plan.entity.ts"),
+    join(projectRoot, "src/modules/user/entity/audit-log.entity.ts"),
   ];
 
 

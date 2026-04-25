@@ -52,6 +52,7 @@ export interface IHotelDTO {
     vendor_id?: string;
     expires_at?: Date;
     subscription_type?: SubscriptionType;
+    plan_id?: string;
     is_paid?: boolean;
     is_featured?: boolean;
     is_active?: boolean;

@@ -41,13 +41,13 @@ export class Location {
   })
   location_type!: LocationType;
 
-  @CreateDateColumn({ type: "timestamp" })
+  @CreateDateColumn({ type: "timestamptz" })
   created_at!: Date;
 
   @Column({ type: "varchar", length: 100, nullable: false, unique: true })
   slug!: string;
 
-  @UpdateDateColumn({ type: "timestamp" })
+  @UpdateDateColumn({ type: "timestamptz" })
   updated_at!: Date;
 
   @ManyToOne(() => Location, (location) => location.children, {

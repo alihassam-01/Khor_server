@@ -78,7 +78,7 @@ export class Restaurant {
     @JoinColumn({ name: "vendor_id" })
     vendor?: User;
 
-    @Column("timestamp", { nullable: true })
+    @Column("timestamptz", { nullable: true })
     expires_at?: Date;
 
     @Column({
@@ -87,6 +87,9 @@ export class Restaurant {
         default: SubscriptionType.FREE,
     })
     subscription_type!: SubscriptionType;
+
+    @Column("uuid", { nullable: true })
+    plan_id?: string;
 
     @Column("boolean", { default: false })
     is_paid!: boolean;
@@ -106,9 +109,9 @@ export class Restaurant {
     })
     detailed_reviews!: any[];
 
-    @CreateDateColumn({ type: "timestamp" })
+    @CreateDateColumn({ type: "timestamptz" })
     created_at!: Date;
 
-    @UpdateDateColumn({ type: "timestamp" })
+    @UpdateDateColumn({ type: "timestamptz" })
     updated_at!: Date;
 }

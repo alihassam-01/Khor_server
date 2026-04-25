@@ -33,7 +33,7 @@ export class AuditLog {
     @Column("jsonb", { nullable: true })
     metadata?: Record<string, unknown>;
 
-    @CreateDateColumn({ type: "timestamp" })
+    @CreateDateColumn({ type: "timestamptz" })
     @Index()
     created_at!: Date;
 }
