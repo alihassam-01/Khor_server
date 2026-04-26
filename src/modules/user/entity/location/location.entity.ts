@@ -60,12 +60,10 @@ export class Location {
   @OneToMany(() => Location, (location) => location.parent)
   children!: Location[];
 
-  @OneToMany(() => LocationAttributes, (attr) => attr.place, { cascade: true })
+  @OneToMany(() => LocationAttributes, (attr) => attr.place)
   attributes!: LocationAttributes[];
 
-  @OneToMany(() => LocationCategoryMapping, (mapping) => mapping.location, {
-    cascade: true,
-  })
+  @OneToMany(() => LocationCategoryMapping, (mapping) => mapping.location)
   categoryMappings!: LocationCategoryMapping[];
 
   @OneToMany(() => Address, (address) => address.location)

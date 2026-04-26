@@ -5,7 +5,7 @@
 -- Usage: psql -U postgres -d khor_db -f scripts/add-admin.sql
 --
 -- Default credentials:
--- Email: admin@khor.com
+-- Email: info@gokhor.com
 -- Password: Admin@2026
 -- 
 -- WARNING: Change the password immediately after first login!
@@ -39,7 +39,7 @@ INSERT INTO "user" (
     "createdAt"
 ) VALUES (
     gen_random_uuid(),
-    'admin@khor.com',
+    'info@gokhor.com',
     '$2b$10$Qnx36IMTadY.f1.haGY2VOBsJPgd.uzuNcS4ADxkL3gF6bhU6m3Bq',
     'admin',
     NULL,
@@ -61,7 +61,7 @@ BEGIN
     SELECT id, email, "userType", "isVerified", "isActive"
     INTO admin_record
     FROM "user"
-    WHERE email = 'admin@khor.com';
+    WHERE email = 'info@gokhor.com';
     
     IF FOUND THEN
         RAISE NOTICE '========================================';
