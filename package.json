@@ -16,7 +16,8 @@
     "migration:show": "npm run typeorm -- migration:show -d src/config/ormconfig.ts",
     "seed:locations": "ts-node src/scripts/seed-locations.ts",
     "seed:articles": "ts-node src/scripts/seed-articles.ts",
-    "seed:all": "ts-node src/scripts/seed-locations.ts && ts-node src/scripts/seed-articles.ts"
+    "seed:all": "ts-node src/scripts/seed-locations.ts && ts-node src/scripts/seed-articles.ts",
+    "migrate:legacy": "ts-node -r tsconfig-paths/register src/scripts/migrate-legacy-data.ts"
   },
   "engines": {
     "node": ">=23.0.0"
@@ -53,6 +54,7 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.15.2",
     "@types/nodemailer": "^6.4.17",
+    "@types/pg": "^8.20.0",
     "@types/uuid": "^9.0.0",
     "nodemon": "^3.1.10",
     "pino-pretty": "^13.1.3",
