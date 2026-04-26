@@ -6,13 +6,13 @@ import {
   LocationCategory,
 } from "@modules/user/entity/location";
 import { Address } from "@modules/user/entity/address";
-import { 
-    ICreateLocationDto, 
-    ILocationDTO, 
-    IUpdateLocationDto, 
-    ICreateLocationCategoryDto,
-    IUpdateLocationCategoryDto,
-    ILocationCategoryDTO
+import {
+  ICreateLocationDto,
+  ILocationDTO,
+  IUpdateLocationDto,
+  ICreateLocationCategoryDto,
+  IUpdateLocationCategoryDto,
+  ILocationCategoryDTO
 } from "@modules/user/dtos";
 import { LocationType } from "@common/enums";
 import { AppError } from "@common/errors/AppError";
@@ -34,37 +34,40 @@ export class LocationService {
   }
 
   private toLocationDTO(location: Location): ILocationDTO {
-      return {
-          location_id: location.location_id,
-          name: location.name,
-          slug: location.slug,
-          description: location.description || "",
-          plusCode: location.plusCode || "",
-          location_order: location.location_order || 0,
-          location_type: location.location_type,
-          parent_id: location.parent?.location_id || null,
-          parent: location.parent ? {
-              location_id: location.parent.location_id,
-              name: location.parent.name,
-              location_type: location.parent.location_type
-          } : null,
-          attributes: location.attributes?.map(attr => ({
-              attributeKey: attr.attributeKey,
-              attributeValue: attr.attributeValue
-          })) || [],
-          categories: location.categoryMappings?.map(m => ({
-              categoryId: m.category.categoryId,
-              name: m.category.name,
-              slug: m.category.slug
-          })) || []
-      };
+    return {
+      location_id: location.location_id,
+      name: location.name,
+      slug: location.slug,
+      description: location.description || "",
+      plusCode: location.plusCode || "",
+      location_order: location.location_order || 0,
+      location_type: location.location_type,
+      parent_id: location.parent?.location_id || null,
+      parent: location.parent ? {
+        location_id: location.parent.location_id,
+        name: location.parent.name,
+        location_type: location.parent.location_type
+      } : null,
+      attributes: location.attributes?.map(attr => ({
+        attributeKey: attr.attributeKey,
+        attributeValue: attr.attributeValue
+      })) || [],
+      categories: location.categoryMappings?.map(m => ({
+        categoryId: m.category.categoryId,
+        name: m.category.name,
+        slug: m.category.slug
+      })) || []
+    };
   }
 
   // Location CRUD Operations
   async createLocation(locationData: ICreateLocationDto): Promise<ILocationDTO> {
     const location = new Location();
     location.name = locationData.name;
-    location.slug = this.generateSlug(locationData.name);
+    const slug = locationData.slug || this.generateSlug(locationData.name);
+    await this.validateSlugUniqueness(this.locationRepository, slug);
+    location.slug = slug;
+    
     location.description = locationData.description ?? "";
     location.plusCode = locationData.plusCode || "";
     location.location_order = locationData.location_order || 0;
@@ -84,14 +87,14 @@ export class LocationService {
     if (locationData.attributes) {
       let attributesObj: Record<string, string> = {};
       if (Array.isArray(locationData.attributes)) {
-          attributesObj = locationData.attributes.reduce((acc, attr) => {
-              if (attr.attributeKey && attr.attributeValue !== undefined) {
-                  acc[attr.attributeKey] = attr.attributeValue;
-              }
-              return acc;
-          }, {} as Record<string, string>);
+        attributesObj = locationData.attributes.reduce((acc, attr) => {
+          if (attr.attributeKey && attr.attributeValue !== undefined) {
+            acc[attr.attributeKey] = attr.attributeValue;
+          }
+          return acc;
+        }, {} as Record<string, string>);
       } else {
-          attributesObj = locationData.attributes;
+        attributesObj = locationData.attributes;
       }
       await this.setLocationAttributes(savedLocation.location_id, attributesObj);
     }
@@ -101,8 +104,8 @@ export class LocationService {
     }
 
     const finalLocation = await this.locationRepository.findOne({
-        where: { location_id: savedLocation.location_id },
-        relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
+      where: { location_id: savedLocation.location_id },
+      relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
     });
 
     return this.toLocationDTO(finalLocation!);
@@ -142,14 +145,16 @@ export class LocationService {
 
   async updateLocation(locationId: number, locationData: IUpdateLocationDto): Promise<ILocationDTO | null> {
     const location = await this.locationRepository.findOne({
-        where: { location_id: locationId },
-        relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
+      where: { location_id: locationId },
+      relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
     });
     if (!location) throw new AppError("Location not found", 404, ErrorCodes.NOT_FOUND);
 
     if (locationData.name) {
       location.name = locationData.name;
-      location.slug = this.generateSlug(locationData.name);
+      const slug = this.generateSlug(locationData.name);
+      await this.validateSlugUniqueness(this.locationRepository, slug, locationId);
+      location.slug = slug;
     }
     if (locationData.description !== undefined) location.description = locationData.description;
     if (locationData.plusCode !== undefined) location.plusCode = locationData.plusCode;
@@ -177,8 +182,8 @@ export class LocationService {
 
     const saved = await this.locationRepository.save(location);
     const final = await this.locationRepository.findOne({
-        where: { location_id: saved.location_id },
-        relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
+      where: { location_id: saved.location_id },
+      relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
     });
     return this.toLocationDTO(final!);
   }
@@ -272,9 +277,9 @@ export class LocationService {
       hierarchy.push(loc);
 
       if (loc.parent) {
-          currentId = loc.parent.location_id;
+        currentId = loc.parent.location_id;
       } else {
-          break;
+        break;
       }
     }
 
@@ -420,7 +425,7 @@ export class LocationService {
       .leftJoinAndSelect("location.parent", "parent")
       .where("category.name = :name", { name: categoryName })
       .getMany();
-    
+
     return locations.map(l => this.toLocationDTO(l));
   }
 
@@ -436,11 +441,11 @@ export class LocationService {
   async getAllDescendants(locationId: number): Promise<ILocationDTO[]> {
     const descendantIds = await this.getDescendantIds(locationId);
     if (descendantIds.length <= 1) return []; // Only the parent itself or nothing
-    
+
     // Fetch full objects for the descendants (excluding the parent if needed, but usually descendants include children)
     const childrenIds = descendantIds.filter(id => id !== locationId);
     if (childrenIds.length === 0) return [];
-    
+
     const locations = await this.locationRepository.find({
       where: { location_id: In(childrenIds) },
       relations: ["attributes", "categoryMappings", "categoryMappings.category", "parent"],
@@ -522,7 +527,9 @@ export class LocationService {
   async createCategory(categoryData: ICreateLocationCategoryDto): Promise<LocationCategory> {
     const category = new LocationCategory();
     category.name = categoryData.name;
-    category.slug = this.generateSlug(categoryData.name);
+    const slug = this.generateSlug(categoryData.name);
+    await this.validateSlugUniqueness(this.categoryRepository, slug);
+    category.slug = slug;
     if (categoryData.parentCategoryId) {
       const parent = await this.categoryRepository.findOne({
         where: { categoryId: categoryData.parentCategoryId },
@@ -537,10 +544,10 @@ export class LocationService {
       relations: ["parentCategory"],
       order: { name: "ASC" },
     });
-    
+
     // Fetch counts for all categories
     const counts = await this.getCategoriesWithArticleCount();
-    
+
     return categories.map(cat => ({
       categoryId: cat.categoryId,
       name: cat.name,
@@ -560,8 +567,8 @@ export class LocationService {
       .leftJoin("mapping.location", "location")
       .leftJoin("location.articles", "locationArticle")
       .leftJoin(
-        "articles", 
-        "article", 
+        "articles",
+        "article",
         "(article.article_id = directArticle.article_id OR article.article_id = locationArticle.article_id) AND article.published_at IS NOT NULL AND article.is_deleted = false"
       )
       .where("(location.is_deleted = false OR location.location_id IS NULL)")
@@ -595,11 +602,14 @@ export class LocationService {
     if (data.name) {
       category.name = data.name;
       if (!data.slug) {
-        category.slug = this.generateSlug(data.name);
+        const generatedSlug = this.generateSlug(data.name);
+        await this.validateSlugUniqueness(this.categoryRepository, generatedSlug, categoryId);
+        category.slug = generatedSlug;
       }
     }
-    
+
     if (data.slug) {
+      await this.validateSlugUniqueness(this.categoryRepository, data.slug, categoryId);
       category.slug = data.slug;
     }
 
@@ -658,6 +668,23 @@ export class LocationService {
       },
       order: { is_primary: "DESC" },
     });
+  }
+
+  private async validateSlugUniqueness(repository: Repository<any>, slug: string, excludeId?: number): Promise<void> {
+    const idKey = repository.metadata.primaryColumns[0].propertyName;
+
+    const query = repository.createQueryBuilder("entity")
+      .where("entity.slug = :slug", { slug });
+    
+    if (excludeId !== undefined) {
+      query.andWhere(`entity.${idKey} != :id`, { id: excludeId });
+    }
+
+    const existing = await query.getOne();
+    
+    if (existing) {
+        throw new AppError(`Slug "${slug}" is already in use. Please choose a different name or slug.`, 409, ErrorCodes.CONFLICT);
+    }
   }
 
   private generateSlug(text: string): string {
