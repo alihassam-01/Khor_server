@@ -1,178 +1,194 @@
 # Codebase Issues and Suggestions
 
-This document collects issues, observations, and suggested improvements across the codebase (focused on the `user` module and related configs). It is intended as a developer-facing checklist with concrete fixes, code examples, and priorities.
+A standing list of known issues and accepted improvements. Items are
+grouped into:
+
+- **Resolved** — implemented during the April 2026 unification refactor.
+- **Open (high)** — security / correctness; address before launch.
+- **Open (medium)** — stability / maintainability.
+- **Open (low)** — DX / performance niceties.
 
 ---
 
-## Summary / How to use
-- Each entry contains: location, problem, impact, suggested fix, and (where helpful) example code or commands.
-- I prioritized items where they affect security, correctness, or developer productivity.
-- After applying fixes, run your project's linter/typechecker and tests.
+## Resolved (April 2026 unification refactor)
+
+These items, on previous versions of this document, are now done.
+
+### ✅ Hotel/restaurant duplication
+
+Two near-identical entity trees (`hotel`, `hotel_review`, `room_type`
+and the matching `restaurant_*` siblings) collapsed into one
+`listings` table + per-type extension entities (`hotel_details`,
+`restaurant_details`) and a polymorphic `reviews` table.
+
+### ✅ Vendor / customer-profile split
+
+`vendors` and `customer_profiles` were structurally identical. Merged
+into `user_profiles`; the role distinction now lives on `user.userType`.
+
+### ✅ Per-type service layers
+
+`HotelService` and `RestaurantService` had ~80% duplicated logic. They
+now delegate to `ListingService` + a per-type `IListingStrategy`. New
+listing types (tour, vehicle) only need a strategy.
+
+### ✅ Subscription / payment fields scattered on entities
+
+`subscription_type`, `expires_at`, `is_paid`, `is_featured`, `plan_id`
+used to live on each ad entity. Moved to `listing_subscriptions` (one
+row per period; renewal history is preserved).
+
+### ✅ Media handling
+
+- `r2client.service.uploadFileToR2` now returns
+  `{ url, key, s3_image_id }` so callers can link directly to the
+  `s3_images` registry.
+- Deduplication by MD5 hash means re-uploading the same file returns
+  the existing URL.
+- `ListingMediaService.syncMedia` does a clean `(role, url)` diff,
+  dedupes inputs, and defaults `display_order` to the input array
+  index. Replaces the old per-field columns.
+
+### ✅ Polymorphic review duplication
+
+`hotel_reviews` and `restaurant_reviews` are gone. One `reviews` table
+keyed by `(target_type, target_id)` covers listings, room types,
+articles, and locations.
+
+### ✅ Rating recompute correctness
+
+`Listing.rating_avg` / `rating_count` are now maintained transactionally
+by `ReviewService` whenever a review is created/updated/deleted/
+moderated. No more drift between the source-of-truth row and the
+denormalized counter.
+
+### ✅ Migration sprawl
+
+The legacy chain of incremental migrations was replaced with a single
+fresh-schema migration (`1900000000000-InitialSchema`) that drops
+legacy tables and rebuilds the new schema. Pre-launch only — once
+shipped, future changes are normal incremental migrations.
+
+### ✅ Test infrastructure
+
+Added a `tests/` tree using Node's built-in `node:test`. Initial unit
+coverage for the listing strategies, media service, and subscription
+service. See [`TESTING.md`](./TESTING.md).
+
+### ✅ Stale folder/file cleanup
+
+Removed empty `entity/ENUM`, `entity/ads`, `entity/business`,
+`entity/media` directories along with all the old `Hotel`,
+`Restaurant`, `Vendor`, `CustomerProfile`, `City`, `Locality`,
+`Media`, and review entities.
 
 ---
 
-## High Priority (Security, correctness)
+## Open (high)
 
-### 1) JWT secret usage inconsistency
-- Location: `src/modules/user/service/auth.service.ts`, `src/modules/user/service/user.service.ts`, `src/config/config.ts`
-- Problem: Some places read `process.env.JWT_SECRET` directly and others read `config.jwt.secret`. The code sometimes falls back to insecure defaults in `config` (e.g., `defaultsecretkey`) which may be deployed accidentally.
-- Impact: Risk of weak or inconsistent secrets that compromise JWTs.
-- Suggested fix:
-  - Centralize JWT secret access via `config` and remove insecure defaults. Fail fast when secret is missing.
-  - Example: In `config.ts`, set `jwt.secret` to `process.env.JWT_SECRET` without a default and throw or exit early when missing in production.
+### JWT secret / config
 
-### 2) Password hashing salt rounds are hard-coded
-- Location: `src/modules/user/service/auth.service.ts` (bcrypt.hash(..., 10))
-- Problem: Salt rounds are magic number 10. It may be fine but should be configurable.
-- Impact: Harder to tune performance vs security tradeoff.
-- Suggested fix: Move salt rounds to `config` (e.g., `config.security.bcryptRounds`) and use it.
+- **Where**: `src/modules/user/service/auth.service.ts`,
+  `src/config/config.ts`.
+- **Issue**: Some places read `process.env.JWT_SECRET` directly while
+  others read `config.jwt.secret`; insecure defaults still exist for
+  dev convenience.
+- **Fix**: Centralize on `config.jwt.secret`, fail fast at startup
+  when the env var is missing in production, drop hard-coded fallbacks.
 
-### 3) Reset/verify tokens use different secrets or env var names
-- Location: `user.service.ts` uses `config.jwt.secret` while `auth.service.ts` uses `process.env.JWT_SECRET`. This mismatch can cause tokens to be invalid across services.
-- Impact: Password reset or email verification tokens may not validate.
-- Suggested fix: Always use `config.jwt.secret` (and ensure it's populated from `process.env.JWT_SECRET`).
+### Bcrypt rounds hard-coded
 
-### 4) Sending email without error handling
-- Location: `user.service.ts` and `auth.service.ts` (calls to `sendEmail`) often assume email delivery succeeds.
-- Problem: If email provider fails, operations may still proceed (e.g., create user) leaving users without verification.
-- Impact: Users might not receive verification and can't login.
-- Suggested fix: Wrap `sendEmail` in try/catch, log failures, and optionally retry or mark account state differently if email couldn't be sent.
+- **Where**: `auth.service.ts` (`bcrypt.hash(..., 10)`).
+- **Fix**: Move to `config.security.bcryptRounds`, default 12.
 
----
+### Email side-effects without error handling
 
-## Medium Priority (Stability, maintainability)
+- **Where**: `auth.service.ts`, `user.service.ts`.
+- **Issue**: User registration commits even if OTP email fails to
+  send.
+- **Fix**: Wrap `SendEmail.send` in try/catch; if it fails, surface a
+  toast-friendly error and either retry or mark the account so a
+  subsequent `/auth/resend-otp` covers the gap.
 
-### 5) Inconsistent error handling & custom error classes
-- Location: Controllers (e.g., `user.controller.ts`) and services.
-- Problem: Controllers sometimes catch specific errors (ValidationError, NotFoundError) but elsewhere services throw raw `Error` with JSON strings or messages. `AuthService` throws `new Error(JSON.stringify(...))` which is brittle to parse.
-- Impact: Hard to produce consistent HTTP status codes and messages.
-- Suggested fix:
-  - Use custom error classes (like `ValidationError`, `NotFoundError`, `UnauthorizedError`) everywhere.
-  - Avoid throwing stringified JSON in `Error`; throw typed errors (e.g., `throw new ValidationError('Email already in use')`).
-  - Add a global error handler in Fastify to map error classes -> HTTP status codes and response shapes.
+### Rate limiting
 
-### 6) Controller methods missing try/catch and validation
-- Location: `src/modules/user/controller/user.controller.ts` (many methods)
-- Problem: Only some controller methods validate input or guard for errors; others let exceptions bubble to the framework.
-- Impact: Inconsistent responses and potential crashes.
-- Suggested fix:
-  - Add try/catch to all controller methods or rely on a Fastify error handler plugin.
-  - Use Fastify's schema validation or `class-validator` DTOs to validate request bodies and params.
-
-### 7) Using `any` for update payloads and DTOs
-- Location: `user.controller.ts`, `user.service.ts` (`updateUser` accepts `any`)
-- Problem: Low type safety increases bugs.
-- Suggested fix: Create explicit Update DTOs for user updates. Validate shape and allowed fields.
-
-### 8) Repositories created directly from AppDataSource inside service class
-- Location: `user.service.ts`
-- Problem: Directly calling `AppDataSource.getRepository(...)` in class fields assumes DataSource is initialized at import time.
-- Impact: If DataSource isn't initialized, the app may crash at startup or when tests run.
-- Suggested fix:
-  - Inject repositories or initialize them after AppDataSource.initialize().
-  - Alternatively, lazily get repositories in the constructor or methods.
-
-### 9) Inconsistent relation loading
-- Location: `user.service.ts` `getUsers`, `getUserById` etc.
-- Problem: Some queries use `relations` property with nested relations; others rely on later repository calls.
-- Suggested fix: Decide on an approach: either use `select` and `relations` consistently or use query builder when you need complex joins. Add pagination for list endpoints.
-
-### 10) Update logic uses loose checks for empty strings and null
-- Location: `user.service.ts` `updateUser`
-- Problem: Uses checks like `if (updateData.phoneNumber != "")` which treats null/undefined poorly and uses inconsistent property names (`profile_picture` vs `profilePicture`).
-- Suggested fix: Normalize DTO key names, sanitize input, and use 'in' checks or a small helper `isDefined(value)`.
+- No `@fastify/rate-limit` configured. Public endpoints (`/auth/*`,
+  `/contact`, search) should have it.
 
 ---
 
-## Low Priority (Developer experience, performance)
+## Open (medium)
 
-### 11) Logging & observability
-- Add structured logging (pino/winston) and include request ids in logs.
+### Inconsistent error handling
 
-### 12) Caching
-- For public-facing read-heavy endpoints, add caching (Redis) for profile lookups.
+- Mixed use of `throw new Error("...")`, `throw new AppError(...)`,
+  and (in a couple of places) `throw new Error(JSON.stringify({...}))`.
+- **Fix**: Standardize on `AppError` + `ErrorCodes` everywhere; remove
+  any stringified-JSON `Error` constructions.
 
-### 13) Add OpenAPI documentation
-- Use `fastify-swagger` to publish API docs.
+### `any` in update DTOs
 
-### 14) Add pagination & filtering to lists
-- `getUsers`, `getVendors`, `getCustomers` should support limit/offset or cursor pagination.
+- `IUpdateHotelDTO | any` and `IUpdateRestaurantDTO | any` in
+  `hotel.routes.ts` / `restaurant.routes.ts`.
+- **Fix**: Drop the `| any` once schemas are wired up; lean on
+  `class-validator` or Fastify schemas for runtime validation.
 
----
+### Repository instantiation timing
 
-## Concrete Code Suggestions and Snippets
+- Several services build `AppDataSource.getRepository(...)` as class
+  fields, which assumes the datasource is initialized at import time.
+- **Fix**: Lazy getter pattern or constructor injection. (Currently
+  works because `AppDataSource.initialize()` runs before any service
+  is constructed in `index.ts`, but it's fragile.)
 
-### A) Centralize config and fail fast for JWT secret
-- `src/config/config.ts`:
-```ts
-// ensure JWT_SECRET is set in production
-const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret && process.env.NODE_ENV === 'production') {
-  throw new Error('JWT_SECRET must be set in production');
-}
+### `IVendorProfileDTO` / `ICustomerProfileDTO` divergence
 
-export const config = {
-  jwt: {
-    secret: jwtSecret,
-    salt: Number(process.env.SALT_ROUNDS) || 10,
-  },
-  // ...
-};
-```
+- These DTOs still have separate definitions even though the underlying
+  entity is unified.
+- **Fix**: Collapse to a single `IUserProfileDTO`; keep aliases for
+  backward compatibility during the transition.
 
-### B) Replace raw `Error(JSON.stringify(...))` with typed errors
-- In `AuthService.validateRegistration`, replace with:
-```ts
-if (existingUser) {
-  throw new ValidationError('Email already in use');
-}
-```
+### Pagination on list endpoints
 
-### C) Make repository access lazy or injectable
-- Option 1 (lazy):
-```ts
-private get userRepository() { return AppDataSource.getRepository(User); }
-```
-- Option 2 (constructor injection): pass repositories from the composition root.
+- `GET /users`, `GET /vendors`, `GET /customers` return everything.
+- **Fix**: Add `page` / `limit` (Listings already have them).
 
-### D) Controller error handling pattern
-- Add a helper:
-```ts
-async function safeHandler(handler) {
-  return async (req, reply) => {
-    try { await handler(req, reply); }
-    catch(err) { reply.status(mapErrorToStatus(err)).send(formatError(err)); }
-  }
-}
-```
+### Soft-delete handling
 
-### E) Update DTO example
-```ts
-export interface UpdateUserDTO {
-  phoneNumber?: string | null;
-  profilePicture?: string | null;
-  username?: string | null;
-}
-```
+- Only `Listing` is soft-deletable. Most queries on listings need
+  `withDeleted: false` (the default), but a couple of admin endpoints
+  hand-roll their own filters.
+- **Fix**: Audit the admin queries for accidental inclusion of
+  soft-deleted rows.
 
 ---
 
-## Suggested Prioritized Roadmap (Quick Wins -> Larger Changes)
-1. Centralize `config` handling for secrets and bcrypt rounds, fail early if missing in production. (High)
-2. Replace stringified error usage with typed errors and add a global error handler. (High)
-3. Add input validation on controllers via Fastify schemas or DTO + `class-validator`. (Medium)
-4. Normalize DTOs (`user.dto.ts`) and remove `any` usage. (Medium)
-5. Lazily initialize repositories or move to dependency injection. (Medium)
-6. Add pagination to list endpoints. (Low)
+## Open (low)
 
----
+### Structured logging
 
-## Next steps I can take for you (pick one or more)
-- I can implement the central config changes and update usages across the project.
-- I can add a global Fastify error handler and convert thrown errors to typed errors.
-- I can add DTOs and validation for `createUser` and `updateUser` and update controller/service.
-- I can run quick linter/typecheck and include the output in this doc.
+- `lib/logger` is custom and minimal. Move to `pino` (already a
+  fastify-friendly choice) with request-id correlation.
 
----
+### Caching for hot reads
 
-Document generated by automated code analysis. If you'd like, I can now start applying the high-priority fixes automatically.
+- Public `GET /hotels`, `GET /restaurants`, `GET /subscription-plans`
+  could benefit from a tiny in-memory cache or a Redis layer.
+
+### OpenAPI doc generation
+
+- We have hand-rolled markdown for the API. Wiring up
+  `@fastify/swagger` with our existing TypeBox schemas would give us
+  free, always-up-to-date interactive docs.
+
+### CI
+
+- No GitHub Actions workflow runs `npm test` and `tsc --noEmit` on
+  every PR. Add one. (Skeleton exists in `.github/`.)
+
+### Entity-glob configuration
+
+- `ormconfig.ts` uses `src/modules/**/entity/**/*.entity.ts`. This
+  works but is fragile; a typed barrel file (already exists at
+  `src/modules/user/entity/index.ts`) is more refactor-resilient.
+  Decide on one source of truth.

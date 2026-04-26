@@ -1,37 +1,25 @@
 // Address entities
 export * from "./address/address.entity";
-export * from "./address/city.entity";
 
 // Article entities
-export * from "./article/article.entity";
-export * from "./article/article-tags.entity";
-export * from "./article/tags.entity";
+export * from "./article";
 
-// Ads entities (Phase 1)
-export * from "./ads/hotel.entity";
-export * from "./ads/hotel-review.entity";
-export { HotelRoomType } from "./ads/room-type.entity";
-export * from "./ads/restaurant.entity";
-export * from "./ads/restaurant-review.entity";
+// Listing entities (replaces ads/)
+export * from "./listing";
 
-// Enums
-export * from "./ENUM/enum";
-export * from "./ENUM/ad.enum";
+// Review entities (polymorphic, replaces ads/*-review.entity.ts)
+export * from "./review";
+
+// Payment entities (moved out of ads/)
+export * from "./payment";
 
 // Media entities
 export * from "./images/s3Images.entity";
-export * from "./media/media.entity";
 
 // Location entities
-export * from "./location/location-attributes.entity";
-export * from "./location/location-category-mapping.entity";
-export * from "./location/location-category.entity";
-export * from "./location/location.entity";
+export * from "./location";
 
 // User entities
-export * from "./user/customer-profile.entity";
-export * from "./user/user.entity";
+export * from "./user";
 export * from "./audit-log.entity";
-
-// Business entities (minimal for Phase 1)
-export * from "./business";
+export * from "./subscription-plan.entity";

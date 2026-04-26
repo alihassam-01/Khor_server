@@ -1,757 +1,108 @@
-import { AppDataSource } from "@config/ormconfig";
-import { Restaurant, RestaurantReview } from "@modules/user/entity/ads";
-import { Vendor } from "@modules/user/entity/business/vendor-entity";
-import { Location } from "@modules/user/entity/location";
 import {
     IRestaurantDTO,
     ICreateRestaurantDTO,
     IUpdateRestaurantDTO,
     IPaginatedRestaurantsResponse,
 } from "@modules/user/dtos";
-import { PropertyType, SubscriptionType, PaymentStatus, PaymentMethod } from "@common/enums";
-import { PAGINATION_DEFAULTS, SUBSCRIPTION_DURATION_DAYS, FEATURED_AD_PRICE } from "@common/constants";
-import { R2ClientService } from "@modules/user/service/r2client.service";
-import { logError, logInfo, logWarn } from "@lib/logger";
-import { AppError } from "@common/errors/AppError";
-import { ErrorCodes } from "@common/errors/error-codes";
-import { isValidUuid } from "@common/utils/uuid.util";
-import { LocationService } from "./location.service";
+import { SubscriptionType } from "@common/enums";
+import { ListingService } from "./listing/listing.service";
+import { RestaurantStrategy } from "./listing/strategies/restaurant.strategy";
 
+/**
+ * Backwards-compatible facade over `ListingService` for restaurant listings.
+ * Mirrors the historical `RestaurantService` API so controllers and routes
+ * keep working unchanged.
+ */
 export class RestaurantService {
-    private restaurantRepository = AppDataSource.getRepository(Restaurant);
-    private locationRepository = AppDataSource.getRepository(Location);
-    private vendorRepository = AppDataSource.getRepository(Vendor);
+    private readonly listings = new ListingService();
+    private readonly strategy = new RestaurantStrategy();
 
-    // DB FK expects restaurants.vendor_id -> user.id. Accept either user id or legacy vendor profile id.
-    private async resolveVendorUserId(candidateId?: string): Promise<string | undefined> {
-        if (!candidateId) return undefined;
-
-        if (!isValidUuid(candidateId)) {
-            logWarn(`Invalid UUID passed as vendor candidate ID: "${candidateId}". Skipping database lookup.`);
-            return undefined; 
-        }
-
-        const vendor = await this.vendorRepository.findOne({
-            where: [{ id: candidateId }, { user: { id: candidateId } }],
-            relations: ["user"],
-        });
-
-        if (!vendor) {
-            logInfo("No vendor profile found for provided vendor_id, using value as user id", {
-                providedId: candidateId,
-            });
-            return candidateId;
-        }
-
-        return vendor.user?.id;
+    createRestaurant(dto: ICreateRestaurantDTO): Promise<IRestaurantDTO> {
+        return this.listings.create(this.strategy, dto);
     }
 
-
-    private toRestaurantDTO(restaurant: Restaurant): IRestaurantDTO {
-        return {
-            id: restaurant.id,
-            name: restaurant.name,
-            type: "restaurant",
-            location: restaurant.location_name,
-            address: restaurant.address,
-            price: Number(restaurant.price),
-            rating: Number(restaurant.rating),
-            reviews: restaurant.reviews,
-            image: restaurant.image,
-            images: restaurant.image ? [restaurant.image] : [],
-            active: restaurant.is_active,
-            links: {
-                phone: restaurant.phone,
-                whatsapp: restaurant.whatsapp,
-                facebook: restaurant.facebook,
-                instagram: restaurant.instagram,
-                website: restaurant.website,
-                map_link: restaurant.map_link,
-            },
-            latitude: restaurant.latitude ? Number(restaurant.latitude) : null,
-            longitude: restaurant.longitude ? Number(restaurant.longitude) : null,
-            description: restaurant.description,
-            menu_images: restaurant.menu_images || [],
-            detailed_reviews:
-                restaurant.detailed_reviews?.map((review) => ({
-                    user_name: review.user_name,
-                    rating: Number(review.rating),
-                    comment: review.comment,
-                    date: review.date,
-                })) || [],
-            vendor_id: restaurant.vendor_id,
-            subscription_type: restaurant.subscription_type,
-            plan_id: restaurant.plan_id,
-            is_paid: restaurant.is_paid,
-            is_featured: restaurant.is_featured,
-            is_active: restaurant.is_active,
-            location_id: restaurant.location_id,
-            expires_at: restaurant.expires_at,
-        };
+    getRestaurantById(id: string): Promise<IRestaurantDTO | null> {
+        return this.listings.findById(this.strategy, id);
     }
 
-    async createRestaurant(
-        restaurantData: ICreateRestaurantDTO
-    ): Promise<IRestaurantDTO> {
-        const queryRunner = AppDataSource.createQueryRunner();
-        await queryRunner.connect();
-        await queryRunner.startTransaction();
-
-        try {
-            // Verify location exists
-            const location = await this.locationRepository.findOne({
-                where: { location_id: restaurantData.location_id },
-            });
-
-            if (!location) {
-                throw new AppError(
-                    `Location with id ${restaurantData.location_id} not found. Please select a valid location.`,
-                    404,
-                    ErrorCodes.NOT_FOUND
-                );
-            }
-
-            // Create restaurant
-            const restaurant = new Restaurant();
-            restaurant.name = restaurantData.name;
-            restaurant.location_name = restaurantData.location_name;
-            restaurant.address = restaurantData.address || null;
-            restaurant.price = restaurantData.price;
-            restaurant.rating = restaurantData.rating || 0;
-            restaurant.reviews = restaurantData.reviews || 0;
-            restaurant.image = restaurantData.image;
-
-            const resolvedVendorUserId = await this.resolveVendorUserId(restaurantData.vendor_id);
-            if (resolvedVendorUserId) restaurant.vendor_id = resolvedVendorUserId;
-
-            restaurant.phone = restaurantData.phone || null;
-            restaurant.whatsapp = restaurantData.whatsapp || null;
-            restaurant.facebook = restaurantData.facebook || null;
-            restaurant.instagram = restaurantData.instagram || null;
-            restaurant.website = restaurantData.website || null;
-            restaurant.map_link = restaurantData.map_link || null;
-            restaurant.latitude = restaurantData.latitude ?? null;
-            restaurant.longitude = restaurantData.longitude ?? null;
-            restaurant.description = restaurantData.description;
-            restaurant.menu_images = restaurantData.menu_images || [];
-            restaurant.location = location;
-            restaurant.location_id = restaurantData.location_id;
-            restaurant.is_active = false; // Default to inactive for admin review
-            restaurant.is_featured =
-                restaurantData.is_featured !== undefined
-                    ? restaurantData.is_featured
-                    : false;
-
-            // Default to FREE if not specified
-            const subscriptionType = restaurantData.subscription_type || SubscriptionType.FREE;
-            restaurant.subscription_type = subscriptionType;
-            restaurant.plan_id = restaurantData.plan_id;
-
-            if (subscriptionType === SubscriptionType.FREE && !restaurant.is_featured) {
-                restaurant.is_paid = false;
-                restaurant.is_active = false; // All ads require admin activation by default
-
-                const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-                const durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
-
-                const now = new Date();
-                restaurant.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-            } else {
-                restaurant.is_paid = false;
-                restaurant.is_active = false;
-                restaurant.expires_at = undefined;
-            }
-
-            const savedRestaurant = await queryRunner.manager.save(restaurant);
-
-            // Generate Payment Intent for non-free ads
-            const vendorId = restaurant.vendor_id;
-            if ((subscriptionType !== SubscriptionType.FREE || restaurant.is_featured) && vendorId) {
-                const { SubscriptionPlanService } = await import("./subscription-plan.service");
-                const planService = new SubscriptionPlanService();
-                
-                // Get plan by ID if provided, otherwise fallback to type
-                let plan = null;
-                if (restaurantData.plan_id) {
-                    plan = await planService.getPlanById(restaurantData.plan_id);
-                } else {
-                    plan = await planService.getPlanByType(subscriptionType);
-                }
-                
-                let totalAmount = plan ? Number(plan.price) : 0;
-                
-                if (restaurant.is_featured) {
-                    const featuredPlan = await planService.getPlanByType("featured" as any);
-                    totalAmount += featuredPlan ? Number(featuredPlan.price) : FEATURED_AD_PRICE;
-                }
-                
-                if (totalAmount > 0) {
-                    const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
-                    
-                    const payment = new AdPayment();
-                    payment.ad_id = savedRestaurant.id;
-                    payment.ad_type = PropertyType.RESTAURANT;
-                    payment.vendor_id = vendorId;
-                    payment.amount = totalAmount;
-                    payment.payment_method = PaymentMethod.BANK_TRANSFER;
-                    payment.transaction_id = "PENDING_APPROVAL";
-                    payment.notes = `Auto-generated payment intent for Restaurant: ${restaurantData.name}`;
-                    payment.payment_status = PaymentStatus.PENDING;
-                    
-                    await queryRunner.manager.save(AdPayment, payment);
-                }
-            }
-
-            // Create reviews if provided
-            if (
-                restaurantData.detailed_reviews &&
-                restaurantData.detailed_reviews.length > 0
-            ) {
-                const reviews = restaurantData.detailed_reviews.map((reviewData) => {
-                    const review = new RestaurantReview();
-                    review.user_name = reviewData.user_name;
-                    review.rating = reviewData.rating;
-                    review.comment = reviewData.comment;
-                    review.date = reviewData.date;
-                    review.restaurant = savedRestaurant;
-                    review.restaurant_id = savedRestaurant.id;
-                    return review;
-                });
-                await queryRunner.manager.save(reviews);
-                savedRestaurant.detailed_reviews = reviews;
-            }
-
-            await queryRunner.commitTransaction();
-            return this.toRestaurantDTO(savedRestaurant);
-        } catch (error: unknown) {
-            await queryRunner.rollbackTransaction();
-            if (error instanceof AppError) throw error;
-            const err = error as Error;
-            logError(err, 'Restaurant creation - Database transaction');
-            throw new AppError(err.message || "Failed to create restaurant", 500, ErrorCodes.INTERNAL_SERVER_ERROR);
-        } finally {
-            await queryRunner.release();
-        }
-    }
-
-    async getRestaurantById(id: string): Promise<IRestaurantDTO | null> {
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["location", "detailed_reviews"],
-        });
-
-        if (!restaurant) {
-            return null;
-        }
-
-        return this.toRestaurantDTO(restaurant);
-    }
-
-    async getAllRestaurants({ 
-        page = PAGINATION_DEFAULTS.PAGE, 
-        limit = PAGINATION_DEFAULTS.LIMIT, 
-        searchQuery = "",
-        location_id,
-        rating,
-        priceMax,
-        isFeatured
-    }: { 
-        page?: number; 
-        limit?: number; 
+    getAllRestaurants(params: {
+        page?: number;
+        limit?: number;
         searchQuery?: string;
         location_id?: number | number[];
         rating?: number;
         priceMax?: number;
         isFeatured?: boolean;
     } = {}): Promise<IPaginatedRestaurantsResponse> {
-        const skip = (page - 1) * limit;
-        const queryBuilder = this.restaurantRepository.createQueryBuilder("restaurant")
-            .leftJoinAndSelect("restaurant.location", "location")
-            .leftJoinAndSelect("restaurant.detailed_reviews", "detailed_reviews")
-            .where("restaurant.is_active = :isActive", { isActive: true })
-            .orderBy("restaurant.created_at", "DESC");
-
-        if (searchQuery && searchQuery.trim() !== "") {
-            queryBuilder.andWhere("(restaurant.name ILIKE :search OR restaurant.description ILIKE :search)", { search: `%${searchQuery}%` });
-        }
-
-        if (location_id) {
-            const locationService = new LocationService(AppDataSource);
-            const expandedIds = await locationService.getDescendantIds(location_id);
-            
-            if (expandedIds.length > 0) {
-                queryBuilder.andWhere("restaurant.location_id IN (:...location_ids)", { location_ids: expandedIds });
-            }
-        }
-
-        if (rating) {
-            queryBuilder.andWhere("restaurant.rating >= :rating", { rating });
-        }
-
-        if (priceMax) {
-            queryBuilder.andWhere("restaurant.price <= :priceMax", { priceMax });
-        }
-
-        if (isFeatured !== undefined) {
-            queryBuilder.andWhere("restaurant.is_featured = :isFeatured", { isFeatured });
-        }
-
-        const [restaurants, total] = await queryBuilder.skip(skip).take(limit).getManyAndCount();
-        return {
-            items: restaurants.map((restaurant) => this.toRestaurantDTO(restaurant)),
-            total,
-            page,
-            limit,
-        };
+        return this.listings.findAll(this.strategy, params);
     }
 
-    async getRestaurantsByLocation(locationId: number | number[]): Promise<IRestaurantDTO[]> {
-        const { In } = await import("typeorm");
-        const restaurants = await this.restaurantRepository.find({
-            where: { 
-                location_id: Array.isArray(locationId) ? In(locationId) : locationId, 
-                is_active: true 
-            },
-            relations: ["location", "detailed_reviews"],
-            order: { created_at: "DESC" },
-        });
-
-        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    getRestaurantsByLocation(locationId: number | number[]): Promise<IRestaurantDTO[]> {
+        return this.listings.findByLocation(this.strategy, locationId);
     }
 
-    async updateRestaurant(
-        id: string,
-        restaurantData: IUpdateRestaurantDTO
-    ): Promise<IRestaurantDTO> {
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["location", "detailed_reviews", "vendor", "vendor.vendor", "vendor.customerProfile"],
-        });
-
-        if (!restaurant) {
-            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
-        }
-        const wasActive = restaurant.is_active;
-
-        // Update fields if provided
-        if (restaurantData.name !== undefined)
-            restaurant.name = restaurantData.name;
-        if (restaurantData.location_name !== undefined)
-            restaurant.location_name = restaurantData.location_name;
-        if (restaurantData.address !== undefined)
-            restaurant.address = restaurantData.address;
-        if (restaurantData.price !== undefined)
-            restaurant.price = restaurantData.price;
-        if (restaurantData.rating !== undefined)
-            restaurant.rating = restaurantData.rating;
-        if (restaurantData.reviews !== undefined)
-            restaurant.reviews = restaurantData.reviews;
-        const r2Client = new R2ClientService();
-        const imagesToDelete: string[] = [];
-
-        if (restaurantData.image !== undefined && restaurantData.image !== restaurant.image) {
-            if (restaurant.image) imagesToDelete.push(restaurant.image);
-            restaurant.image = restaurantData.image;
-        }
-        if (restaurantData.phone !== undefined)
-            restaurant.phone = restaurantData.phone;
-        if (restaurantData.whatsapp !== undefined)
-            restaurant.whatsapp = restaurantData.whatsapp;
-        if (restaurantData.description !== undefined)
-            restaurant.description = restaurantData.description;
-        if (restaurantData.menu_images !== undefined) {
-            const oldImages = restaurant.menu_images || [];
-            const newImages = restaurantData.menu_images || [];
-            const removedMenuImages = oldImages.filter(img => !newImages.includes(img));
-            imagesToDelete.push(...removedMenuImages);
-            restaurant.menu_images = newImages;
-        }
-        if (restaurantData.is_active !== undefined) {
-            const becomingActive = restaurantData.is_active && !restaurant.is_active;
-            const isAlreadyActiveButExpired = restaurantData.is_active && restaurant.is_active && (restaurant.expires_at && restaurant.expires_at < new Date());
-            
-            if (becomingActive || isAlreadyActiveButExpired) {
-                // If activating an expired ad, set new expiry
-                if (!restaurant.expires_at || restaurant.expires_at < new Date()) {
-                    let durationDays = 30;
-                    const planId = restaurantData.plan_id || restaurant.plan_id;
-                    
-                    if (planId) {
-                        const { SubscriptionPlanService } = await import("./subscription-plan.service");
-                        const planService = new SubscriptionPlanService();
-                        const plan = await planService.getPlanById(planId);
-                        if (plan) {
-                            durationDays = plan.duration_days;
-                        }
-                    } else {
-                        const typeStr = (restaurantData.subscription_type || restaurant.subscription_type || 'free').toUpperCase();
-                        durationDays = SUBSCRIPTION_DURATION_DAYS[typeStr as keyof typeof SUBSCRIPTION_DURATION_DAYS] || 30;
-                    }
-                    
-                    const now = new Date();
-                    restaurant.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-                    logInfo(`Updating expiry for Restaurant ${id} during update: ${restaurant.expires_at}`);
-                }
-            }
-            restaurant.is_active = restaurantData.is_active;
-        }
-        if (restaurantData.is_featured !== undefined)
-            restaurant.is_featured = restaurantData.is_featured;
-        if (restaurantData.facebook !== undefined)
-            restaurant.facebook = restaurantData.facebook;
-        if (restaurantData.instagram !== undefined)
-            restaurant.instagram = restaurantData.instagram;
-        if (restaurantData.website !== undefined)
-            restaurant.website = restaurantData.website;
-        if (restaurantData.map_link !== undefined)
-            restaurant.map_link = restaurantData.map_link;
-        if (restaurantData.latitude !== undefined)
-            restaurant.latitude = restaurantData.latitude;
-        if (restaurantData.longitude !== undefined)
-            restaurant.longitude = restaurantData.longitude;
-        if (restaurantData.vendor_id !== undefined) {
-            const resolvedVendorUserId = await this.resolveVendorUserId(restaurantData.vendor_id);
-            if (resolvedVendorUserId) restaurant.vendor_id = resolvedVendorUserId;
-        }
-        if (restaurantData.subscription_type !== undefined)
-            restaurant.subscription_type = restaurantData.subscription_type;
-        if (restaurantData.plan_id !== undefined)
-            restaurant.plan_id = restaurantData.plan_id;
-
-        // Update location if changed
-        if (
-            restaurantData.location_id !== undefined &&
-            restaurant.location_id !== restaurantData.location_id
-        ) {
-            const location = await this.locationRepository.findOne({
-                where: { location_id: restaurantData.location_id },
-            });
-            if (location) {
-                restaurant.location = location;
-                restaurant.location_id = restaurantData.location_id;
-            }
-        }
-
-        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
-
-        if (imagesToDelete.length > 0) {
-            r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Restaurant image cleanup on update'));
-        }
-
-        // Send activation email if we just activated the ad
-        if (updatedRestaurant.is_active && !wasActive && updatedRestaurant.vendor?.email) {
-            logInfo(`Sending activation email for Restaurant: ${updatedRestaurant.name}`);
-            const { SendEmail } = await import("@modules/user/service/email/sendEmail");
-            const emailService = new SendEmail();
-            const vendorName = updatedRestaurant.vendor?.customerProfile?.username || updatedRestaurant.vendor?.vendor?.username || "Vendor";
-            
-            await emailService.sendAdActivationEmail(
-                vendorName,
-                updatedRestaurant.vendor.email,
-                updatedRestaurant.name,
-                "Restaurant",
-                updatedRestaurant.expires_at || new Date()
-            ).catch(e => logError(e, `Failed to send activation email for Restaurant: ${updatedRestaurant.name}`));
-        }
-
-        return this.toRestaurantDTO(updatedRestaurant);
+    updateRestaurant(id: string, dto: IUpdateRestaurantDTO): Promise<IRestaurantDTO> {
+        return this.listings.update(this.strategy, id, dto);
     }
 
-    async deleteRestaurant(id: string): Promise<void> {
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-        });
-
-        if (!restaurant) {
-            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
-        }
-
-        const imagesToDelete: string[] = [];
-        if (restaurant.image) imagesToDelete.push(restaurant.image);
-        if (restaurant.menu_images && restaurant.menu_images.length > 0) {
-            imagesToDelete.push(...restaurant.menu_images);
-        }
-
-        await this.restaurantRepository.remove(restaurant);
-
-        if (imagesToDelete.length > 0) {
-            const r2Client = new R2ClientService();
-            r2Client.deleteFileFromR2(imagesToDelete).catch(e => logError(e, 'Restaurant image cleanup on delete'));
-        }
+    deleteRestaurant(id: string): Promise<void> {
+        return this.listings.delete(this.strategy, id);
     }
 
-    // ========== ADMIN METHODS ==========
-
-    async toggleAdStatus(id: string, isActive: boolean, planId?: string): Promise<IRestaurantDTO> {
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["vendor", "vendor.vendor", "vendor.customerProfile"],
-        });
-
-        if (!restaurant) {
-            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
-        }
-
-        const updateData: Partial<Restaurant> = { is_active: isActive };
-
-        // Set expiry if: We are activating AND (it has no expiry OR it's already expired)
-        if (isActive && (!restaurant.expires_at || restaurant.expires_at < new Date())) {
-            let durationDays = 30;
-            let planType = restaurant.subscription_type;
-
-            if (planId) {
-                const { SubscriptionPlanService } = await import("./subscription-plan.service");
-                const planService = new SubscriptionPlanService();
-                const plan = await planService.getPlanById(planId);
-                if (plan) {
-                    durationDays = plan.duration_days;
-                    planType = plan.type;
-                    updateData.subscription_type = planType;
-                    updateData.plan_id = planId;
-                }
-            } else {
-                const typeStr = (restaurant.subscription_type || 'free').toUpperCase();
-                durationDays = SUBSCRIPTION_DURATION_DAYS[typeStr as keyof typeof SUBSCRIPTION_DURATION_DAYS] || 30;
-            }
-            
-            const now = new Date();
-            updateData.expires_at = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-            logInfo(`Setting expiration for Restaurant "${restaurant.name}": ${durationDays} days (Plan: ${planType})`);
-        }
-
-        logInfo(`Toggling ad status for Restaurant ${id}: ${restaurant.is_active} -> ${isActive}. Vendor Email: ${restaurant.vendor?.email}`);
-
-        await this.restaurantRepository.update({ id }, updateData);
-        
-        // Send activation email if we just activated the ad
-        if (isActive && !restaurant.is_active && restaurant.vendor?.email) {
-            logInfo(`Sending activation email for Restaurant: ${restaurant.name}`);
-            const { SendEmail } = await import("@modules/user/service/email/sendEmail");
-            const emailService = new SendEmail();
-            const vendorName = restaurant.vendor?.customerProfile?.username || restaurant.vendor?.vendor?.username || "Vendor";
-            
-            await emailService.sendAdActivationEmail(
-                vendorName,
-                restaurant.vendor.email,
-                restaurant.name,
-                "Restaurant",
-                updateData.expires_at || restaurant.expires_at || new Date()
-            ).catch(e => logError(e, `Failed to send activation email for Restaurant: ${restaurant.name}`));
-        }
-
-        const updated = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["detailed_reviews"],
-        });
-        
-        return this.toRestaurantDTO(updated!);
+    toggleAdStatus(id: string, isActive: boolean, planId?: string): Promise<IRestaurantDTO> {
+        return this.listings.toggleStatus(this.strategy, id, isActive, planId);
     }
 
-    async renewAd(
+    renewAd(
         id: string,
         subscriptionType?: SubscriptionType,
-        planId?: string
+        planId?: string,
     ): Promise<IRestaurantDTO> {
-        // Fetch only the scalar columns needed — no relations
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-            select: ["id", "expires_at", "subscription_type", "is_paid", "is_active"],
-        });
-
-        if (!restaurant) {
-            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
-        }
-
-        let durationDays = 30;
-        let finalSubscriptionType = subscriptionType || restaurant.subscription_type;
-
-        if (planId) {
-            const { SubscriptionPlanService } = await import("./subscription-plan.service");
-            const planService = new SubscriptionPlanService();
-            const plan = await planService.getPlanById(planId);
-            if (plan) {
-                durationDays = plan.duration_days;
-                finalSubscriptionType = plan.type;
-            }
-        } else if (subscriptionType) {
-            const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-            durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
-        }
-
-        const now = new Date();
-        const baseDate = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
-        const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
-        
-        logInfo(`Renewing Restaurant ${id}. Old Expiry: ${restaurant.expires_at}, Base Date: ${baseDate}, New Expiry: ${newExpiry}`);
-
-        await this.restaurantRepository.update({ id }, {
-            expires_at: newExpiry,
-            subscription_type: finalSubscriptionType,
+        return this.listings.renewByAdmin(this.strategy, id, {
+            subscription_type: subscriptionType,
             plan_id: planId,
-            is_paid: true,
-            is_active: true,
         });
-
-        const updated = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["detailed_reviews"],
-        });
-        return this.toRestaurantDTO(updated!);
     }
 
-    async renewAdByVendor(
+    renewAdByVendor(
         id: string,
         vendorId: string,
         subscriptionType?: SubscriptionType | string,
-        planId?: string
+        planId?: string,
     ): Promise<IRestaurantDTO> {
-        const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
-        if (!resolvedVendorUserId) {
-            throw new AppError("Unauthorized vendor", 403, ErrorCodes.FORBIDDEN);
-        }
-
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id, vendor_id: resolvedVendorUserId },
-            relations: ["location", "detailed_reviews"],
+        return this.listings.renewByVendor(this.strategy, id, vendorId, {
+            subscription_type: subscriptionType,
+            plan_id: planId,
         });
-
-        if (!restaurant) {
-            throw new AppError("Restaurant not found or access denied", 404, ErrorCodes.NOT_FOUND);
-        }
-
-        const { SubscriptionPlanService } = await import("./subscription-plan.service");
-        const { AdPayment } = await import("@modules/user/entity/ads/ad-payment.entity");
-
-        let durationDays = 30;
-        let finalSubscriptionType = (subscriptionType as SubscriptionType) || restaurant.subscription_type;
-        const planService = new SubscriptionPlanService();
-        let plan = null;
-
-        // Determine duration and plan details
-        if (planId) {
-            plan = await planService.getPlanById(planId);
-        } else if (subscriptionType) {
-            if (subscriptionType.length > 20) { // Likely a UUID
-                plan = await planService.getPlanById(subscriptionType as string);
-            } else {
-                plan = await planService.getPlanByType(subscriptionType as any);
-            }
-        }
-
-        if (plan) {
-            durationDays = plan.duration_days;
-            finalSubscriptionType = plan.type;
-        } else if (subscriptionType) {
-            const durationKey = (subscriptionType as string).toUpperCase() as keyof typeof SUBSCRIPTION_DURATION_DAYS;
-            durationDays = SUBSCRIPTION_DURATION_DAYS[durationKey] || 30;
-        }
-
-        const now = new Date();
-        const baseDate = restaurant.expires_at && restaurant.expires_at > now ? restaurant.expires_at : now;
-        const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
-
-        restaurant.subscription_type = finalSubscriptionType;
-        restaurant.plan_id = planId || (plan?.plan_id);
-        restaurant.is_paid = false;
-
-        const amount = plan ? Number(plan.price) : 0;
-
-        if ((finalSubscriptionType === SubscriptionType.FREE && !restaurant.is_featured) || amount <= 0) {
-            restaurant.expires_at = newExpiry;
-            restaurant.is_active = true;
-            restaurant.is_paid = true;
-        } else {
-            restaurant.is_active = false;
-            const payment = new AdPayment();
-            payment.ad_id = restaurant.id;
-            payment.ad_type = PropertyType.RESTAURANT;
-            payment.vendor_id = resolvedVendorUserId;
-            payment.amount = amount;
-            payment.payment_method = PaymentMethod.BANK_TRANSFER;
-            payment.transaction_id = "PENDING_APPROVAL";
-            payment.notes = `Renewal payment intent for Restaurant: ${restaurant.name}`;
-            payment.payment_status = PaymentStatus.PENDING;
-            await AppDataSource.getRepository(AdPayment).save(payment);
-        }
-
-        const updatedRestaurant = await this.restaurantRepository.save(restaurant);
-        return this.toRestaurantDTO(updatedRestaurant);
     }
 
-    async getExpiredAds(): Promise<IRestaurantDTO[]> {
-        const now = new Date();
-        const restaurants = await this.restaurantRepository
-            .createQueryBuilder("restaurant")
-            .leftJoinAndSelect("restaurant.location", "location")
-            .leftJoinAndSelect("restaurant.detailed_reviews", "detailed_reviews")
-            .where("restaurant.expires_at < :now", { now })
-            .orWhere("restaurant.expires_at IS NULL")
-            .orderBy("restaurant.created_at", "DESC")
-            .getMany();
-
-        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    getExpiredAds(): Promise<IRestaurantDTO[]> {
+        return this.listings.findExpired(this.strategy);
     }
 
-    async getAdsByVendor(vendorId: string): Promise<IRestaurantDTO[]> {
-        const resolvedVendorUserId = await this.resolveVendorUserId(vendorId);
-        if (!resolvedVendorUserId) {
-            return [];
-        }
-
-        const restaurants = await this.restaurantRepository.find({
-            where: { vendor_id: resolvedVendorUserId },
-            relations: ["location", "detailed_reviews"],
-            order: { created_at: "DESC" },
-        });
-
-        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    getAdsByVendor(vendorId: string): Promise<IRestaurantDTO[]> {
+        return this.listings.findByVendor(this.strategy, vendorId);
     }
 
-    async setFeaturedStatus(id: string, isFeatured: boolean): Promise<IRestaurantDTO> {
-        // Targeted UPDATE — avoids loading reviews just to flip a flag
-        const result = await this.restaurantRepository.update({ id }, { is_featured: isFeatured });
-        if (result.affected === 0) {
-            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
-        }
-        const restaurant = await this.restaurantRepository.findOne({
-            where: { id },
-            relations: ["detailed_reviews"],
-        });
-        return this.toRestaurantDTO(restaurant!);
+    setFeaturedStatus(id: string, isFeatured: boolean): Promise<IRestaurantDTO> {
+        return this.listings.setFeatured(this.strategy, id, isFeatured);
     }
 
     async getAllRestaurantsAdmin(page = 1, limit = 50): Promise<IRestaurantDTO[]> {
-        const skip = (page - 1) * Math.min(limit, 200); // hard cap at 200
-        const take = Math.min(limit, 200);
-        const restaurants = await this.restaurantRepository.find({
-            relations: ["detailed_reviews"],
-            order: { created_at: "DESC" },
-            skip,
-            take,
+        const result = await this.listings.findAll(this.strategy, {
+            page,
+            limit: Math.min(limit, 200),
+            onlyActive: false,
         });
-        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+        return result.items;
     }
 
-    async getFeaturedAds(locationId: string): Promise<IRestaurantDTO[]> {
-        const restaurants = await this.restaurantRepository.find({
-            where: { is_featured: true, is_active: true, location_id: Number(locationId) },
-            relations: ["location", "detailed_reviews"],
-            order: { created_at: "DESC" },
-        });
-
-        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    getFeaturedAds(locationId: string): Promise<IRestaurantDTO[]> {
+        const parsed = Number(locationId);
+        return this.listings.findFeatured(this.strategy, isNaN(parsed) ? undefined : parsed);
     }
 
-    async getPremiumAds(): Promise<IRestaurantDTO[]> {
-        const restaurants = await this.restaurantRepository
-            .createQueryBuilder("restaurant")
-            .leftJoinAndSelect("restaurant.location", "location")
-            .leftJoinAndSelect("restaurant.detailed_reviews", "detailed_reviews")
-            .where("restaurant.is_paid = :isPaid", { isPaid: true })
-            .andWhere("restaurant.subscription_type != :free", { free: SubscriptionType.FREE })
-            .orderBy("restaurant.created_at", "DESC")
-            .getMany();
-
-        return restaurants.map((restaurant) => this.toRestaurantDTO(restaurant));
+    getPremiumAds(): Promise<IRestaurantDTO[]> {
+        return this.listings.findPremium(this.strategy);
     }
 }

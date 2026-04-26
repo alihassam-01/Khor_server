@@ -1,124 +1,147 @@
 # Khor-server
 
-## Overview
-Khor-server is a backend application designed for the Travel Baltistan platform. It provides a comprehensive set of APIs and features to manage users, advertisements, articles, hotels, restaurants, locations, bookings, and more. The server is built with TypeScript and Node.js, using TypeORM for database management.
+Backend for the Travel Baltistan platform: users, listings (hotels,
+restaurants, future tours/vehicles), reviews, subscriptions, payments,
+articles, and locations. TypeScript on Fastify + TypeORM + PostgreSQL.
+
+> 📚 **Full documentation lives in [`docs/`](./docs/README.md)**.
+> Start with [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) if you're
+> new to the codebase.
 
 ---
 
-## How to Run
+## Quickstart
 
 ### Prerequisites
-- Node.js
-- npm or yarn
-- PostgreSQL (or the configured database in `ormconfig.ts`)
 
-### Setup Steps
+- Node.js ≥ 23 (the runner uses `node:test`)
+- PostgreSQL with `uuid-ossp` and `pgcrypto` extensions available
+- An R2 (S3-compatible) bucket for media — see env config
 
-2. **Install dependencies**
-   ```sh
-   npm install
-   # or
-   yarn install
-   ```
-3. **Configure Environment**
-   - Copy `.env.example` to `.env` and update the values as needed.
-   - Review and update `src/config/env.ts` and `src/config/ormconfig.ts` for database and other settings.
-4. **Run Migrations**
-   ```sh
-   npm run typeorm migration:run
-   ```
-5. **Seed Data (Optional)**
-   - Use scripts in `src/scripts/` to seed articles and locations:
-     ```sh
-     npm run seed:articles
-     npm run seed:locations
-     ```
-6. **Start the Server**
-   ```sh
-   npm run start
-   # or for development with hot reload
-   npm run dev
-   ```
+### Setup
 
----
+```bash
+# 1. Install dependencies
+npm install
 
-## Functionality
+# 2. Configure environment
+cp .env.example .env
+# fill in DB_*, JWT_SECRET, R2_*, EMAIL_*, etc.
 
-### Core Modules
-- **User Management**: Registration, authentication, profile, and user roles.
-- **Advertisement Management**: CRUD for ads, ad payments, and subscription plans.
-- **Article Management**: CRUD for articles, tags, and article-related features.
-- **Hotel & Restaurant Management**: CRUD for hotels, restaurants, room types, and bookings.
-- **Location Management**: CRUD for locations, geolocation features, and search.
-- **Contact & Feedback**: Endpoints for user contact and feedback.
-- **Media Handling**: Upload and manage images and media files.
-- **Review System**: Users can leave reviews for hotels, restaurants, and other entities.
+# 3. Apply schema
+npm run migration:run
 
-### API Structure
-- All API routes are organized under `src/modules/*/routes/`.
-- Controllers handle business logic in `src/modules/*/controller/`.
-- Data validation is managed with DTOs in `src/modules/*/dtos/`.
-- Entities (database models) are in `src/modules/*/entity/`.
+# 4. (Optional) seed locations + articles
+npm run seed:all
 
-### Error Handling
-- Centralized error handling using custom `AppError` and global error handler middleware.
-- Standardized error codes and messages.
+# 5. Run
+npm run dev      # ts-node + nodemon
+# or
+npm run build && npm start
+```
 
-### Authentication
-- JWT-based authentication for secure API access.
-- Middleware for route protection and feature-based access control.
+### Tests
 
-### Configuration
-- All configuration files are in `src/config/`.
-- Feature flags and environment variables are supported.
+```bash
+npm test
+```
 
-### Database
-- TypeORM is used for ORM and migrations.
-- Migration files are in `src/migrations/`.
+Runs `node:test` against `tests/**/*.test.ts`. See
+[`docs/TESTING.md`](./docs/TESTING.md) for details.
 
-### Seeding
-- Seeding scripts for articles and locations are in `src/scripts/`.
+### Type-checking
+
+```bash
+npx tsc --noEmit                            # production sources
+npx tsc --noEmit -p tests/tsconfig.json     # tests
+```
 
 ---
 
-## Detailed Implementations
+## What's in here
 
-### 1. Modular Architecture
-- Each domain (user, ads, articles, etc.) is separated into its own module with controllers, routes, DTOs, and entities.
-- Promotes scalability and maintainability.
+```
+src/
+  app/                Fastify bootstrap + plugins
+  common/             enums, errors, constants, utils
+  config/             env, datasource, logger
+  middlewares/        auth, RBAC, error handler
+  migrations/         TypeORM migrations
+  modules/user/
+    controller/       thin HTTP adapters
+    dtos/             request/response shapes
+    entity/           TypeORM entities
+    routes/           Fastify route registrations
+    service/
+      listing/          unified ListingService + strategies (hotel, restaurant)
+      ...               auth, user, ads, payments, analytics, email, ...
+tests/                node:test specs
+docs/                 markdown documentation (start here)
+```
 
-### 2. TypeORM Integration
-- Database models are defined as entities.
-- Migrations are used for schema changes.
-- Repository pattern for database operations.
+### Architectural highlights
 
-### 3. Error Handling
-- Custom error classes and middleware for consistent error responses.
-- Error codes are defined in `src/common/errors/error-codes.ts` and `src/common/constant/error.ts`.
+- **One `listings` table.** Hotels, restaurants, tours, vehicles all
+  live in a single polymorphic entity with per-type 1:1 extension
+  tables (`hotel_details`, `restaurant_details`).
+- **Strategy pattern.** `ListingService` is generic; per-type behavior
+  lives in small `IListingStrategy` classes
+  (`HotelStrategy`, `RestaurantStrategy`).
+- **Unified reviews.** A single `reviews` table targets any reviewable
+  entity by `(target_type, target_id)`.
+- **Unified user profile.** `user_profiles` replaces the old
+  `vendors` / `customer_profiles` split.
+- **Subscription history.** `listing_subscriptions` keeps one row per
+  period; `ad_payments` links to the period it paid for.
+- **Media as data.** `listing_media` rows carry a role
+  (`cover|logo|gallery|menu|room`) plus an optional FK into the
+  `s3_images` registry for hard-deletion.
 
-### 4. Authentication & Authorization
-- JWT tokens for user sessions.
-- Middleware for authentication and feature-based access control.
-
-### 5. Feature Flags
-- Feature toggles are managed in `src/config/features.config.ts`.
-- Allows enabling/disabling features without code changes.
-
-### 6. Email Integration
-- Email configuration in `src/config/emailConfig/emailConfig.ts`.
-- Used for notifications, password resets, etc.
-
-### 7. Media & File Uploads
-- Media handling modules for image and file uploads.
-- Integration with cloud storage (if configured).
-
-### 8. API Documentation
-- API usage and documentation are available in the `docs/` folder.
+See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the full
+picture and [`docs/DATABASE_SCHEMA.md`](./docs/DATABASE_SCHEMA.md) for
+the column-level reference.
 
 ---
 
-## Additional Resources
-- See `docs/` for detailed API usage, migration guides, and feature documentation.
-- For issues and suggestions, refer to `docs/CODEBASE_ISSUES_AND_SUGGESTIONS.md`.
+## Useful npm scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | ts-node + nodemon, watches `src/`. |
+| `npm run build` | Clean, run `tsc`, then `tsc-alias` to flatten paths. |
+| `npm start` | Run the compiled server. |
+| `npm test` | Run unit tests. |
+| `npm run migration:run` | Apply pending migrations. |
+| `npm run migration:revert` | Roll back the most recent migration. |
+| `npm run migration:show` | Show migration status. |
+| `npm run migration:generate -- src/migrations/<Name>` | Generate a new migration from entity changes. |
+| `npm run seed:locations` | Seed the locations table. |
+| `npm run seed:articles` | Seed the articles table. |
+| `npm run seed:all` | Run both seeds. |
 
 ---
+
+## Documentation index
+
+| Doc | What's inside |
+| --- | --- |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | High-level architecture (start here). |
+| [`docs/DATABASE_SCHEMA.md`](./docs/DATABASE_SCHEMA.md) | Column-by-column schema reference. |
+| [`docs/API_DOC.md`](./docs/API_DOC.md) | REST API surface. |
+| [`docs/ad_routes.md`](./docs/ad_routes.md) | Hotel/restaurant ad workflow + payments. |
+| [`docs/SEARCH_API.md`](./docs/SEARCH_API.md) | Fulltext search behavior. |
+| [`docs/ARTICLE_API_USAGE.md`](./docs/ARTICLE_API_USAGE.md) | JSON-only article workflow. |
+| [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md) | Migration workflow. |
+| [`docs/TESTING.md`](./docs/TESTING.md) | Tests, coverage, how to add new ones. |
+| [`docs/CODEBASE_ISSUES_AND_SUGGESTIONS.md`](./docs/CODEBASE_ISSUES_AND_SUGGESTIONS.md) | Known issues + accepted improvements. |
+
+---
+
+## Contributing
+
+1. Branch off `main`.
+2. Update or add tests for behavior changes.
+3. Make sure `npx tsc --noEmit`, `npx tsc --noEmit -p tests/tsconfig.json`,
+   and `npm test` all pass.
+4. Update the relevant doc in `docs/` if you touched architecture, the
+   API surface, or the database schema.

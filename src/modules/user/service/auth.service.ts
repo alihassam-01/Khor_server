@@ -1,5 +1,6 @@
 import { Repository } from "typeorm";
-import { User, CustomerProfile, Vendor } from "@modules/user/entity";
+import { User } from "@modules/user/entity/user/user.entity";
+import { UserProfile } from "@modules/user/entity/user/user-profile.entity";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
 import * as crypto from "crypto";
@@ -11,15 +12,17 @@ import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { logError, logInfo } from "@lib/logger";
 import { OTP_LENGTH, OTP_EXPIRY_MINUTES } from "@modules/user/constant/otp.constant";
-import { 
-    ILoginResponseDto, 
-    IGoogleLoginResponseDto, 
-    ICurrentUserResponseDto 
+import {
+    ILoginResponseDto,
+    IGoogleLoginResponseDto,
+    ICurrentUserResponseDto,
 } from "@modules/user/dtos";
 
-
-
-import { EMAIL_SUBJECTS, AuditLogStatus, AuditLogEventType } from "@modules/user/constant/audit.constant";
+import {
+    EMAIL_SUBJECTS,
+    AuditLogStatus,
+    AuditLogEventType,
+} from "@modules/user/constant/audit.constant";
 import { AuditLogService } from "./audit-log.service";
 import { PROFILE_IMAGES } from "@modules/user/constant/user.constant";
 
@@ -28,8 +31,7 @@ export class AuthService {
 
     constructor(
         private userRepository: Repository<User>,
-        private vendorRepository: Repository<Vendor>,
-        private customerProfileRepository: Repository<CustomerProfile>
+        private profileRepository: Repository<UserProfile>,
     ) {}
 
     private async validateEmailAvailable(email: string): Promise<void> {
@@ -59,18 +61,21 @@ export class AuthService {
         return PROFILE_IMAGES[Math.floor(Math.random() * PROFILE_IMAGES.length)];
     }
 
+    private profileUsername(user: User, fallback?: string): string {
+        return user.profile?.username || fallback || user.email.split("@")[0] || "Unknown";
+    }
+
     async register(
         email: string,
         password: string,
         userRole: UserRole,
-        name: string
+        name: string,
     ): Promise<void> {
-        await this.userRepository.manager.transaction(async (transactionalEntityManager) => {
+        await this.userRepository.manager.transaction(async (em) => {
             await this.validateEmailAvailable(email);
 
             const hashedPassword = await this.hashPassword(password);
             const otp = this.generateOtp();
-
             const hashedOtp = await this.hashOtp(otp);
             const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
@@ -85,10 +90,8 @@ export class AuthService {
                 email,
                 success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
                 success ? undefined : "Email service returned failure",
-                { name, role: userRole }
+                { name, role: userRole },
             );
-
-
 
             const user = this.userRepository.create({
                 email,
@@ -98,23 +101,14 @@ export class AuthService {
                 otpExpiresAt,
                 isVerified: false,
             });
-            await transactionalEntityManager.save(User, user);
+            const savedUser = await em.save(User, user);
 
-            if (userRole === UserRole.VENDOR) {
-                const vendor = this.vendorRepository.create({
-                    user,
-                    username: name,
-                    profile_picture: this.randomProfileImage(),
-                });
-                await transactionalEntityManager.save(Vendor, vendor);
-            } else {
-                const customerProfile = this.customerProfileRepository.create({
-                    username: name,
-                    user,
-                    profile_picture: this.randomProfileImage(),
-                });
-                await transactionalEntityManager.save(CustomerProfile, customerProfile);
-            }
+            const profile = this.profileRepository.create({
+                user_id: savedUser.id,
+                username: name,
+                profile_picture: this.randomProfileImage(),
+            });
+            await em.save(UserProfile, profile);
 
             logInfo(`User registered successfully: ${email}, Role: ${userRole}`);
         });
@@ -150,12 +144,11 @@ export class AuthService {
 
         logInfo(`OTP verified successfully for user: ${email}`);
 
-        // Generate a reset token that can be used for password reset (Step 3)
         if (!CONFIG.jwt.secret) {
             throw new Error("JWT_SECRET is not configured");
         }
         const resetToken = jwt.sign({ email }, CONFIG.jwt.secret as string, {
-            expiresIn: "10m", // Short lived token for password reset
+            expiresIn: "10m",
         });
 
         return { success: true, resetToken };
@@ -164,7 +157,7 @@ export class AuthService {
     async resendOtp(email: string): Promise<void> {
         const user = await this.userRepository.findOne({
             where: { email },
-            relations: ["vendor", "customerProfile"],
+            relations: ["profile"],
         });
 
         if (!user) {
@@ -176,7 +169,6 @@ export class AuthService {
         }
 
         const otp = this.generateOtp();
-
         const hashedOtp = await this.hashOtp(otp);
         const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
@@ -184,10 +176,7 @@ export class AuthService {
         user.otpExpiresAt = otpExpiresAt;
         await this.userRepository.save(user);
 
-        const username =
-            user.userType === UserRole.VENDOR
-                ? user.vendor?.username ?? email
-                : user.customerProfile?.username ?? email;
+        const username = this.profileUsername(user, email);
 
         const success = await sendEmail({
             to: email,
@@ -200,16 +189,14 @@ export class AuthService {
             email,
             success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
             success ? undefined : "Email service returned failure",
-            { username }
+            { username },
         );
-
-
     }
 
     async login(email: string, password: string): Promise<ILoginResponseDto> {
         const user = await this.userRepository.findOne({
             where: { email },
-            relations: ["vendor", "customerProfile"],
+            relations: ["profile"],
         });
 
         if (!user) {
@@ -221,7 +208,7 @@ export class AuthService {
             throw new AppError(
                 "This account uses Google sign-in. Please sign in with Google.",
                 401,
-                ErrorCodes.INVALID_CREDENTIALS
+                ErrorCodes.INVALID_CREDENTIALS,
             );
         }
 
@@ -235,7 +222,7 @@ export class AuthService {
             throw new AppError(
                 "Please verify your email before logging in",
                 401,
-                ErrorCodes.EMAIL_NOT_VERIFIED
+                ErrorCodes.EMAIL_NOT_VERIFIED,
             );
         }
 
@@ -243,27 +230,32 @@ export class AuthService {
             throw new Error("JWT_SECRET is not configured");
         }
 
-        const name =
-            user.userType === UserRole.VENDOR
-                ? user.vendor?.username ?? "Unknown"
-                : user.customerProfile?.username;
+        const name = this.profileUsername(user);
 
+        // The legacy JWT carried `vendorId` so the frontend could distinguish
+        // a vendor-profile id from the user id. With the unified user_profiles
+        // table the profile id == user.id, so we keep the field for shape
+        // compatibility but mirror it onto user.id for vendors.
         const token = jwt.sign(
             {
                 userId: user.id,
                 userType: user.userType,
-                name: name ?? "Unknown",
-                vendorId: user.userType === UserRole.VENDOR ? user.vendor?.id : undefined,
+                name,
+                vendorId: user.userType === UserRole.VENDOR ? user.id : undefined,
             },
             CONFIG.jwt.secret as string,
-            { expiresIn: CONFIG.jwt.expiresIn as any }
+            { expiresIn: CONFIG.jwt.expiresIn as any },
         );
 
         logInfo(`User logged in successfully: ${email}`);
         return { token };
     }
 
-    async resetPassword(token: string, newPassword: string, confirmPassword: string): Promise<{ success: boolean }> {
+    async resetPassword(
+        token: string,
+        newPassword: string,
+        confirmPassword: string,
+    ): Promise<{ success: boolean }> {
         if (!token) {
             logError(new Error("Reset token missing"), "Password reset");
             throw new AppError("Reset token is required", 400, ErrorCodes.BAD_REQUEST);
@@ -272,7 +264,7 @@ export class AuthService {
             throw new AppError(
                 "New password and confirm password are required",
                 400,
-                ErrorCodes.BAD_REQUEST
+                ErrorCodes.BAD_REQUEST,
             );
         }
         if (newPassword !== confirmPassword) {
@@ -282,7 +274,7 @@ export class AuthService {
             throw new AppError(
                 "New password must be at least 8 characters long",
                 400,
-                ErrorCodes.BAD_REQUEST
+                ErrorCodes.BAD_REQUEST,
             );
         }
 
@@ -314,7 +306,7 @@ export class AuthService {
 
     async googleLoginOrRegister(
         accessToken: string,
-        preferredUserRole: UserRole = UserRole.VENDOR
+        preferredUserRole: UserRole = UserRole.VENDOR,
     ): Promise<IGoogleLoginResponseDto> {
         let googleUser: {
             sub: string;
@@ -339,7 +331,7 @@ export class AuthService {
             throw new AppError(
                 "Could not retrieve email from Google account",
                 400,
-                ErrorCodes.INVALID_CREDENTIALS
+                ErrorCodes.INVALID_CREDENTIALS,
             );
         }
 
@@ -347,7 +339,7 @@ export class AuthService {
 
         let existingUser = await this.userRepository.findOne({
             where: [{ googleId }, { email }],
-            relations: ["vendor", "customerProfile"],
+            relations: ["profile"],
         });
 
         let isNewUser = false;
@@ -362,34 +354,25 @@ export class AuthService {
                     userType: preferredUserRole,
                     isVerified: true,
                 });
-                await em.save(User, newUser);
+                const saved = await em.save(User, newUser);
 
                 const displayName = googleName ?? email.split("@")[0];
                 const avatar = picture ?? this.randomProfileImage();
 
-                if (preferredUserRole === UserRole.VENDOR) {
-                    const vendor = this.vendorRepository.create({
-                        user: newUser,
-                        username: displayName,
-                        profile_picture: avatar,
-                    });
-                    await em.save(Vendor, vendor);
-                } else {
-                    const profile = this.customerProfileRepository.create({
-                        user: newUser,
-                        username: displayName,
-                        profile_picture: avatar,
-                    });
-                    await em.save(CustomerProfile, profile);
-                }
+                const profile = this.profileRepository.create({
+                    user_id: saved.id,
+                    username: displayName,
+                    profile_picture: avatar,
+                });
+                await em.save(UserProfile, profile);
 
                 logInfo(`New user registered via Google OAuth: ${email}`);
-                return newUser;
+                return saved;
             });
 
             existingUser = (await this.userRepository.findOne({
                 where: { id: existingUser.id },
-                relations: ["vendor", "customerProfile"],
+                relations: ["profile"],
             }))!;
         } else if (!existingUser.googleId) {
             existingUser.googleId = googleId;
@@ -402,21 +385,17 @@ export class AuthService {
             throw new Error("JWT_SECRET is not configured");
         }
 
-        const name =
-            existingUser.userType === UserRole.VENDOR
-                ? existingUser.vendor?.username ?? googleName ?? "Unknown"
-                : existingUser.customerProfile?.username ?? googleName ?? "Unknown";
+        const name = this.profileUsername(existingUser, googleName);
 
         const token = jwt.sign(
             {
                 userId: existingUser.id,
                 userType: existingUser.userType,
                 name,
-                vendorId:
-                    existingUser.userType === UserRole.VENDOR ? existingUser.vendor?.id : undefined,
+                vendorId: existingUser.userType === UserRole.VENDOR ? existingUser.id : undefined,
             },
             CONFIG.jwt.secret as string,
-            { expiresIn: CONFIG.jwt.expiresIn as any }
+            { expiresIn: CONFIG.jwt.expiresIn as any },
         );
 
         return { token, isNewUser };
@@ -425,24 +404,21 @@ export class AuthService {
     async getCurrentUser(userId: string): Promise<ICurrentUserResponseDto> {
         const user = await this.userRepository.findOne({
             where: { id: userId },
-            relations: ["vendor", "customerProfile"],
+            relations: ["profile"],
         });
 
         if (!user) {
             throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        const username =
-            user.userType === UserRole.VENDOR
-                ? user.vendor?.username
-                : user.customerProfile?.username;
+        const username = this.profileUsername(user);
 
         return {
             userId: user.id,
             email: user.email,
-            username: username ?? "Unknown",
+            username,
             userType: user.userType,
-            vendorId: user.userType === UserRole.VENDOR ? user.vendor?.id : undefined,
+            vendorId: user.userType === UserRole.VENDOR ? user.id : undefined,
         };
     }
 }

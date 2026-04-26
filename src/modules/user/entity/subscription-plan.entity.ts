@@ -5,7 +5,7 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
 } from "typeorm";
-import { SubscriptionType } from "./ENUM/ad-payment.enum";
+import { SubscriptionType } from "@common/enums/subscription.enums";
 
 @Entity("subscription_plans")
 export class SubscriptionPlan {

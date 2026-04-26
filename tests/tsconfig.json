@@ -1,0 +1,22 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "rootDir": "..",
+        "outDir": "../dist-tests",
+        "baseUrl": "../src",
+        "paths": {
+            "@app/*": ["app/*"],
+            "@modules/*": ["modules/*"],
+            "@entity/*": ["modules/user/entity/*"],
+            "@config/*": ["config/*"],
+            "@lib/*": ["lib/*"],
+            "@common/*": ["common/*"],
+            "@middlewares/*": ["middlewares/*"],
+            "@constant/*": ["constant/*"],
+            "@types/*": ["types/*"]
+        },
+        "noUnusedLocals": false,
+        "noUnusedParameters": false
+    },
+    "include": ["**/*.ts", "../src/**/*.ts"]
+}

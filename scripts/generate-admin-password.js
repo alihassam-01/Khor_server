@@ -33,7 +33,7 @@ bcrypt.hash(password, saltRounds, (err, hash) => {
     console.log(`INSERT INTO "user" (id, email, password, "userType", "isVerified", "isActive", "createdAt")`);
     console.log(`VALUES (`);
     console.log(`    gen_random_uuid(),`);
-    console.log(`    'admin@khor.com',`);
+    console.log(`    'info@gokhor.com',`);
     console.log(`    '${hash}',`);
     console.log(`    'admin',`);
     console.log(`    true,`);
