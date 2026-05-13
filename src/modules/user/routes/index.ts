@@ -17,6 +17,7 @@ import { paymentSettingRoutes } from "./payment-setting.routes";
 import propertyRoutes from "./property.routes";
 import { mediaRoutes } from "./media.routes";
 import analyticsRoutes from "./analytics.routes";
+import { flightsRoutes } from "./flights.routes";
 
 
 // Core routes - always enabled
@@ -34,6 +35,7 @@ const routes = [
   paymentSettingRoutes, // Admin and public payment settings
   propertyRoutes, // Generic property routes
   analyticsRoutes,
+  flightsRoutes, // Google Flights price scraper
 ];
 
 

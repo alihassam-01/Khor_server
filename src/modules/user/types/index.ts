@@ -11,3 +11,4 @@ export * from "./ad-payment.types";
 export * from "./payment-setting.types";
 export * from "./tag.types";
 export * from "./contact.types";
+export * from "./flights.types";
