@@ -37,6 +37,6 @@ export default fp(async function swaggerPlugin(fastify: FastifyInstance) {
       deepLinking: false,
     },
     staticCSP: true,
-    transformStaticCSP: (header) => header,
+    transformStaticCSP: (header: string) => header,
   });
 })
