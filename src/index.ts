@@ -1,6 +1,7 @@
 import 'tsconfig-paths/register';
 import fastify from "fastify";
 import typeormPlugin from './app/plugins/typeorm';
+import swaggerPlugin from './app/plugins/swagger';
 import routes from './modules/user/routes';
 import { CONFIG } from './config/config';
 import fastifyMultipart from "@fastify/multipart";
@@ -42,7 +43,7 @@ async function startServer() {
   });
 
   try {
-
+    await app.register(swaggerPlugin);
     await app.register(typeormPlugin, { timeout: 120000 });
 
     // Log enabled features

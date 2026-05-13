@@ -17,3 +17,4 @@ export * from "./vehicle.dto";
 export * from "./booking.dto";
 export * from "./bookingConfirmation.dto";
 export * from "./r2-presigned.dto";
+export * from "./flights.dto";

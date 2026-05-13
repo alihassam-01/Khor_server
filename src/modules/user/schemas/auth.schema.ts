@@ -1,4 +1,6 @@
 export const registerSchema = {
+    tags: ['Auth'],
+    summary: 'Register a new user',
     body: {
         type: 'object',
         required: ['email', 'password', 'name'],
@@ -12,6 +14,8 @@ export const registerSchema = {
 };
 
 export const loginSchema = {
+    tags: ['Auth'],
+    summary: 'Login with email and password',
     body: {
         type: 'object',
         required: ['email', 'password'],
@@ -23,6 +27,8 @@ export const loginSchema = {
 };
 
 export const verifyOtpSchema = {
+    tags: ['Auth'],
+    summary: 'Verify OTP for email verification',
     body: {
         type: 'object',
         required: ['email', 'otp'],
@@ -34,6 +40,8 @@ export const verifyOtpSchema = {
 };
 
 export const resendOtpSchema = {
+    tags: ['Auth'],
+    summary: 'Resend OTP for email verification',
     body: {
         type: 'object',
         required: ['email'],
@@ -44,6 +52,8 @@ export const resendOtpSchema = {
 };
 
 export const resetPasswordSchema = {
+    tags: ['Auth'],
+    summary: 'Reset password using token',
     body: {
         type: 'object',
         required: ['token', 'newPassword', 'confirmPassword'],
@@ -56,6 +66,8 @@ export const resetPasswordSchema = {
 };
 
 export const googleVerifySchema = {
+    tags: ['Auth'],
+    summary: 'Verify Google Login token',
     body: {
         type: 'object',
         required: ['accessToken'],

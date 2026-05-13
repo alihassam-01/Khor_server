@@ -11,3 +11,4 @@ export * from './ads.service';
 export * from './ad-payment.service';
 export * from './subscription-plan.service';
 export * from './payment-setting.service';
+export * from './flights.service';
