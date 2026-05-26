@@ -48,6 +48,10 @@ export class HotelService {
         return this.listings.update(this.strategy, id, dto);
     }
 
+    updateHotelByVendor(id: string, vendorId: string, dto: IUpdateHotelDTO): Promise<IHotelDTO> {
+        return this.listings.updateByVendor(this.strategy, id, vendorId, dto);
+    }
+
     deleteHotel(id: string): Promise<void> {
         return this.listings.delete(this.strategy, id);
     }

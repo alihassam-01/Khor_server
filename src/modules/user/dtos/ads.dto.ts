@@ -17,3 +17,15 @@ export interface ICombinedAdsResponseDTO {
         totalItems: number;
     };
 }
+
+export interface IPromotedListingsResponseDTO {
+    restaurants: IRestaurantDTO[];
+    tours: Array<Record<string, never>>;
+    pagination: {
+        page: number;
+        limit: number;
+        totalRestaurants: number;
+        totalTours: number;
+        totalItems: number;
+    };
+}

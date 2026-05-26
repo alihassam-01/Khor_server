@@ -582,6 +582,27 @@ export class ListingService {
         });
     }
 
+    async updateByVendor<TUpdate, TDTO>(
+        strategy: IListingStrategy<any, TUpdate, TDTO>,
+        id: string,
+        vendorId: string,
+        dto: TUpdate,
+    ): Promise<TDTO> {
+        const resolvedVendor = await this.resolveVendorUserId(AppDataSource.manager, vendorId);
+        if (!resolvedVendor) {
+            throw new AppError("Unauthorized vendor", 403, ErrorCodes.FORBIDDEN);
+        }
+
+        const listing = await this.listingRepo.findOne({
+            where: { id, vendor_id: resolvedVendor },
+        });
+        if (!listing || listing.type !== strategy.type) {
+            throw new AppError(`${strategy.type} not found or access denied`, 404, ErrorCodes.NOT_FOUND);
+        }
+
+        return this.update(strategy, id, dto);
+    }
+
     // ---------- delete ----------
 
     async delete(strategy: IListingStrategy<any, any, any>, id: string): Promise<void> {

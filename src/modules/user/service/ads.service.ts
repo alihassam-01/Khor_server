@@ -5,6 +5,7 @@ import { RestaurantService } from "./restaurant.service";
 import { 
     IAdsResponseDTO, 
     ICombinedAdsResponseDTO,
+    IPromotedListingsResponseDTO,
     IHotelDTO,
     IRestaurantDTO
 } from "@modules/user/dtos";
@@ -89,5 +90,59 @@ export class AdsService {
 
         // Merge and return as a single array of properties
         return [...hotels, ...restaurants];
+    }
+
+    async getPromotedListings({
+        page = 1,
+        limit = 10,
+        searchQuery = "",
+        type = "all",
+        location_id,
+        rating,
+        priceMax,
+        isFeatured,
+    }: {
+        page?: number;
+        limit?: number;
+        searchQuery?: string;
+        type?: "restaurant" | "tour" | "all";
+        location_id?: number | number[];
+        rating?: number;
+        priceMax?: number;
+        isFeatured?: boolean;
+    }): Promise<IPromotedListingsResponseDTO> {
+        let expandedLocationIds: number[] | undefined = undefined;
+        if (location_id) {
+            expandedLocationIds = await this.locationService.getDescendantIds(location_id);
+        }
+
+        const restaurantResult = type !== "tour"
+            ? await this.restaurantService.getAllRestaurants({
+                page,
+                limit,
+                searchQuery,
+                location_id: expandedLocationIds,
+                rating,
+                priceMax,
+                isFeatured,
+            })
+            : { items: [] as IRestaurantDTO[], total: 0 };
+
+        // Tour promoted listings are part of the intended target model, but the
+        // dedicated tour listing module has not been implemented yet.
+        const tours: Array<Record<string, never>> = [];
+        const totalTours = 0;
+
+        return {
+            restaurants: restaurantResult.items,
+            tours,
+            pagination: {
+                page,
+                limit,
+                totalRestaurants: restaurantResult.total,
+                totalTours,
+                totalItems: restaurantResult.total + totalTours,
+            },
+        };
     }
 }

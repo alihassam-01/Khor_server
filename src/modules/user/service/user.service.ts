@@ -150,6 +150,7 @@ export class UserService {
         const users = await this.userRepository.find({
             where: { isActive: true, userType: UserRole.VENDOR },
             relations: ["profile"],
+            order: { createdAt: "DESC" },
         });
 
         return users.map((user) => ({
@@ -161,12 +162,107 @@ export class UserService {
             vendorProfileId: user.id,
             isActive: user.isActive,
             isVerified: user.isVerified,
+            isBusinessVerified: user.profile?.is_business_verified ?? false,
             email: user.email,
             username: user.profile?.username || user.email.split("@")[0] || "Unknown Vendor",
+            businessName: user.profile?.business_name || undefined,
             profile_picture: user.profile?.profile_picture || undefined,
             phone_number: user.profile?.phone_number || undefined,
             createdAt: user.createdAt,
         }));
+    }
+
+    async getHotelOwners(): Promise<IVendorListItemDTO[]> {
+        const users = await this.userRepository.find({
+            where: { userType: UserRole.VENDOR },
+            relations: ["profile"],
+            order: { createdAt: "DESC" },
+        });
+
+        return users.map((user) => ({
+            id: user.id,
+            userId: user.id,
+            vendorProfileId: user.id,
+            isActive: user.isActive,
+            isVerified: user.isVerified,
+            isBusinessVerified: user.profile?.is_business_verified ?? false,
+            email: user.email,
+            username: user.profile?.username || user.email.split("@")[0] || "Unknown Vendor",
+            businessName: user.profile?.business_name || undefined,
+            profile_picture: user.profile?.profile_picture || undefined,
+            phone_number: user.profile?.phone_number || undefined,
+            createdAt: user.createdAt,
+        }));
+    }
+
+    async approveHotelOwner(userId: string): Promise<IVendorListItemDTO> {
+        const user = await this.userRepository.findOne({
+            where: { id: userId, userType: UserRole.VENDOR },
+            relations: ["profile"],
+        });
+
+        if (!user) {
+            throw new AppError("Hotel owner not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        const profile = await this.ensureProfile(user);
+        user.isActive = true;
+        profile.is_business_verified = true;
+        if (!profile.business_name) {
+            profile.business_name = profile.username;
+        }
+
+        await this.userRepository.save(user);
+        await this.profileRepository.save(profile);
+
+        logInfo(`Hotel owner approved: ${userId}`);
+        return {
+            id: user.id,
+            userId: user.id,
+            vendorProfileId: user.id,
+            isActive: user.isActive,
+            isVerified: user.isVerified,
+            isBusinessVerified: profile.is_business_verified,
+            email: user.email,
+            username: profile.username,
+            businessName: profile.business_name || undefined,
+            profile_picture: profile.profile_picture || undefined,
+            phone_number: profile.phone_number || undefined,
+            createdAt: user.createdAt,
+        };
+    }
+
+    async suspendHotelOwner(userId: string): Promise<IVendorListItemDTO> {
+        const user = await this.userRepository.findOne({
+            where: { id: userId, userType: UserRole.VENDOR },
+            relations: ["profile"],
+        });
+
+        if (!user) {
+            throw new AppError("Hotel owner not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        const profile = await this.ensureProfile(user);
+        user.isActive = false;
+        profile.is_business_verified = false;
+        await this.userRepository.save(user);
+        await this.profileRepository.save(profile);
+
+        logInfo(`Hotel owner suspended: ${userId}`);
+        return {
+            id: user.id,
+            userId: user.id,
+            vendorProfileId: user.id,
+            isActive: user.isActive,
+            isVerified: user.isVerified,
+            isBusinessVerified: profile.is_business_verified,
+            email: user.email,
+            username: profile.username,
+            businessName: profile.business_name || undefined,
+            profile_picture: profile.profile_picture || undefined,
+            phone_number: profile.phone_number || undefined,
+            createdAt: user.createdAt,
+        };
     }
 
     async deleteUser(userId: string): Promise<IDeleteUserResponseDto> {

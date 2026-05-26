@@ -49,8 +49,10 @@ export interface IVendorListItemDTO {
     vendorProfileId?: string; // Changed to string for UUID
     isActive: boolean;
     isVerified: boolean;
+    isBusinessVerified?: boolean;
     email: string;
     username?: string;
+    businessName?: string;
     profile_picture?: string;
     phone_number?: string;
     createdAt: Date;

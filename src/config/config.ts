@@ -34,6 +34,9 @@ export const CONFIG = {
   admin_domain: {
     url: process.env.ADMIN_DOMAIN || "https://admin.gokhor.com",
   },
+  partner_domain: {
+    url: process.env.PARTNER_DOMAIN || "http://127.0.0.1:9014",
+  },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
   },

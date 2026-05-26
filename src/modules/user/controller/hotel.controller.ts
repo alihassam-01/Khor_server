@@ -269,6 +269,21 @@ export class HotelController {
         reply.send(hotel);
     }
 
+    async updateHotelByVendor(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: IUpdateHotelDTO | any }>,
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        if (!authUserId) {
+            throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
+        }
+
+        const hotelData = req.body as IUpdateHotelDTO;
+        const hotel = await this.hotelService.updateHotelByVendor(id, authUserId, hotelData);
+        reply.send(hotel);
+    }
+
     async deleteHotel(
         req: FastifyRequest<{ Params: IHotelIdParams }>, 
         reply: FastifyReply
@@ -328,6 +343,16 @@ export class HotelController {
         const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
         const effectiveVendorId = authUserId || vendorId;
         const hotels = await this.hotelService.getAdsByVendor(effectiveVendorId);
+        reply.send(hotels);
+    }
+
+    async getVendorHotels(req: FastifyRequest, reply: FastifyReply) {
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        if (!authUserId) {
+            throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
+        }
+
+        const hotels = await this.hotelService.getAdsByVendor(authUserId);
         reply.send(hotels);
     }
 
