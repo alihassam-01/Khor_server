@@ -71,6 +71,12 @@ export async function hotelRoutes(fastify: FastifyInstance) {
         hotelController.updateHotelByVendor.bind(hotelController)
     );
 
+    fastify.delete<{ Params: IHotelIdParams; Body: { image_url?: string } }>(
+        "/vendor/hotels/:id/images",
+        { preHandler: authenticate },
+        hotelController.deleteVendorHotelImage.bind(hotelController)
+    );
+
     fastify.get(
         "/vendor/hotels",
         { preHandler: authenticate },
@@ -109,5 +115,10 @@ export async function hotelRoutes(fastify: FastifyInstance) {
     fastify.get(
         "/hotels", 
         hotelController.getAllHotels.bind(hotelController)
+    );
+
+    fastify.get<{ Params: IHotelIdParams }>(
+        "/hotels/:id",
+        hotelController.getHotelById.bind(hotelController)
     );
 }

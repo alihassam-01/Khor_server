@@ -101,7 +101,7 @@ export class ListingService {
 
     private extensionRelationFor(type: ListingType): string[] {
         switch (type) {
-            case ListingType.HOTEL: return ["hotel_details", "room_types"];
+            case ListingType.HOTEL: return ["hotel_details", "room_types", "promotions"];
             case ListingType.RESTAURANT: return ["restaurant_details"];
             default: return [];
         }
@@ -143,6 +143,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: sub,
             reviews,
             location: listing.location ?? null,
@@ -314,6 +315,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: subs.get(listing.id) ?? null,
             reviews: reviews.get(listing.id) ?? [],
             location: listing.location ?? null,
@@ -414,6 +416,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: subs.get(listing.id) ?? null,
             reviews: reviews.get(listing.id) ?? [],
             location: listing.location ?? null,
@@ -449,6 +452,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: subs.get(listing.id) ?? null,
             reviews: reviews.get(listing.id) ?? [],
             location: listing.location ?? null,
@@ -476,6 +480,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: subs.get(listing.id) ?? null,
             reviews: reviews.get(listing.id) ?? [],
             location: listing.location ?? null,

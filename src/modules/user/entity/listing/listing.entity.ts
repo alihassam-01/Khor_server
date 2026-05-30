@@ -22,6 +22,7 @@ import { ListingSubscription } from "./listing-subscription.entity";
 import { HotelDetails } from "./hotel-details.entity";
 import { RestaurantDetails } from "./restaurant-details.entity";
 import { HotelRoomType } from "./hotel-room-type.entity";
+import { HotelPromotion } from "./hotel-promotion.entity";
 
 /**
  * Core polymorphic listing row. All hotels, restaurants, tours, and vehicles
@@ -126,6 +127,9 @@ export class Listing {
 
     @OneToMany(() => HotelRoomType, (rt) => rt.listing, { cascade: true })
     room_types!: HotelRoomType[];
+
+    @OneToMany(() => HotelPromotion, (promotion) => promotion.listing, { cascade: true })
+    promotions!: HotelPromotion[];
 
     @OneToMany(() => ListingSubscription, (sub) => sub.listing, { cascade: true })
     subscriptions!: ListingSubscription[];

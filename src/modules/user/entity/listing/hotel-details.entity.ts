@@ -36,4 +36,7 @@ export class HotelDetails {
 
     @Column({ type: "text", nullable: true })
     cancellation_policy?: string | null;
+
+    @Column({ type: "int", nullable: true })
+    refund_cutoff_hours?: number | null;
 }

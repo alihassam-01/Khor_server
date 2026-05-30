@@ -12,3 +12,4 @@ export * from "./payment-setting.types";
 export * from "./tag.types";
 export * from "./contact.types";
 export * from "./flights.types";
+export * from "./booking.types";

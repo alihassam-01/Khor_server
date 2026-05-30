@@ -1,5 +1,6 @@
 import type { EntityManager } from "typeorm";
 import type {
+    HotelPromotion,
     HotelRoomType,
     Listing,
     ListingContact,
@@ -78,6 +79,7 @@ export interface IListingViewModel {
     contact: ListingContact | null;
     media: ListingMedia[];
     room_types: HotelRoomType[];
+    promotions: HotelPromotion[];
     current_subscription: ListingSubscription | null;
     reviews: Review[];
     location_name?: string;
