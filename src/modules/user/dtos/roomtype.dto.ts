@@ -5,6 +5,7 @@ export interface ICreateRoomTypeDto {
   total_rooms: number;
   description: string;
   propertyId: string;
+  bed_details?: string;
   images?: string[];
   amenities?: string[];
   active?: boolean;

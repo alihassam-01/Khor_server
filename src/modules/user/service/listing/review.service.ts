@@ -1,9 +1,16 @@
 import { AppDataSource } from "@config/ormconfig";
 import { EntityManager } from "typeorm";
 import { Review } from "@modules/user/entity/review/review.entity";
+import { ReviewAspectRatings } from "@modules/user/entity/review/review.entity";
 import { ReviewVote } from "@modules/user/entity/review/review-vote.entity";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
 import { HotelRoomType } from "@modules/user/entity/listing/hotel-room-type.entity";
+import { HotelBooking } from "@modules/user/entity/booking/hotel-booking.entity";
+import {
+    BookingPaymentStatus,
+    BookingSource,
+    HotelBookingStatus,
+} from "@common/enums/booking.enums";
 import {
     ReviewStatus,
     ReviewTargetType,
@@ -20,6 +27,7 @@ export interface ICreateReviewInput {
     rating: number;
     title?: string | null;
     content: string;
+    aspect_ratings?: ReviewAspectRatings | null;
 }
 
 export interface IUpdateReviewInput {
@@ -27,6 +35,7 @@ export interface IUpdateReviewInput {
     title?: string | null;
     content?: string;
     status?: ReviewStatus;
+    aspect_ratings?: ReviewAspectRatings | null;
 }
 
 export interface IReviewListParams {
@@ -36,6 +45,14 @@ export interface IReviewListParams {
     limit?: number;
     status?: ReviewStatus;
     minRating?: number;
+}
+
+export interface IReviewEligibilityResult {
+    canReview: boolean;
+    alreadyReviewed: boolean;
+    isVerifiedBookingRequired: boolean;
+    existingReviewId?: string | null;
+    reason?: string | null;
 }
 
 const ratingTablesByTarget: Partial<Record<ReviewTargetType, { entity: Function; idField: string }>> = {
@@ -50,6 +67,20 @@ const ratingTablesByTarget: Partial<Record<ReviewTargetType, { entity: Function;
  * here too because helpful/unhelpful counters are denormalized onto Review.
  */
 export class ReviewService {
+    private readonly eligiblePaidStatuses = [
+        BookingPaymentStatus.PAID,
+        BookingPaymentStatus.PARTIALLY_REFUNDED,
+        BookingPaymentStatus.REFUNDED,
+    ] as const;
+
+    private readonly hotelAspectKeys: Array<keyof ReviewAspectRatings> = [
+        "service",
+        "cleanliness",
+        "location",
+        "staff",
+        "environment",
+    ];
+
     private validate(input: ICreateReviewInput | IUpdateReviewInput): void {
         if ("rating" in input && input.rating !== undefined) {
             if (input.rating < 1 || input.rating > 5) {
@@ -69,6 +100,41 @@ export class ReviewService {
                 );
             }
         }
+        if ("aspect_ratings" in input && input.aspect_ratings !== undefined && input.aspect_ratings !== null) {
+            for (const key of this.hotelAspectKeys) {
+                const value = Number(input.aspect_ratings[key]);
+                if (!Number.isFinite(value) || value < 1 || value > 5) {
+                    throw new AppError(
+                        `Review ${key} rating must be between 1 and 5.`,
+                        400,
+                        ErrorCodes.VALIDATION_ERROR,
+                    );
+                }
+            }
+        }
+    }
+
+    private normalizeAspectRatings(
+        aspectRatings?: ReviewAspectRatings | null,
+    ): ReviewAspectRatings | null {
+        if (!aspectRatings) return null;
+        const normalized = {} as ReviewAspectRatings;
+        for (const key of this.hotelAspectKeys) {
+            normalized[key] = Math.round(Number(aspectRatings[key]));
+        }
+        return normalized;
+    }
+
+    private computeOverallRating(
+        rating: number | undefined,
+        aspectRatings?: ReviewAspectRatings | null,
+    ): number {
+        if (aspectRatings) {
+            const values = this.hotelAspectKeys.map((key) => Number(aspectRatings[key]));
+            const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+            return Math.round(avg);
+        }
+        return Math.round(Number(rating ?? 0));
     }
 
     private async assertTargetExists(
@@ -93,19 +159,147 @@ export class ReviewService {
         }
     }
 
+    private async assertEligiblePaidReviewer(
+        em: EntityManager,
+        userId: string,
+        targetType: ReviewTargetType,
+        targetId: string,
+    ): Promise<boolean> {
+        if (targetType !== ReviewTargetType.LISTING && targetType !== ReviewTargetType.ROOM_TYPE) {
+            return false;
+        }
+
+        const qb = em.getRepository(HotelBooking)
+            .createQueryBuilder("booking")
+            .where("booking.customer_user_id = :userId", { userId })
+            .andWhere("booking.source = :source", { source: BookingSource.CUSTOMER_WEB })
+            .andWhere("booking.payment_status IN (:...statuses)", {
+                statuses: [...this.eligiblePaidStatuses],
+            })
+            .andWhere("booking.booking_status IN (:...bookingStatuses)", {
+                bookingStatuses: [
+                    HotelBookingStatus.CONFIRMED,
+                    HotelBookingStatus.CHECKED_IN,
+                    HotelBookingStatus.COMPLETED,
+                ],
+            })
+            .andWhere("booking.check_out_date <= CURRENT_DATE");
+
+        if (targetType === ReviewTargetType.LISTING) {
+            qb.andWhere("booking.listing_id = :targetId", { targetId });
+        } else {
+            qb.andWhere("booking.room_type_id = :targetId", { targetId });
+        }
+
+        const eligibleBooking = await qb.getOne();
+        return !!eligibleBooking;
+    }
+
+    async getEligibility(
+        userId: string,
+        targetType: ReviewTargetType,
+        targetId: string,
+    ): Promise<IReviewEligibilityResult> {
+        return AppDataSource.transaction(async (em) => {
+            await this.assertTargetExists(em, targetType, targetId);
+
+            const existing = await em.getRepository(Review).findOne({
+                where: {
+                    user_id: userId,
+                    target_type: targetType,
+                    target_id: targetId,
+                },
+            });
+
+            if (existing) {
+                return {
+                    canReview: false,
+                    alreadyReviewed: true,
+                    isVerifiedBookingRequired:
+                        targetType === ReviewTargetType.LISTING || targetType === ReviewTargetType.ROOM_TYPE,
+                    existingReviewId: existing.id,
+                    reason: "You have already reviewed this stay.",
+                };
+            }
+
+            if (targetType === ReviewTargetType.LISTING || targetType === ReviewTargetType.ROOM_TYPE) {
+                const isEligible = await this.assertEligiblePaidReviewer(em, userId, targetType, targetId);
+                return {
+                    canReview: isEligible,
+                    alreadyReviewed: false,
+                    isVerifiedBookingRequired: true,
+                    existingReviewId: null,
+                    reason: isEligible
+                        ? null
+                        : "Only customers with a completed paid stay can review this hotel.",
+                };
+            }
+
+            return {
+                canReview: true,
+                alreadyReviewed: false,
+                isVerifiedBookingRequired: false,
+                existingReviewId: null,
+                reason: null,
+            };
+        });
+    }
+
     async create(input: ICreateReviewInput): Promise<Review> {
         this.validate(input);
         return AppDataSource.transaction(async (em) => {
             await this.assertTargetExists(em, input.target_type, input.target_id);
 
+            const existing = await em.getRepository(Review).findOne({
+                where: {
+                    user_id: input.user_id,
+                    target_type: input.target_type,
+                    target_id: input.target_id,
+                },
+            });
+            if (existing) {
+                throw new AppError(
+                    "You have already reviewed this stay.",
+                    409,
+                    ErrorCodes.CONFLICT,
+                );
+            }
+
+            let isVerifiedBooking = false;
+            if (input.target_type === ReviewTargetType.LISTING || input.target_type === ReviewTargetType.ROOM_TYPE) {
+                if (!input.aspect_ratings) {
+                    throw new AppError(
+                        "Detailed hotel ratings are required for service, cleanliness, location, staff, and environment.",
+                        400,
+                        ErrorCodes.VALIDATION_ERROR,
+                    );
+                }
+                isVerifiedBooking = await this.assertEligiblePaidReviewer(
+                    em,
+                    input.user_id,
+                    input.target_type,
+                    input.target_id,
+                );
+
+                if (!isVerifiedBooking) {
+                    throw new AppError(
+                        "Only customers with a completed paid stay can review this hotel.",
+                        403,
+                        ErrorCodes.FORBIDDEN,
+                    );
+                }
+            }
+
             const review = new Review();
             review.user_id = input.user_id;
             review.target_type = input.target_type;
             review.target_id = input.target_id;
-            review.rating = Math.round(input.rating);
+            review.aspect_ratings = this.normalizeAspectRatings(input.aspect_ratings);
+            review.rating = this.computeOverallRating(input.rating, review.aspect_ratings);
             review.title = input.title ?? null;
             review.content = input.content;
-            review.status = ReviewStatus.PENDING;
+            review.is_verified_booking = isVerifiedBooking;
+            review.status = isVerifiedBooking ? ReviewStatus.PUBLISHED : ReviewStatus.PENDING;
             const saved = await em.getRepository(Review).save(review);
 
             await this.recomputeAggregates(em, input.target_type, input.target_id);
@@ -125,7 +319,12 @@ export class ReviewService {
             if (userId && review.user_id !== userId && patch.status === undefined) {
                 throw new AppError("You can only edit your own review.", 403, ErrorCodes.FORBIDDEN);
             }
-            if (patch.rating !== undefined) review.rating = Math.round(patch.rating);
+            if (patch.aspect_ratings !== undefined) {
+                review.aspect_ratings = this.normalizeAspectRatings(patch.aspect_ratings);
+            }
+            if (patch.rating !== undefined || patch.aspect_ratings !== undefined) {
+                review.rating = this.computeOverallRating(patch.rating ?? review.rating, review.aspect_ratings);
+            }
             if (patch.title !== undefined) review.title = patch.title ?? null;
             if (patch.content !== undefined) review.content = patch.content;
             if (patch.status !== undefined) review.status = patch.status;
@@ -220,6 +419,26 @@ export class ReviewService {
             }
             return review;
         });
+    }
+
+    async getAggregatesByTargetIds(targetIds: string[]): Promise<Array<{ target_id: string; avgRating: number; totalReviews: number }>> {
+        if (targetIds.length === 0) return [];
+
+        const rows = await AppDataSource.getRepository(Review)
+            .createQueryBuilder("review")
+            .select("review.target_id", "target_id")
+            .addSelect("COALESCE(AVG(review.rating), 0)", "avg_rating")
+            .addSelect("COUNT(*)::int", "total_reviews")
+            .where("review.target_id IN (:...targetIds)", { targetIds })
+            .andWhere("review.status = :status", { status: ReviewStatus.PUBLISHED })
+            .groupBy("review.target_id")
+            .getRawMany<{ target_id: string; avg_rating: string; total_reviews: string }>();
+
+        return rows.map((row) => ({
+            target_id: row.target_id,
+            avgRating: Math.round(Number(row.avg_rating ?? 0) * 100) / 100,
+            totalReviews: Number(row.total_reviews ?? 0),
+        }));
     }
 
     /** Recompute `rating_avg` / `rating_count` on the target row. */

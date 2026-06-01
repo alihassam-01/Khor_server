@@ -59,13 +59,16 @@ const getStreamActor = (
     }
 };
 
-const beginSse = (reply: FastifyReply) => {
+const beginSse = (request: FastifyRequest, reply: FastifyReply) => {
+    const origin = request.headers.origin ?? "*";
     reply.hijack();
     reply.raw.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
+        "Access-Control-Allow-Origin": origin,
+        Vary: "Origin",
     });
     reply.raw.write("retry: 10000\n\n");
 };
@@ -248,7 +251,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
     fastify.get<{ Params: HotelEventStreamParams }>(
         "/hotels/:id/events/stream",
         async (request, reply) => {
-            beginSse(reply);
+            beginSse(request, reply);
             const heartbeat = setInterval(() => {
                 reply.raw.write(": ping\n\n");
             }, 30000);
@@ -276,7 +279,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
                 return;
             }
 
-            beginSse(reply);
+            beginSse(request, reply);
             const heartbeat = setInterval(() => {
                 reply.raw.write(": ping\n\n");
             }, 30000);
@@ -304,7 +307,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
                 return;
             }
 
-            beginSse(reply);
+            beginSse(request, reply);
             const heartbeat = setInterval(() => {
                 reply.raw.write(": ping\n\n");
             }, 30000);
@@ -332,7 +335,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
                 return;
             }
 
-            beginSse(reply);
+            beginSse(request, reply);
             const heartbeat = setInterval(() => {
                 reply.raw.write(": ping\n\n");
             }, 30000);

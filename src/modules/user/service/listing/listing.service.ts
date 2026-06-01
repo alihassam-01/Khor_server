@@ -115,7 +115,7 @@ export class ListingService {
         const repo = em ? em.getRepository(Listing) : this.listingRepo;
         const listing = await repo.findOne({
             where: { id: listingId },
-            relations: ["contact", "media", "location", ...this.extensionRelationFor(strategy.type)],
+            relations: ["contact", "media", "location", "vendor", ...this.extensionRelationFor(strategy.type)],
         });
         if (!listing) {
             throw new AppError(`${strategy.type} not found`, 404, ErrorCodes.NOT_FOUND);
@@ -296,6 +296,7 @@ export class ListingService {
         if (strategy.type === ListingType.HOTEL) {
             qb.leftJoinAndSelect("listing.hotel_details", "hotel_details");
             qb.leftJoinAndSelect("listing.room_types", "room_types");
+            qb.leftJoinAndSelect("listing.promotions", "promotions");
         } else if (strategy.type === ListingType.RESTAURANT) {
             qb.leftJoinAndSelect("listing.restaurant_details", "restaurant_details");
         }
@@ -401,7 +402,8 @@ export class ListingService {
             );
         if (strategy.type === ListingType.HOTEL) {
             qb.leftJoinAndSelect("listing.hotel_details", "hotel_details")
-                .leftJoinAndSelect("listing.room_types", "room_types");
+                .leftJoinAndSelect("listing.room_types", "room_types")
+                .leftJoinAndSelect("listing.promotions", "promotions");
         } else if (strategy.type === ListingType.RESTAURANT) {
             qb.leftJoinAndSelect("listing.restaurant_details", "restaurant_details");
         }
@@ -436,7 +438,8 @@ export class ListingService {
             .leftJoinAndSelect("listing.location", "location");
         if (strategy.type === ListingType.HOTEL) {
             qb.leftJoinAndSelect("listing.hotel_details", "hotel_details")
-                .leftJoinAndSelect("listing.room_types", "room_types");
+                .leftJoinAndSelect("listing.room_types", "room_types")
+                .leftJoinAndSelect("listing.promotions", "promotions");
         } else if (strategy.type === ListingType.RESTAURANT) {
             qb.leftJoinAndSelect("listing.restaurant_details", "restaurant_details");
         }

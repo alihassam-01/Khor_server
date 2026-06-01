@@ -52,6 +52,9 @@ export class HotelRoomType {
     @Column({ type: "int", default: 1 })
     total_rooms!: number;
 
+    @Column({ type: "varchar", length: 120, nullable: true })
+    bed_details?: string | null;
+
     @Column({ type: "text", array: true, default: () => "ARRAY[]::text[]" })
     images!: string[];
 

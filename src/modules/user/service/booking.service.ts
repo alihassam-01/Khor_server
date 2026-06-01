@@ -48,6 +48,7 @@ import { BookingStatusHistoryService } from "./booking-status-history.service";
 import { bookingRealtimeService } from "./booking-realtime.service";
 import { SendEmail } from "./email/sendEmail";
 import { pickBestPromotion } from "./listing/hotel-promotion.util";
+import { NotificationService, type NotificationPayload } from "./notification.service";
 
 const ACTIVE_BOOKING_STATUSES = [
     HotelBookingStatus.PENDING,
@@ -80,6 +81,7 @@ export class BookingService {
     private readonly auditService = new BookingAuditService();
     private readonly statusHistoryService = new BookingStatusHistoryService();
     private readonly emailService = new SendEmail();
+    private readonly notificationService = new NotificationService();
     private readonly holdDurationMs = 10 * 60 * 1000;
 
     private assertUuid(value: string, fieldName: string): void {
@@ -115,6 +117,18 @@ export class BookingService {
         }
 
         return Math.max(0, Number(details.refund_cutoff_hours));
+    }
+
+    private async shouldAutoConfirmPaidBooking(
+        manager: EntityManager,
+        listingId: string,
+    ): Promise<boolean> {
+        const details = await manager.getRepository(HotelDetails).findOne({
+            where: { listing_id: listingId },
+            select: ["listing_id", "auto_confirm_paid_bookings"],
+        });
+
+        return !!details?.auto_confirm_paid_bookings;
     }
 
     private async getActivePromotionForRoomType(
@@ -417,10 +431,13 @@ export class BookingService {
             .where("id IN (:...ids)", { ids: staleHolds.map((hold) => hold.id) })
             .execute();
 
-        staleHolds.forEach((hold) => this.publishHoldEvent(
-            hold as BookingRoomHold & { listing: Listing },
-            "hold_expired",
-        ));
+        for (const hold of staleHolds) {
+            await this.publishHoldEvent(
+                hold as BookingRoomHold & { listing: Listing },
+                "hold_expired",
+                manager,
+            );
+        }
 
         return staleHolds.length;
     }
@@ -490,10 +507,210 @@ export class BookingService {
         });
     }
 
-    private publishBookingEvent(
+    private buildBookingNotifications(
         booking: HotelBooking & { listing: Listing },
         action: string,
-    ): void {
+    ): NotificationPayload[] {
+        const entries: NotificationPayload[] = [];
+        const roomName = (booking as HotelBooking & { room_type?: HotelRoomType | null }).room_type?.name?.trim() || "room";
+        const hotelName = booking.listing.name?.trim() || "hotel";
+        const messageMap: Record<string, {
+            category: "booking" | "payment" | "hold" | "system";
+            customerTitle: string;
+            customerMessage: string;
+            vendorTitle: string;
+            vendorMessage: string;
+        }> = {
+            booking_created: {
+                category: "booking",
+                customerTitle: "Booking created",
+                customerMessage: `Your booking for ${roomName} at ${hotelName} has been created successfully.`,
+                vendorTitle: "New booking received",
+                vendorMessage: `${roomName} was booked by a customer.`,
+            },
+            booking_confirmed_by_vendor: {
+                category: "booking",
+                customerTitle: "Booking confirmed",
+                customerMessage: `Your booking for ${roomName} was confirmed by ${hotelName}.`,
+                vendorTitle: "Booking confirmed",
+                vendorMessage: `${roomName} booking has been marked as confirmed.`,
+            },
+            booking_cancelled_by_vendor: {
+                category: "booking",
+                customerTitle: "Booking cancelled",
+                customerMessage: `${hotelName} cancelled your booking for ${roomName}.`,
+                vendorTitle: "Booking cancelled",
+                vendorMessage: `${roomName} booking has been cancelled by the hotel.`,
+            },
+            booking_cancelled_by_admin: {
+                category: "booking",
+                customerTitle: "Booking cancelled",
+                customerMessage: `An admin cancelled your booking for ${roomName}.`,
+                vendorTitle: "Booking cancelled",
+                vendorMessage: `An admin cancelled the booking for ${roomName}.`,
+            },
+            booking_checked_in_by_vendor: {
+                category: "booking",
+                customerTitle: "Checked in",
+                customerMessage: `Your ${roomName} booking was marked as checked in.`,
+                vendorTitle: "Guest checked in",
+                vendorMessage: `Guest checked in for ${roomName}.`,
+            },
+            booking_completed_by_vendor: {
+                category: "booking",
+                customerTitle: "Stay completed",
+                customerMessage: `Your stay in ${roomName} was marked as completed.`,
+                vendorTitle: "Stay completed",
+                vendorMessage: `${roomName} stay has been marked as completed.`,
+            },
+            booking_completed_by_admin: {
+                category: "booking",
+                customerTitle: "Stay completed",
+                customerMessage: `Your stay in ${roomName} was marked as completed.`,
+                vendorTitle: "Stay completed",
+                vendorMessage: `An admin marked the ${roomName} stay as completed.`,
+            },
+            booking_payment_recorded_by_vendor: {
+                category: "payment",
+                customerTitle: "Payment recorded",
+                customerMessage: `A payment was recorded for your ${roomName} booking.`,
+                vendorTitle: "Payment recorded",
+                vendorMessage: `A payment update was recorded for ${roomName}.`,
+            },
+            booking_cancellation_requested: {
+                category: "booking",
+                customerTitle: "Cancellation requested",
+                customerMessage: `Your cancellation request for ${roomName} was received.`,
+                vendorTitle: "Cancellation requested",
+                vendorMessage: `A customer requested cancellation for ${roomName}.`,
+            },
+            booking_refund_requested: {
+                category: "payment",
+                customerTitle: "Refund requested",
+                customerMessage: `Your refund request for ${roomName} was submitted.`,
+                vendorTitle: "Refund requested",
+                vendorMessage: `A customer requested a refund for ${roomName}.`,
+            },
+            booking_refund_approved: {
+                category: "payment",
+                customerTitle: "Refund approved",
+                customerMessage: `Your refund request for ${roomName} was approved.`,
+                vendorTitle: "Refund approved",
+                vendorMessage: `A refund was approved for ${roomName}.`,
+            },
+            booking_refund_rejected: {
+                category: "payment",
+                customerTitle: "Refund rejected",
+                customerMessage: `Your refund request for ${roomName} was rejected.`,
+                vendorTitle: "Refund rejected",
+                vendorMessage: `A refund was rejected for ${roomName}.`,
+            },
+            booking_refund_completed: {
+                category: "payment",
+                customerTitle: "Refund completed",
+                customerMessage: `Your refund for ${roomName} was marked as paid.`,
+                vendorTitle: "Refund completed",
+                vendorMessage: `A refund was marked as completed for ${roomName}.`,
+            },
+        };
+
+        const messageSet = messageMap[action];
+        if (!messageSet) return entries;
+
+        if (booking.customer_user_id) {
+            entries.push({
+                recipient_user_id: booking.customer_user_id,
+                category: messageSet.category,
+                title: messageSet.customerTitle,
+                message: messageSet.customerMessage,
+                action,
+                booking_id: booking.id,
+                listing_id: booking.listing_id,
+                room_type_id: booking.room_type_id,
+            });
+        }
+
+        if (booking.listing.vendor_id) {
+            entries.push({
+                recipient_user_id: booking.listing.vendor_id,
+                category: messageSet.category,
+                title: messageSet.vendorTitle,
+                message: messageSet.vendorMessage,
+                action,
+                booking_id: booking.id,
+                listing_id: booking.listing_id,
+                room_type_id: booking.room_type_id,
+            });
+        }
+
+        return entries;
+    }
+
+    private buildHoldNotifications(
+        hold: BookingRoomHold & { listing: Listing },
+        action: string,
+    ): NotificationPayload[] {
+        const entries: NotificationPayload[] = [];
+        const messageMap: Record<string, {
+            category: "booking" | "payment" | "hold" | "system";
+            customerTitle: string;
+            customerMessage: string;
+            vendorTitle: string;
+            vendorMessage: string;
+        }> = {
+            hold_created: {
+                category: "hold",
+                customerTitle: "Room hold created",
+                customerMessage: "Your selected room is being held for checkout.",
+                vendorTitle: "Room hold active",
+                vendorMessage: "A customer is holding one of your rooms during checkout.",
+            },
+            hold_expired: {
+                category: "hold",
+                customerTitle: "Room hold expired",
+                customerMessage: "Your room hold expired and the room is available again.",
+                vendorTitle: "Room hold expired",
+                vendorMessage: "A customer room hold expired and inventory was released.",
+            },
+            hold_consumed: {
+                category: "hold",
+                customerTitle: "Room hold converted",
+                customerMessage: "Your room hold was converted into a booking.",
+                vendorTitle: "Room hold converted",
+                vendorMessage: "A customer room hold has turned into a booking.",
+            },
+            hold_released_by_new_hold: {
+                category: "hold",
+                customerTitle: "Previous room hold released",
+                customerMessage: "Your earlier room hold was released when a new hold was created.",
+                vendorTitle: "Room hold released",
+                vendorMessage: "An earlier room hold was released and replaced by a new one.",
+            },
+        };
+
+        const messageSet = messageMap[action];
+        if (!messageSet) return entries;
+
+        entries.push({
+            recipient_user_id: hold.customer_user_id,
+            category: messageSet.category,
+            title: messageSet.customerTitle,
+            message: messageSet.customerMessage,
+            action,
+            hold_id: hold.id,
+            listing_id: hold.listing_id,
+            room_type_id: hold.room_type_id,
+        });
+
+        return entries;
+    }
+
+    private async publishBookingEvent(
+        booking: HotelBooking & { listing: Listing },
+        action: string,
+        manager: EntityManager = AppDataSource.manager,
+    ): Promise<void> {
+        await this.notificationService.createMany(this.buildBookingNotifications(booking, action), manager);
         bookingRealtimeService.publish({
             type: "booking_changed",
             action,
@@ -517,10 +734,12 @@ export class BookingService {
         });
     }
 
-    private publishHoldEvent(
+    private async publishHoldEvent(
         hold: BookingRoomHold & { listing: Listing },
         action: string,
-    ): void {
+        manager: EntityManager = AppDataSource.manager,
+    ): Promise<void> {
+        await this.notificationService.createMany(this.buildHoldNotifications(hold, action), manager);
         bookingRealtimeService.publish({
             type: "hold_changed",
             action,
@@ -574,9 +793,10 @@ export class BookingService {
                 .where("stale_hold.id = :holdId", { holdId: hold.id })
                 .getOne();
             if (holdWithListing) {
-                this.publishHoldEvent(
+                await this.publishHoldEvent(
                     holdWithListing as BookingRoomHold & { listing: Listing },
                     "hold_expired",
+                    manager,
                 );
             }
             throw new AppError("Your 10-minute room hold has expired", 409, ErrorCodes.CONFLICT);
@@ -744,9 +964,12 @@ export class BookingService {
 
             const initialBookingPaymentStatus = initialPaymentAmount <= 0
                 ? BookingPaymentStatus.PENDING
-                : initialPaymentAmount < subtotal
+                : initialPaymentAmount < totalAmount
                     ? BookingPaymentStatus.PARTIALLY_PAID
                     : BookingPaymentStatus.PAID;
+            const shouldAutoConfirmCustomerBooking = source === BookingSource.CUSTOMER_WEB
+                && initialBookingPaymentStatus === BookingPaymentStatus.PAID
+                && await this.shouldAutoConfirmPaidBooking(manager, dto.listing_id);
 
             const booking = manager.getRepository(HotelBooking).create({
                 source,
@@ -767,15 +990,21 @@ export class BookingService {
                 discount_amount: discountAmount,
                 tax_amount: 0,
                 total_amount: totalAmount,
-                booking_status: source === BookingSource.PARTNER_MANUAL
+                booking_status: source === BookingSource.PARTNER_MANUAL || shouldAutoConfirmCustomerBooking
                     ? HotelBookingStatus.CONFIRMED
                     : HotelBookingStatus.PENDING,
                 payment_status: initialBookingPaymentStatus,
                 cancellation_status: BookingCancellationStatus.NOT_REQUESTED,
                 special_requests: dto.special_requests?.trim() || null,
                 created_by_user_id: actor.userId,
-                confirmed_by_user_id: source === BookingSource.PARTNER_MANUAL ? actor.userId : null,
-                confirmed_at: source === BookingSource.PARTNER_MANUAL ? new Date() : null,
+                confirmed_by_user_id: source === BookingSource.PARTNER_MANUAL
+                    ? actor.userId
+                    : shouldAutoConfirmCustomerBooking
+                        ? roomType.listing.vendor_id ?? null
+                        : null,
+                confirmed_at: source === BookingSource.PARTNER_MANUAL || shouldAutoConfirmCustomerBooking
+                    ? new Date()
+                    : null,
             });
 
             const savedBooking = await manager.getRepository(HotelBooking).save(booking);
@@ -826,12 +1055,13 @@ export class BookingService {
                 hold.status = BookingHoldStatus.CONSUMED;
                 hold.consumed_at = new Date();
                 await manager.getRepository(BookingRoomHold).save(hold);
-                this.publishHoldEvent(
+                await this.publishHoldEvent(
                     {
                         ...hold,
                         listing: roomType.listing,
                     } as BookingRoomHold & { listing: Listing },
                     "hold_consumed",
+                    manager,
                 );
             }
 
@@ -875,19 +1105,21 @@ export class BookingService {
                 },
             }, manager);
 
-            this.publishBookingEvent(
+            await this.publishBookingEvent(
                 {
                     ...savedBooking,
                     listing: roomType.listing,
+                    room_type: roomType,
                 } as HotelBooking & { listing: Listing },
                 "booking_created",
+                manager,
             );
 
             return this.getBookingById(savedBooking.id, actor, source === BookingSource.CUSTOMER_WEB ? "customer" : "vendor", manager);
         });
         await this.notifyBookingLifecycle(
             booking.id,
-            "created",
+            booking.booking_status === HotelBookingStatus.CONFIRMED ? "confirmed" : "created",
         );
         return booking;
     }
@@ -903,6 +1135,11 @@ export class BookingService {
         const qb = manager.getRepository(HotelBooking)
             .createQueryBuilder("booking")
             .leftJoinAndSelect("booking.listing", "listing")
+            .leftJoinAndSelect("listing.location", "listing_location")
+            .leftJoinAndSelect("listing.contact", "listing_contact")
+            .leftJoinAndSelect("listing.hotel_details", "listing_hotel_details")
+            .leftJoinAndSelect("listing.media", "listing_media")
+            .leftJoinAndSelect("listing.vendor", "listing_vendor")
             .leftJoinAndSelect("booking.room_type", "room_type")
             .leftJoinAndSelect("booking.payments", "payments")
             .leftJoinAndSelect("booking.refunds", "refunds")
@@ -943,6 +1180,20 @@ export class BookingService {
                 id: booking.listing.id,
                 name: booking.listing.name,
                 location_id: booking.listing.location_id,
+                location: booking.listing.location?.name ?? null,
+                address: booking.listing.contact?.address ?? null,
+                image: booking.listing.media?.[0]?.url ?? null,
+                images: (booking.listing.media ?? []).map((media) => media.url),
+                links: {
+                    phone: booking.listing.contact?.phone ?? null,
+                    email: booking.listing.vendor?.email ?? null,
+                    website: booking.listing.contact?.website ?? null,
+                    map_link: booking.listing.contact?.map_link ?? null,
+                },
+                cancellation_policy: booking.listing.hotel_details?.cancellation_policy ?? null,
+                refund_cutoff_hours: booking.listing.hotel_details?.refund_cutoff_hours ?? null,
+                check_in_time: booking.listing.hotel_details?.check_in_time ?? null,
+                check_out_time: booking.listing.hotel_details?.check_out_time ?? null,
             },
             room_type: {
                 id: booking.room_type.id,
@@ -1271,6 +1522,11 @@ export class BookingService {
 
         const qb = this.bookingRepo.createQueryBuilder("booking")
             .leftJoinAndSelect("booking.listing", "listing")
+            .leftJoinAndSelect("listing.location", "listing_location")
+            .leftJoinAndSelect("listing.contact", "listing_contact")
+            .leftJoinAndSelect("listing.hotel_details", "listing_hotel_details")
+            .leftJoinAndSelect("listing.media", "listing_media")
+            .leftJoinAndSelect("listing.vendor", "listing_vendor")
             .leftJoinAndSelect("booking.room_type", "room_type")
             .leftJoinAndSelect("booking.payments", "payments");
         qb.leftJoinAndSelect("booking.refunds", "refunds");
@@ -1387,9 +1643,10 @@ export class BookingService {
                 metadata: reason ? { reason } : null,
             }, manager);
 
-            this.publishBookingEvent(
+            await this.publishBookingEvent(
                 saved as HotelBooking & { listing: Listing },
                 eventType,
+                manager,
             );
 
             return this.getBookingById(saved.id, actor, scope, manager);
@@ -1528,9 +1785,10 @@ export class BookingService {
                 metadata: reason ? { reason } : null,
             }, manager);
 
-            this.publishBookingEvent(
+            await this.publishBookingEvent(
                 booking as HotelBooking & { listing: Listing },
                 "booking_cancellation_requested",
+                manager,
             );
 
             return this.getBookingById(booking.id, actor, "customer", manager);
@@ -1677,9 +1935,10 @@ export class BookingService {
                 },
             }, manager);
 
-            this.publishBookingEvent(
+            await this.publishBookingEvent(
                 booking as HotelBooking & { listing: Listing },
                 "booking_refund_requested",
+                manager,
             );
 
             return this.getRefundById(savedRefund.id, actor, "customer", manager);
@@ -1912,9 +2171,10 @@ export class BookingService {
                 },
             }, manager);
 
-            this.publishBookingEvent(
+            await this.publishBookingEvent(
                 booking as HotelBooking & { listing: Listing },
                 eventType,
+                manager,
             );
 
             return this.getRefundById(refund.id, actor, "admin", manager);
@@ -2080,13 +2340,31 @@ export class BookingService {
                 order: { created_at: "DESC" },
             });
             const previousPaymentStatus = booking.payment_status;
+            const previousBookingStatus = booking.booking_status;
             booking.payment_status = this.computeBookingPaymentStatus(
                 Number(booking.total_amount),
                 paymentSnapshot,
             );
+            let autoConfirmed = false;
+            if (
+                booking.source === BookingSource.CUSTOMER_WEB
+                && booking.booking_status === HotelBookingStatus.PENDING
+                && booking.payment_status === BookingPaymentStatus.PAID
+                && await this.shouldAutoConfirmPaidBooking(manager, booking.listing_id)
+            ) {
+                booking.booking_status = HotelBookingStatus.CONFIRMED;
+                booking.confirmed_by_user_id = actor.userId;
+                booking.confirmed_at = new Date();
+                autoConfirmed = true;
+            }
             await manager.getRepository(HotelBooking).update(
                 { id: resolvedBookingId },
-                { payment_status: booking.payment_status },
+                {
+                    payment_status: booking.payment_status,
+                    booking_status: booking.booking_status,
+                    confirmed_by_user_id: booking.confirmed_by_user_id ?? null,
+                    confirmed_at: booking.confirmed_at ?? null,
+                },
             );
 
             await this.statusHistoryService.record({
@@ -2101,6 +2379,34 @@ export class BookingService {
                     transaction_id: input.transaction_id ?? null,
                 },
             }, manager);
+
+            if (autoConfirmed) {
+                await this.statusHistoryService.record({
+                    booking_id: resolvedBookingId,
+                    status_type: BookingStatusType.BOOKING,
+                    from_status: previousBookingStatus,
+                    to_status: HotelBookingStatus.CONFIRMED,
+                    changed_by_user_id: actor.userId,
+                    metadata: {
+                        auto_confirm_paid_bookings: true,
+                        triggered_by_payment: true,
+                    },
+                }, manager);
+
+                await this.auditService.record({
+                    booking_id: resolvedBookingId,
+                    event_type: "booking_auto_confirmed",
+                    actor_user_id: actor.userId,
+                    actor_role: BookingAuditActorRole.VENDOR,
+                    source: "vendor",
+                    before_state: { booking_status: previousBookingStatus },
+                    after_state: { booking_status: HotelBookingStatus.CONFIRMED },
+                    metadata: {
+                        payment_id: paymentId || null,
+                        auto_confirm_paid_bookings: true,
+                    },
+                }, manager);
+            }
 
             await this.auditService.record({
                 booking_id: resolvedBookingId,
@@ -2126,14 +2432,19 @@ export class BookingService {
                 },
             }, manager);
 
-            this.publishBookingEvent(
+            await this.publishBookingEvent(
                 booking as HotelBooking & { listing: Listing },
                 "booking_payment_recorded_by_vendor",
+                manager,
             );
 
             return this.getBookingById(resolvedBookingId, actor, "vendor", manager);
         });
-        await this.notifyBookingLifecycle(booking.id, "payment_recorded", input.notes ?? null);
+        if (booking.booking_status === HotelBookingStatus.CONFIRMED) {
+            await this.notifyBookingLifecycle(booking.id, "confirmed", input.notes ?? null);
+        } else {
+            await this.notifyBookingLifecycle(booking.id, "payment_recorded", input.notes ?? null);
+        }
         return booking;
     }
 
@@ -2283,10 +2594,13 @@ export class BookingService {
                     .where("id IN (:...ids)", { ids: existingActiveHolds.map((hold) => hold.id) })
                     .execute();
 
-                existingActiveHolds.forEach((hold) => this.publishHoldEvent(
-                    hold as BookingRoomHold & { listing: Listing },
-                    "hold_released_by_new_hold",
-                ));
+                for (const hold of existingActiveHolds) {
+                    await this.publishHoldEvent(
+                        hold as BookingRoomHold & { listing: Listing },
+                        "hold_released_by_new_hold",
+                        manager,
+                    );
+                }
             }
 
             const hold = manager.getRepository(BookingRoomHold).create({
@@ -2302,12 +2616,13 @@ export class BookingService {
             });
 
             const savedHold = await manager.getRepository(BookingRoomHold).save(hold);
-            this.publishHoldEvent(
+            await this.publishHoldEvent(
                 {
                     ...savedHold,
                     listing: roomType.listing,
                 } as BookingRoomHold & { listing: Listing },
                 "hold_created",
+                manager,
             );
             return this.toHoldDTO(savedHold);
         });

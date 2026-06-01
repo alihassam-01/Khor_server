@@ -47,6 +47,20 @@ export interface IBookingListingSummaryDTO {
     id: string;
     name: string;
     location_id: number;
+    location?: string | null;
+    address?: string | null;
+    image?: string | null;
+    images?: string[];
+    links?: {
+        phone?: string | null;
+        email?: string | null;
+        website?: string | null;
+        map_link?: string | null;
+    };
+    cancellation_policy?: string | null;
+    refund_cutoff_hours?: number | null;
+    check_in_time?: string | null;
+    check_out_time?: string | null;
 }
 
 export interface IBookingRoomTypeSummaryDTO {

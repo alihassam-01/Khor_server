@@ -21,6 +21,7 @@ export interface IRoomTypeDTO {
     amenities: string[];
     capacity: number;
     total_rooms?: number;
+    bed_details?: string;
     images?: string[];
     size_sqm?: number;
     is_active?: boolean;
@@ -73,6 +74,7 @@ export interface IHotelDTO {
     links: {
         phone: string | null;
         whatsapp: string | null;
+        email?: string | null;
         facebook?: string | null;
         instagram?: string | null;
         website?: string | null;
@@ -95,6 +97,7 @@ export interface IHotelDTO {
     refund_cutoff_hours?: number | null;
     check_in_time?: string | null;
     check_out_time?: string | null;
+    auto_confirm_paid_bookings?: boolean;
 }
 
 export interface ICreateHotelDTO {
@@ -131,6 +134,7 @@ export interface ICreateHotelDTO {
     refund_cutoff_hours?: number | null;
     check_in_time?: string | null;
     check_out_time?: string | null;
+    auto_confirm_paid_bookings?: boolean;
 }
 
 export interface IUpdateHotelDTO {
@@ -166,6 +170,7 @@ export interface IUpdateHotelDTO {
     refund_cutoff_hours?: number | null;
     check_in_time?: string | null;
     check_out_time?: string | null;
+    auto_confirm_paid_bookings?: boolean;
 }
 
 export interface IPaginatedHotelsResponse {

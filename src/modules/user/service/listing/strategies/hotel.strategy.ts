@@ -36,6 +36,7 @@ interface IHotelExt extends Record<string, unknown> {
     check_out_time?: string | null;
     cancellation_policy?: string | null;
     refund_cutoff_hours?: number | null;
+    auto_confirm_paid_bookings?: boolean;
     roomTypes?: IRoomTypeDTO[];
     promotions?: IHotelPromotionDTO[];
 }
@@ -95,6 +96,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             check_out_time: dto.check_out_time ?? null,
             cancellation_policy: dto.cancellation_policy ?? null,
             refund_cutoff_hours: dto.refund_cutoff_hours ?? null,
+            auto_confirm_paid_bookings: dto.auto_confirm_paid_bookings ?? false,
             roomTypes: dto.roomTypes,
             promotions: dto.promotions,
         };
@@ -133,6 +135,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             check_out_time: dto.check_out_time,
             cancellation_policy: dto.cancellation_policy,
             refund_cutoff_hours: dto.refund_cutoff_hours,
+            auto_confirm_paid_bookings: dto.auto_confirm_paid_bookings,
             roomTypes: dto.roomTypes,
             promotions: dto.promotions,
         };
@@ -193,6 +196,9 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
         if (ext.refund_cutoff_hours !== undefined) {
             details.refund_cutoff_hours = ext.refund_cutoff_hours ?? null;
         }
+        if (ext.auto_confirm_paid_bookings !== undefined) {
+            details.auto_confirm_paid_bookings = !!ext.auto_confirm_paid_bookings;
+        }
         await detailsRepo.save(details);
 
         // Replace room types if provided. On create, only if provided. On update,
@@ -211,6 +217,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
                         row.amenities = rt.amenities ?? [];
                         row.capacity = rt.capacity;
                         row.total_rooms = rt.total_rooms ?? 1;
+                        row.bed_details = rt.bed_details?.trim() || null;
                         row.images = rt.images ?? [];
                         row.size_sqm = rt.size_sqm != null ? Number(rt.size_sqm) : null;
                         row.is_active = rt.is_active !== undefined ? rt.is_active : true;
@@ -238,6 +245,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
                     row.amenities = rt.amenities ?? [];
                     row.capacity = rt.capacity;
                     row.total_rooms = rt.total_rooms ?? 1;
+                    row.bed_details = rt.bed_details?.trim() || null;
                     row.images = rt.images ?? [];
                     row.size_sqm = rt.size_sqm != null ? Number(rt.size_sqm) : null;
                     row.is_active = rt.is_active !== undefined ? rt.is_active : true;
@@ -322,6 +330,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
                 amenities: rt.amenities ?? [],
                 capacity: rt.capacity,
                 total_rooms: rt.total_rooms,
+                bed_details: rt.bed_details ?? undefined,
                 images: rt.images ?? [],
                 size_sqm: rt.size_sqm != null ? Number(rt.size_sqm) : undefined,
                 is_active: rt.is_active,
@@ -354,6 +363,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             links: {
                 phone: contact?.phone ?? null,
                 whatsapp: contact?.whatsapp ?? null,
+                email: listing.vendor?.email ?? null,
                 facebook: contact?.facebook ?? null,
                 instagram: contact?.instagram ?? null,
                 website: contact?.website ?? null,
@@ -391,6 +401,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             refund_cutoff_hours: listing.hotel_details?.refund_cutoff_hours ?? null,
             check_in_time: listing.hotel_details?.check_in_time ?? null,
             check_out_time: listing.hotel_details?.check_out_time ?? null,
+            auto_confirm_paid_bookings: listing.hotel_details?.auto_confirm_paid_bookings ?? false,
         };
     }
 }

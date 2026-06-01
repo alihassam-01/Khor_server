@@ -19,6 +19,8 @@ import { mediaRoutes } from "./media.routes";
 import analyticsRoutes from "./analytics.routes";
 import { flightsRoutes } from "./flights.routes";
 import { bookingRoutes } from "./booking.routes";
+import { notificationRoutes } from "./notification.routes";
+import { reviewRoutes } from "./reviews.routes";
 
 
 // Core routes - always enabled
@@ -36,6 +38,8 @@ const routes = [
   paymentSettingRoutes, // Admin and public payment settings
   propertyRoutes, // Generic property routes
   bookingRoutes,
+  notificationRoutes,
+  reviewRoutes,
   analyticsRoutes,
   flightsRoutes, // Google Flights price scraper
 ];

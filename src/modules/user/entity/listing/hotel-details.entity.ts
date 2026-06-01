@@ -39,4 +39,7 @@ export class HotelDetails {
 
     @Column({ type: "int", nullable: true })
     refund_cutoff_hours?: number | null;
+
+    @Column({ type: "boolean", default: false })
+    auto_confirm_paid_bookings!: boolean;
 }
