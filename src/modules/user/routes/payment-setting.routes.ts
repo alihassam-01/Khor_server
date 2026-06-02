@@ -13,6 +13,10 @@ export async function paymentSettingRoutes(fastify: FastifyInstance) {
         "/payment-settings/active",
         controller.getActiveSettings.bind(controller)
     );
+    fastify.get(
+        "/payment-settings/payout-commission",
+        controller.getPayoutCommissionSetting.bind(controller)
+    );
 
     // Admin routes
     fastify.post<{ Body: ICreatePaymentSettingDTO }>(
@@ -29,6 +33,11 @@ export async function paymentSettingRoutes(fastify: FastifyInstance) {
         "/admin/payment-settings/:id",
         { preHandler: [authenticate, authorizeAdmin] },
         controller.updateSetting.bind(controller)
+    );
+    fastify.put<{ Body: IUpdatePaymentSettingDTO & { rate: number } }>(
+        "/admin/payment-settings/payout-commission",
+        { preHandler: [authenticate, authorizeAdmin] },
+        controller.updatePayoutCommissionSetting.bind(controller)
     );
     fastify.delete<{ Params: IPaymentSettingIdParams }>(
         "/admin/payment-settings/:id",

@@ -13,3 +13,5 @@ export * from "./tag.types";
 export * from "./contact.types";
 export * from "./flights.types";
 export * from "./booking.types";
+export * from "./payout.types";
+export * from "./ticket.types";

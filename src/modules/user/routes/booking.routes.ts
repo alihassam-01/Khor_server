@@ -68,6 +68,7 @@ const beginSse = (request: FastifyRequest, reply: FastifyReply) => {
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
         "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
         Vary: "Origin",
     });
     reply.raw.write("retry: 10000\n\n");

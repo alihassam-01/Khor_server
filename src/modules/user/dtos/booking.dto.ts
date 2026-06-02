@@ -47,6 +47,7 @@ export interface IBookingListingSummaryDTO {
     id: string;
     name: string;
     location_id: number;
+    commission_rate?: number | null;
     location?: string | null;
     address?: string | null;
     image?: string | null;

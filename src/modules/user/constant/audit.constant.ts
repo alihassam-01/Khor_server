@@ -10,6 +10,7 @@ export enum AuditLogEventType {
     AD_ACTIVATION = "ad_activation_email",
     AD_EXPIRATION_WARNING = "ad_expiration_warning_email",
     AD_EXPIRED = "ad_expired_email",
+    TICKET_ACTIVITY = "ticket_activity_email",
 }
 
 export enum AuditLogStatus {
@@ -28,4 +29,5 @@ export const EMAIL_SUBJECTS: Record<string, string> = {
     AD_ACTIVATION: "Your Ad is Now Live!",
     AD_EXPIRATION_WARNING: "Your Ad is About to Expire",
     AD_EXPIRED: "Your Ad has Expired",
+    TICKET_ACTIVITY: "Ticket Update",
 };

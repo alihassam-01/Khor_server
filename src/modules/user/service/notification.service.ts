@@ -12,7 +12,7 @@ export type NotificationActor = {
 
 export type NotificationPayload = {
     recipient_user_id: string;
-    category: "booking" | "payment" | "hold" | "system";
+    category: "booking" | "payment" | "hold" | "system" | "ticket";
     title: string;
     message: string;
     action: string;

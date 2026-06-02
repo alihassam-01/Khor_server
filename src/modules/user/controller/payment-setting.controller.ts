@@ -3,7 +3,9 @@ import { PaymentSettingService } from "@modules/user/service/payment-setting.ser
 import { 
     ICreatePaymentSettingDTO, 
     IUpdatePaymentSettingDTO, 
-    IPaymentSettingDTO 
+    IPaymentSettingDTO,
+    IPayoutCommissionSettingDTO,
+    IUpdatePayoutCommissionSettingDTO,
 } from "@modules/user/dtos";
 import { logError } from "@lib/logger";
 import { IPaymentSettingIdParams } from "@modules/user/types";
@@ -61,6 +63,31 @@ export class PaymentSettingController {
             const err = error as Error;
             logError(err, "Get Active Payment Settings");
             return reply.status(500).send({ message: err.message });
+        }
+    }
+
+    async getPayoutCommissionSetting(_request: FastifyRequest, reply: FastifyReply) {
+        try {
+            const setting: IPayoutCommissionSettingDTO = await this.settingService.getPayoutCommissionSetting();
+            return reply.send(setting);
+        } catch (error: unknown) {
+            const err = error as Error;
+            logError(err, "Get Payout Commission Setting");
+            return reply.status(500).send({ message: err.message });
+        }
+    }
+
+    async updatePayoutCommissionSetting(
+        request: FastifyRequest<{ Body: IUpdatePayoutCommissionSettingDTO }>,
+        reply: FastifyReply,
+    ) {
+        try {
+            const setting: IPayoutCommissionSettingDTO = await this.settingService.updatePayoutCommissionSetting(request.body);
+            return reply.send(setting);
+        } catch (error: unknown) {
+            const err = error as Error;
+            logError(err, "Update Payout Commission Setting");
+            return reply.status(400).send({ message: err.message });
         }
     }
 

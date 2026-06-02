@@ -1180,6 +1180,7 @@ export class BookingService {
                 id: booking.listing.id,
                 name: booking.listing.name,
                 location_id: booking.listing.location_id,
+                commission_rate: null,
                 location: booking.listing.location?.name ?? null,
                 address: booking.listing.contact?.address ?? null,
                 image: booking.listing.media?.[0]?.url ?? null,

@@ -358,4 +358,44 @@ export class SendEmail {
 
     return success ? { status: "ok" } : { status: "error" };
   }
+
+  async sendTicketActivityEmail(input: {
+    to: string;
+    recipientName?: string | null;
+    subject: string;
+    heading: string;
+    intro: string;
+    ticketNumber: string;
+    ticketSubject: string;
+    ticketStatus: string;
+    bookingNumber?: string | null;
+    hotelName?: string | null;
+    actorName?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #123;">
+        <h2>${input.heading}</h2>
+        <p>Hi ${input.recipientName || "there"},</p>
+        <p>${input.intro}</p>
+        <div style="border: 1px solid #d7e3e3; border-radius: 12px; padding: 16px; margin: 16px 0;">
+          <p><strong>Ticket:</strong> ${input.ticketNumber}</p>
+          <p><strong>Subject:</strong> ${input.ticketSubject}</p>
+          <p><strong>Status:</strong> ${input.ticketStatus}</p>
+          ${input.actorName ? `<p><strong>Updated by:</strong> ${input.actorName}</p>` : ""}
+          ${input.bookingNumber ? `<p><strong>Booking:</strong> ${input.bookingNumber}</p>` : ""}
+          ${input.hotelName ? `<p><strong>Hotel:</strong> ${input.hotelName}</p>` : ""}
+        </div>
+        <p>You can review the full conversation in your Khor account.</p>
+      </div>
+    `;
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.TICKET_ACTIVITY,
+      input.to,
+      input.subject,
+      html,
+      input.metadata,
+    );
+  }
 }

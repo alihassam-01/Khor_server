@@ -1,14 +1,19 @@
 import { AppDataSource } from "@config/ormconfig";
 import { PaymentSetting } from "@modules/user/entity/payment/payment-setting.entity";
+import { PlatformSetting } from "@modules/user/entity/payment/platform-setting.entity";
 import {
     ICreatePaymentSettingDTO,
     IUpdatePaymentSettingDTO,
     IPaymentSettingDTO,
+    IPayoutCommissionSettingDTO,
+    IUpdatePayoutCommissionSettingDTO,
 } from "@modules/user/dtos";
 import { PaymentMethod } from "@common/enums";
 
 export class PaymentSettingService {
     private settingRepository = AppDataSource.getRepository(PaymentSetting);
+    private platformSettingRepository = AppDataSource.getRepository(PlatformSetting);
+    private readonly payoutCommissionKey = "global_payout_commission_rate";
 
     private toDTO(setting: PaymentSetting): IPaymentSettingDTO {
         return {
@@ -81,5 +86,42 @@ export class PaymentSettingService {
             throw new Error("Payment setting not found");
         }
         await this.settingRepository.remove(setting);
+    }
+
+    async getPayoutCommissionSetting(): Promise<IPayoutCommissionSettingDTO> {
+        const setting = await this.platformSettingRepository.findOne({
+            where: { setting_key: this.payoutCommissionKey },
+        });
+
+        return {
+            rate: setting ? Number(setting.setting_value) : 0,
+        };
+    }
+
+    async updatePayoutCommissionSetting(
+        data: IUpdatePayoutCommissionSettingDTO,
+    ): Promise<IPayoutCommissionSettingDTO> {
+        const rate = Number(data.rate);
+        if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+            throw new Error("Payout commission rate must be between 0 and 1.");
+        }
+
+        let setting = await this.platformSettingRepository.findOne({
+            where: { setting_key: this.payoutCommissionKey },
+        });
+
+        if (!setting) {
+            setting = this.platformSettingRepository.create({
+                setting_key: this.payoutCommissionKey,
+                setting_value: String(rate),
+            });
+        } else {
+            setting.setting_value = String(rate);
+        }
+
+        const saved = await this.platformSettingRepository.save(setting);
+        return {
+            rate: Number(saved.setting_value),
+        };
     }
 }
