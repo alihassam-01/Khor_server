@@ -23,6 +23,23 @@ export class HotelController {
     private hotelService = new HotelService();
     private r2Client = new R2ClientService();
 
+    private getAuthUserId(req: FastifyRequest): string {
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        if (!authUserId) {
+            throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
+        }
+        return authUserId;
+    }
+
+    private async getVendorHotelOrThrow(hotelId: string, vendorId: string) {
+        const hotels = await this.hotelService.getAdsByVendor(vendorId);
+        const hotel = hotels.find((item) => item.id === hotelId);
+        if (!hotel) {
+            throw new AppError("Hotel not found or access denied", 404, ErrorCodes.NOT_FOUND);
+        }
+        return hotel;
+    }
+
     async createHotel(
         req: FastifyRequest<{ Body: ICreateHotelDTO | any }>, 
         reply: FastifyReply
@@ -127,6 +144,10 @@ export class HotelController {
                 map_link: extractedBody.map_link || undefined,
                 latitude: parseNumber(extractedBody.latitude, 'latitude'),
                 longitude: parseNumber(extractedBody.longitude, 'longitude'),
+                cancellation_policy: extractedBody.cancellation_policy || undefined,
+                refund_cutoff_hours: parseNumber(extractedBody.refund_cutoff_hours, 'refund_cutoff_hours'),
+                check_in_time: extractedBody.check_in_time || undefined,
+                check_out_time: extractedBody.check_out_time || undefined,
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 subscription_type: extractedBody.subscription_type || undefined,
                 plan_id: extractedBody.plan_id || undefined,
@@ -241,11 +262,16 @@ export class HotelController {
                 location_id: 'number',
                 rating: 'number',
                 reviews: 'number',
+                refund_cutoff_hours: 'number',
+                check_in_time: 'string',
+                check_out_time: 'string',
                 verified: 'boolean',
                 is_active: 'boolean',
                 is_featured: 'boolean',
                 amenities: 'array',
+                images: 'array',
                 roomTypes: 'json',
+                promotions: 'json',
                 plan_id: 'string',
             });
             // Handle image file upload
@@ -267,6 +293,40 @@ export class HotelController {
         }
         const hotel = await this.hotelService.updateHotel(id, hotelData);
         reply.send(hotel);
+    }
+
+    async updateHotelByVendor(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: IUpdateHotelDTO | any }>,
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const authUserId = this.getAuthUserId(req);
+
+        const hotelData = req.body as IUpdateHotelDTO;
+        const hotel = await this.hotelService.updateHotelByVendor(id, authUserId, hotelData);
+        reply.send(hotel);
+    }
+
+    async deleteVendorHotelImage(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: { image_url?: string } }>,
+        reply: FastifyReply,
+    ) {
+        const { id } = req.params;
+        const { image_url } = req.body ?? {};
+        if (!image_url) {
+            throw new AppError("image_url is required", 400, ErrorCodes.VALIDATION_ERROR);
+        }
+
+        const authUserId = this.getAuthUserId(req);
+        const hotel = await this.getVendorHotelOrThrow(id, authUserId);
+        const nextImages = (hotel.images ?? []).filter((url) => url !== image_url);
+
+        const updated = await this.hotelService.updateHotelByVendor(id, authUserId, {
+            image: nextImages[0] ?? "",
+            images: nextImages,
+        });
+
+        reply.send(updated);
     }
 
     async deleteHotel(
@@ -328,6 +388,16 @@ export class HotelController {
         const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
         const effectiveVendorId = authUserId || vendorId;
         const hotels = await this.hotelService.getAdsByVendor(effectiveVendorId);
+        reply.send(hotels);
+    }
+
+    async getVendorHotels(req: FastifyRequest, reply: FastifyReply) {
+        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
+        if (!authUserId) {
+            throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
+        }
+
+        const hotels = await this.hotelService.getAdsByVendor(authUserId);
         reply.send(hotels);
     }
 

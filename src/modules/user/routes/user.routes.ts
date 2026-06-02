@@ -17,6 +17,24 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.get("/users", userController.getUsers.bind(userController));
   fastify.get("/vendors", userController.getVendors.bind(userController));
   fastify.get("/customers", userController.getCustomers.bind(userController));
+
+  fastify.get(
+    "/admin/hotel-owners",
+    { preHandler: [authenticate, authorizeAdmin] },
+    userController.getHotelOwners.bind(userController)
+  );
+
+  fastify.patch<{ Params: IUserIdParams }>(
+    "/admin/hotel-owners/:id/approve",
+    { preHandler: [authenticate, authorizeAdmin] },
+    userController.approveHotelOwner.bind(userController)
+  );
+
+  fastify.patch<{ Params: IUserIdParams }>(
+    "/admin/hotel-owners/:id/suspend",
+    { preHandler: [authenticate, authorizeAdmin] },
+    userController.suspendHotelOwner.bind(userController)
+  );
   
   fastify.post<{ Params: IUserIdParams; Body: IUpdateUserBody }>(
     "/users/:id",

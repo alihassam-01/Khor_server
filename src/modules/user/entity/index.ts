@@ -7,6 +7,9 @@ export * from "./article";
 // Listing entities (replaces ads/)
 export * from "./listing";
 
+// Booking entities
+export * from "./booking";
+
 // Review entities (polymorphic, replaces ads/*-review.entity.ts)
 export * from "./review";
 

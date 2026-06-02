@@ -15,4 +15,11 @@ export async function adsRoutes(fastify: FastifyInstance) {
         "/ads/hotel-restaurant",
         adsController.getCombinedAds.bind(adsController)
     );
+
+    // New public promoted-listings surface. This intentionally excludes hotels
+    // so booking inventory can evolve independently from ad/promotion flows.
+    fastify.get(
+        "/promoted-listings",
+        adsController.getPromotedListings.bind(adsController)
+    );
 }

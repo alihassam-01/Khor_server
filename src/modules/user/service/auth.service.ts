@@ -79,6 +79,13 @@ export class AuthService {
             const hashedOtp = await this.hashOtp(otp);
             const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
+            logInfo("Registration OTP generated", {
+                email,
+                role: userRole,
+                otp,
+                expiresAt: otpExpiresAt.toISOString(),
+            });
+
             const success = await sendEmail({
                 to: email,
                 subject: EMAIL_SUBJECTS.REGISTRATION_OTP,
@@ -100,12 +107,15 @@ export class AuthService {
                 verificationToken: hashedOtp,
                 otpExpiresAt,
                 isVerified: false,
+                isActive: userRole === UserRole.VENDOR ? false : true,
             });
             const savedUser = await em.save(User, user);
 
             const profile = this.profileRepository.create({
                 user_id: savedUser.id,
                 username: name,
+                business_name: userRole === UserRole.VENDOR ? name : null,
+                is_business_verified: false,
                 profile_picture: this.randomProfileImage(),
             });
             await em.save(UserProfile, profile);
@@ -172,6 +182,12 @@ export class AuthService {
         const hashedOtp = await this.hashOtp(otp);
         const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
+        logInfo("Resend OTP generated", {
+            email,
+            otp,
+            expiresAt: otpExpiresAt.toISOString(),
+        });
+
         user.verificationToken = hashedOtp;
         user.otpExpiresAt = otpExpiresAt;
         await this.userRepository.save(user);
@@ -223,6 +239,16 @@ export class AuthService {
                 "Please verify your email before logging in",
                 401,
                 ErrorCodes.EMAIL_NOT_VERIFIED,
+            );
+        }
+
+        if (!user.isActive) {
+            throw new AppError(
+                user.userType === UserRole.VENDOR
+                    ? "Your hotel owner account is pending admin approval."
+                    : "Your account is inactive. Please contact support.",
+                403,
+                ErrorCodes.FORBIDDEN,
             );
         }
 

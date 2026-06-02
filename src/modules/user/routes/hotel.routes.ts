@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { HotelController } from "@modules/user/controller/hotel.controller";
 import { authenticate } from "@middlewares/authenticate";
+import { authorizeAdmin } from "@middlewares/authorizeAdmin";
 import { 
     IHotelIdParams, 
     IHotelLocationParams, 
@@ -17,44 +18,44 @@ export async function hotelRoutes(fastify: FastifyInstance) {
     // Admin routes for hotel management - require authentication
     fastify.post<{ Body: ICreateHotelDTO | any }>(
         "/admin/hotels", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.createHotel.bind(hotelController)
     );
     
     fastify.get(
         "/admin/hotels", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.getAllHotelsAdmin.bind(hotelController)
     );
     
     fastify.get<{ Params: IHotelIdParams }>(
         "/admin/hotels/:id", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.getHotelById.bind(hotelController)
     );
     
     fastify.put<{ Params: IHotelIdParams; Body: IUpdateHotelDTO | any }>(
         "/admin/hotels/:id", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.updateHotel.bind(hotelController)
     );
     
     fastify.delete<{ Params: IHotelIdParams }>(
         "/admin/hotels/:id", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.deleteHotel.bind(hotelController)
     );
 
     // Admin routes for ad management - require authentication
     fastify.post<{ Params: IHotelIdParams; Body: IToggleAdStatusBody }>(
         "/admin/hotels/:id/toggle-status", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.toggleAdStatus.bind(hotelController)
     );
     
     fastify.post<{ Params: IHotelIdParams; Body: IRenewAdBody }>(
         "/admin/hotels/:id/renew", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.renewAd.bind(hotelController)
     );
 
@@ -63,10 +64,28 @@ export async function hotelRoutes(fastify: FastifyInstance) {
         { preHandler: authenticate }, 
         hotelController.renewAdByVendor.bind(hotelController)
     );
+
+    fastify.put<{ Params: IHotelIdParams; Body: IUpdateHotelDTO | any }>(
+        "/vendor/hotels/:id",
+        { preHandler: authenticate },
+        hotelController.updateHotelByVendor.bind(hotelController)
+    );
+
+    fastify.delete<{ Params: IHotelIdParams; Body: { image_url?: string } }>(
+        "/vendor/hotels/:id/images",
+        { preHandler: authenticate },
+        hotelController.deleteVendorHotelImage.bind(hotelController)
+    );
+
+    fastify.get(
+        "/vendor/hotels",
+        { preHandler: authenticate },
+        hotelController.getVendorHotels.bind(hotelController)
+    );
     
     fastify.get(
         "/admin/hotels/expired", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.getExpiredAds.bind(hotelController)
     );
     
@@ -82,13 +101,13 @@ export async function hotelRoutes(fastify: FastifyInstance) {
     
     fastify.get<{ Params: IVendorIdParams }>(
         "/admin/hotels/vendor/:vendorId", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.getAdsByVendor.bind(hotelController)
     );
     
     fastify.post<{ Params: IHotelIdParams; Body: ISetFeaturedStatusBody }>(
         "/admin/hotels/:id/featured", 
-        { preHandler: authenticate }, 
+        { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.setFeaturedStatus.bind(hotelController)
     );
 
@@ -96,5 +115,10 @@ export async function hotelRoutes(fastify: FastifyInstance) {
     fastify.get(
         "/hotels", 
         hotelController.getAllHotels.bind(hotelController)
+    );
+
+    fastify.get<{ Params: IHotelIdParams }>(
+        "/hotels/:id",
+        hotelController.getHotelById.bind(hotelController)
     );
 }

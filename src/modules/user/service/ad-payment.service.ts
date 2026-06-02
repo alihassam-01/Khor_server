@@ -19,13 +19,16 @@ import { ListingSubscriptionService } from "./listing/listing-subscription.servi
 const propertyTypeToListingType: Record<string, ListingType> = {
     [PropertyType.HOTEL]: ListingType.HOTEL,
     [PropertyType.RESTAURANT]: ListingType.RESTAURANT,
+    [PropertyType.TOUR]: ListingType.TOUR,
+    [PropertyType.VEHICLE]: ListingType.VEHICLE,
+    [PropertyType.CAR_RENTAL]: ListingType.VEHICLE,
 };
 
 const listingTypeToPropertyType: Record<ListingType, PropertyType> = {
     [ListingType.HOTEL]: PropertyType.HOTEL,
     [ListingType.RESTAURANT]: PropertyType.RESTAURANT,
-    [ListingType.TOUR]: PropertyType.HOTEL,
-    [ListingType.VEHICLE]: PropertyType.HOTEL,
+    [ListingType.TOUR]: PropertyType.TOUR,
+    [ListingType.VEHICLE]: PropertyType.VEHICLE,
 };
 
 /**

@@ -1,6 +1,7 @@
 import { EntityManager } from "typeorm";
 import {
     HotelDetails,
+    HotelPromotion,
     HotelRoomType,
     Listing,
     ListingMedia,
@@ -8,6 +9,7 @@ import {
 import {
     ICreateHotelDTO,
     IHotelDTO,
+    IHotelPromotionDTO,
     IRoomTypeDTO,
     IUpdateHotelDTO,
 } from "@modules/user/dtos";
@@ -25,6 +27,7 @@ import {
     IListingViewModel,
     IMediaInput,
 } from "../listing-strategy.types";
+import { pickBestPromotion } from "../hotel-promotion.util";
 
 interface IHotelExt extends Record<string, unknown> {
     verified?: boolean;
@@ -32,7 +35,10 @@ interface IHotelExt extends Record<string, unknown> {
     check_in_time?: string | null;
     check_out_time?: string | null;
     cancellation_policy?: string | null;
+    refund_cutoff_hours?: number | null;
+    auto_confirm_paid_bookings?: boolean;
     roomTypes?: IRoomTypeDTO[];
+    promotions?: IHotelPromotionDTO[];
 }
 
 const validateRoomType = (type?: string | RoomType | null): RoomType | null => {
@@ -86,7 +92,13 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
     fromCreateDTO(dto: ICreateHotelDTO): IListingCreatePayload {
         const ext: IHotelExt = {
             verified: dto.verified,
+            check_in_time: dto.check_in_time ?? null,
+            check_out_time: dto.check_out_time ?? null,
+            cancellation_policy: dto.cancellation_policy ?? null,
+            refund_cutoff_hours: dto.refund_cutoff_hours ?? null,
+            auto_confirm_paid_bookings: dto.auto_confirm_paid_bookings ?? false,
             roomTypes: dto.roomTypes,
+            promotions: dto.promotions,
         };
         return {
             type: ListingType.HOTEL,
@@ -119,7 +131,13 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
     fromUpdateDTO(dto: IUpdateHotelDTO): IListingUpdatePayload {
         const ext: IHotelExt = {
             verified: dto.verified,
+            check_in_time: dto.check_in_time,
+            check_out_time: dto.check_out_time,
+            cancellation_policy: dto.cancellation_policy,
+            refund_cutoff_hours: dto.refund_cutoff_hours,
+            auto_confirm_paid_bookings: dto.auto_confirm_paid_bookings,
             roomTypes: dto.roomTypes,
+            promotions: dto.promotions,
         };
         const out: IListingUpdatePayload = { ext };
         if (dto.name !== undefined) out.name = dto.name;
@@ -147,8 +165,8 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
         if (dto.address !== undefined) { contact.address = dto.address; touchedContact = true; }
         if (touchedContact) out.contact = contact;
 
-        if (dto.image !== undefined || dto.logo !== undefined) {
-            out.media = buildMedia(dto.image, dto.logo);
+        if (dto.image !== undefined || dto.logo !== undefined || dto.images !== undefined) {
+            out.media = buildMedia(dto.image, dto.logo, dto.images);
         }
 
         return out;
@@ -163,6 +181,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
         const ext = (payload.ext as IHotelExt) || {};
         const detailsRepo = em.getRepository(HotelDetails);
         const roomTypeRepo = em.getRepository(HotelRoomType);
+        const promotionRepo = em.getRepository(HotelPromotion);
 
         // Upsert hotel_details
         const existing = isCreate ? null : await detailsRepo.findOne({ where: { listing_id: listing.id } });
@@ -174,15 +193,50 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
         if (ext.cancellation_policy !== undefined) {
             details.cancellation_policy = ext.cancellation_policy ?? null;
         }
+        if (ext.refund_cutoff_hours !== undefined) {
+            details.refund_cutoff_hours = ext.refund_cutoff_hours ?? null;
+        }
+        if (ext.auto_confirm_paid_bookings !== undefined) {
+            details.auto_confirm_paid_bookings = !!ext.auto_confirm_paid_bookings;
+        }
         await detailsRepo.save(details);
 
         // Replace room types if provided. On create, only if provided. On update,
-        // a present-but-empty array means "clear all", undefined means "no change".
+        // undefined means "no change". On update we preserve existing rows and
+        // upsert by id so location-only edits never destroy booked room types.
         if (ext.roomTypes !== undefined) {
-            await roomTypeRepo.delete({ listing_id: listing.id });
-            if (ext.roomTypes.length > 0) {
+            if (isCreate) {
+                if (ext.roomTypes.length > 0) {
+                    const rows = ext.roomTypes.map((rt) => {
+                        const row = new HotelRoomType();
+                        row.listing_id = listing.id;
+                        row.name = rt.name;
+                        row.description = rt.description ?? null;
+                        row.type = validateRoomType(rt.type);
+                        row.price = Number(rt.price);
+                        row.amenities = rt.amenities ?? [];
+                        row.capacity = rt.capacity;
+                        row.total_rooms = rt.total_rooms ?? 1;
+                        row.bed_details = rt.bed_details?.trim() || null;
+                        row.images = rt.images ?? [];
+                        row.size_sqm = rt.size_sqm != null ? Number(rt.size_sqm) : null;
+                        row.is_active = rt.is_active !== undefined ? rt.is_active : true;
+                        return row;
+                    });
+                    await roomTypeRepo.save(rows);
+                }
+            } else if (ext.roomTypes.length > 0) {
+                const existingRows = await roomTypeRepo.find({ where: { listing_id: listing.id } });
+                const existingById = new Map(existingRows.map((row) => [row.id, row]));
+
                 const rows = ext.roomTypes.map((rt) => {
-                    const row = new HotelRoomType();
+                    const existingRow = rt.id ? existingById.get(rt.id) : undefined;
+                    const row = existingRow ?? new HotelRoomType();
+
+                    if (existingRow && existingRow.listing_id !== listing.id) {
+                        throw new AppError("Room type does not belong to this hotel", 400, ErrorCodes.VALIDATION_ERROR);
+                    }
+
                     row.listing_id = listing.id;
                     row.name = rt.name;
                     row.description = rt.description ?? null;
@@ -191,24 +245,103 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
                     row.amenities = rt.amenities ?? [];
                     row.capacity = rt.capacity;
                     row.total_rooms = rt.total_rooms ?? 1;
+                    row.bed_details = rt.bed_details?.trim() || null;
                     row.images = rt.images ?? [];
                     row.size_sqm = rt.size_sqm != null ? Number(rt.size_sqm) : null;
                     row.is_active = rt.is_active !== undefined ? rt.is_active : true;
                     return row;
                 });
+
                 await roomTypeRepo.save(rows);
+            }
+        }
+
+        if (ext.promotions !== undefined) {
+            if (isCreate) {
+                if (ext.promotions.length > 0) {
+                    const rows = ext.promotions.map((promotion) => {
+                        const row = new HotelPromotion();
+                        row.listing_id = listing.id;
+                        row.name = promotion.name.trim();
+                        row.discount_type = promotion.discount_type;
+                        row.discount_value = Number(promotion.discount_value);
+                        row.applies_to = (promotion.applies_to ?? "all").toLowerCase();
+                        row.start_date = promotion.start_date;
+                        row.end_date = promotion.end_date;
+                        row.is_active = promotion.is_active !== undefined ? promotion.is_active : true;
+                        return row;
+                    });
+                    await promotionRepo.save(rows);
+                }
+            } else {
+                const existingRows = await promotionRepo.find({ where: { listing_id: listing.id } });
+                const existingById = new Map(existingRows.map((row) => [row.id, row]));
+                const seenIds = new Set<string>();
+
+                const rows = ext.promotions.map((promotion) => {
+                    const existingRow = promotion.id ? existingById.get(promotion.id) : undefined;
+                    const row = existingRow ?? new HotelPromotion();
+                    row.listing_id = listing.id;
+                    row.name = promotion.name.trim();
+                    row.discount_type = promotion.discount_type;
+                    row.discount_value = Number(promotion.discount_value);
+                    row.applies_to = (promotion.applies_to ?? "all").toLowerCase();
+                    row.start_date = promotion.start_date;
+                    row.end_date = promotion.end_date;
+                    row.is_active = promotion.is_active !== undefined ? promotion.is_active : true;
+                    if (existingRow) {
+                        seenIds.add(existingRow.id);
+                    }
+                    return row;
+                });
+
+                await promotionRepo.save(rows);
+
+                const toDelete = existingRows.filter((row) => !seenIds.has(row.id) && !rows.some((item) => item.id === row.id));
+                if (toDelete.length > 0) {
+                    await promotionRepo.remove(toDelete);
+                }
             }
         }
     }
 
     toDTO(view: IListingViewModel): IHotelDTO {
-        const { listing, contact, media, room_types, current_subscription, reviews, location_name } = view;
+        const { listing, contact, media, room_types, promotions, current_subscription, reviews, location_name } = view;
         const grouped = groupMedia(media);
         const galleryUrls = grouped.gallery.map((m) => m.url);
         const coverUrl = grouped.cover?.url ?? galleryUrls[0] ?? "";
         const allImages = coverUrl
             ? [coverUrl, ...galleryUrls.filter((u) => u !== coverUrl)]
             : galleryUrls;
+        const hotelPromotions = promotions ?? [];
+        const roomTypes = (room_types ?? []).map((rt) => {
+            const basePrice = Number(rt.price);
+            const activePromotion = pickBestPromotion(basePrice, hotelPromotions, rt.type ?? null);
+            return {
+                id: rt.id,
+                name: rt.name,
+                description: rt.description ?? undefined,
+                type: rt.type ?? undefined,
+                price: activePromotion?.discounted_price ?? basePrice,
+                base_price: basePrice,
+                discount_percentage: activePromotion?.percentage_off ?? null,
+                promotion_price: activePromotion?.discounted_price ?? null,
+                promotion: activePromotion,
+                amenities: rt.amenities ?? [],
+                capacity: rt.capacity,
+                total_rooms: rt.total_rooms,
+                bed_details: rt.bed_details ?? undefined,
+                images: rt.images ?? [],
+                size_sqm: rt.size_sqm != null ? Number(rt.size_sqm) : undefined,
+                is_active: rt.is_active,
+            };
+        });
+        const minimumDisplayPrice = roomTypes.length > 0
+            ? Math.min(...roomTypes.map((roomType) => Number(roomType.price ?? 0)))
+            : Number(listing.price_from ?? 0);
+        const minimumBasePrice = roomTypes.length > 0
+            ? Math.min(...roomTypes.map((roomType) => Number(roomType.base_price ?? roomType.price ?? 0)))
+            : Number(listing.price_from ?? 0);
 
         return {
             id: listing.id,
@@ -216,7 +349,8 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             type: "hotel",
             rating: Number(listing.rating_avg ?? 0),
             reviews: listing.rating_count ?? 0,
-            price: Number(listing.price_from ?? 0),
+            price: minimumDisplayPrice,
+            base_price: minimumBasePrice,
             location: location_name ?? "",
             address: contact?.address ?? null,
             image: coverUrl,
@@ -229,6 +363,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             links: {
                 phone: contact?.phone ?? null,
                 whatsapp: contact?.whatsapp ?? null,
+                email: listing.vendor?.email ?? null,
                 facebook: contact?.facebook ?? null,
                 instagram: contact?.instagram ?? null,
                 website: contact?.website ?? null,
@@ -242,17 +377,17 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
                 comment: r.content,
                 date: r.created_at,
             })),
-            roomTypes: (room_types ?? []).map((rt) => ({
-                name: rt.name,
-                description: rt.description ?? undefined,
-                type: rt.type ?? undefined,
-                price: Number(rt.price),
-                amenities: rt.amenities ?? [],
-                capacity: rt.capacity,
-                total_rooms: rt.total_rooms,
-                images: rt.images ?? [],
-                size_sqm: rt.size_sqm != null ? Number(rt.size_sqm) : undefined,
-                is_active: rt.is_active,
+            roomTypes,
+            promotions: hotelPromotions.map((promotion) => ({
+                id: promotion.id,
+                name: promotion.name,
+                discount_type: promotion.discount_type,
+                discount_value: Number(promotion.discount_value),
+                applies_to: promotion.applies_to,
+                start_date: promotion.start_date,
+                end_date: promotion.end_date,
+                is_active: promotion.is_active,
+                usage_count: Number(promotion.usage_count ?? 0),
             })),
             vendor_id: listing.vendor_id ?? undefined,
             expires_at: current_subscription?.expires_at ?? undefined,
@@ -262,6 +397,11 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             is_featured: listing.is_featured,
             is_active: listing.is_active,
             location_id: listing.location_id,
+            cancellation_policy: listing.hotel_details?.cancellation_policy ?? null,
+            refund_cutoff_hours: listing.hotel_details?.refund_cutoff_hours ?? null,
+            check_in_time: listing.hotel_details?.check_in_time ?? null,
+            check_out_time: listing.hotel_details?.check_out_time ?? null,
+            auto_confirm_paid_bookings: listing.hotel_details?.auto_confirm_paid_bookings ?? false,
         };
     }
 }

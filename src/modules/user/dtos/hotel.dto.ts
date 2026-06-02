@@ -9,16 +9,49 @@ export interface IReviewDTO {
 }
 
 export interface IRoomTypeDTO {
+    id?: string;
     name: string;
     description?: string;
     type?: RoomType;
     price: number;
+    base_price?: number;
+    discount_percentage?: number | null;
+    promotion_price?: number | null;
+    promotion?: IHotelPromotionSummaryDTO | null;
     amenities: string[];
     capacity: number;
     total_rooms?: number;
+    bed_details?: string;
     images?: string[];
     size_sqm?: number;
     is_active?: boolean;
+}
+
+export interface IHotelPromotionSummaryDTO {
+    id: string;
+    name: string;
+    discount_type: "percentage" | "fixed";
+    discount_value: number;
+    applies_to: string;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+    usage_count: number;
+    savings_amount: number;
+    discounted_price: number;
+    percentage_off: number;
+}
+
+export interface IHotelPromotionDTO {
+    id?: string;
+    name: string;
+    discount_type: "percentage" | "fixed";
+    discount_value: number;
+    applies_to?: string;
+    start_date: string;
+    end_date: string;
+    is_active?: boolean;
+    usage_count?: number;
 }
 
 export interface IHotelDTO {
@@ -28,6 +61,7 @@ export interface IHotelDTO {
     rating: number;
     reviews: number;
     price: number;
+    base_price?: number;
     location: string;
     address?: string | null;
     image: string;
@@ -40,6 +74,7 @@ export interface IHotelDTO {
     links: {
         phone: string | null;
         whatsapp: string | null;
+        email?: string | null;
         facebook?: string | null;
         instagram?: string | null;
         website?: string | null;
@@ -49,6 +84,7 @@ export interface IHotelDTO {
     longitude?: number | null;
     detailed_reviews: IReviewDTO[];
     roomTypes: IRoomTypeDTO[];
+    promotions?: IHotelPromotionDTO[];
     vendor_id?: string;
     expires_at?: Date;
     subscription_type?: SubscriptionType;
@@ -57,6 +93,11 @@ export interface IHotelDTO {
     is_featured?: boolean;
     is_active?: boolean;
     location_id?: number;
+    cancellation_policy?: string | null;
+    refund_cutoff_hours?: number | null;
+    check_in_time?: string | null;
+    check_out_time?: string | null;
+    auto_confirm_paid_bookings?: boolean;
 }
 
 export interface ICreateHotelDTO {
@@ -85,9 +126,15 @@ export interface ICreateHotelDTO {
     is_featured?: boolean;
     detailed_reviews?: IReviewDTO[];
     roomTypes?: IRoomTypeDTO[];
+    promotions?: IHotelPromotionDTO[];
     vendor_id?: string;
     subscription_type?: SubscriptionType;
     plan_id?: string;
+    cancellation_policy?: string | null;
+    refund_cutoff_hours?: number | null;
+    check_in_time?: string | null;
+    check_out_time?: string | null;
+    auto_confirm_paid_bookings?: boolean;
 }
 
 export interface IUpdateHotelDTO {
@@ -98,6 +145,7 @@ export interface IUpdateHotelDTO {
     location_name?: string;
     address?: string | null;
     image?: string;
+    images?: string[];
     description?: string;
     amenities?: string[];
     logo?: string | null;
@@ -117,6 +165,12 @@ export interface IUpdateHotelDTO {
     is_featured?: boolean;
     plan_id?: string;
     roomTypes?: IRoomTypeDTO[];
+    promotions?: IHotelPromotionDTO[];
+    cancellation_policy?: string | null;
+    refund_cutoff_hours?: number | null;
+    check_in_time?: string | null;
+    check_out_time?: string | null;
+    auto_confirm_paid_bookings?: boolean;
 }
 
 export interface IPaginatedHotelsResponse {

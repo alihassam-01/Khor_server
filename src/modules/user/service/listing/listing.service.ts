@@ -101,7 +101,7 @@ export class ListingService {
 
     private extensionRelationFor(type: ListingType): string[] {
         switch (type) {
-            case ListingType.HOTEL: return ["hotel_details", "room_types"];
+            case ListingType.HOTEL: return ["hotel_details", "room_types", "promotions"];
             case ListingType.RESTAURANT: return ["restaurant_details"];
             default: return [];
         }
@@ -115,7 +115,7 @@ export class ListingService {
         const repo = em ? em.getRepository(Listing) : this.listingRepo;
         const listing = await repo.findOne({
             where: { id: listingId },
-            relations: ["contact", "media", "location", ...this.extensionRelationFor(strategy.type)],
+            relations: ["contact", "media", "location", "vendor", ...this.extensionRelationFor(strategy.type)],
         });
         if (!listing) {
             throw new AppError(`${strategy.type} not found`, 404, ErrorCodes.NOT_FOUND);
@@ -143,6 +143,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: sub,
             reviews,
             location: listing.location ?? null,
@@ -295,6 +296,7 @@ export class ListingService {
         if (strategy.type === ListingType.HOTEL) {
             qb.leftJoinAndSelect("listing.hotel_details", "hotel_details");
             qb.leftJoinAndSelect("listing.room_types", "room_types");
+            qb.leftJoinAndSelect("listing.promotions", "promotions");
         } else if (strategy.type === ListingType.RESTAURANT) {
             qb.leftJoinAndSelect("listing.restaurant_details", "restaurant_details");
         }
@@ -314,6 +316,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: subs.get(listing.id) ?? null,
             reviews: reviews.get(listing.id) ?? [],
             location: listing.location ?? null,
@@ -399,7 +402,8 @@ export class ListingService {
             );
         if (strategy.type === ListingType.HOTEL) {
             qb.leftJoinAndSelect("listing.hotel_details", "hotel_details")
-                .leftJoinAndSelect("listing.room_types", "room_types");
+                .leftJoinAndSelect("listing.room_types", "room_types")
+                .leftJoinAndSelect("listing.promotions", "promotions");
         } else if (strategy.type === ListingType.RESTAURANT) {
             qb.leftJoinAndSelect("listing.restaurant_details", "restaurant_details");
         }
@@ -414,6 +418,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: subs.get(listing.id) ?? null,
             reviews: reviews.get(listing.id) ?? [],
             location: listing.location ?? null,
@@ -433,7 +438,8 @@ export class ListingService {
             .leftJoinAndSelect("listing.location", "location");
         if (strategy.type === ListingType.HOTEL) {
             qb.leftJoinAndSelect("listing.hotel_details", "hotel_details")
-                .leftJoinAndSelect("listing.room_types", "room_types");
+                .leftJoinAndSelect("listing.room_types", "room_types")
+                .leftJoinAndSelect("listing.promotions", "promotions");
         } else if (strategy.type === ListingType.RESTAURANT) {
             qb.leftJoinAndSelect("listing.restaurant_details", "restaurant_details");
         }
@@ -449,6 +455,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: subs.get(listing.id) ?? null,
             reviews: reviews.get(listing.id) ?? [],
             location: listing.location ?? null,
@@ -476,6 +483,7 @@ export class ListingService {
             contact: listing.contact ?? null,
             media: listing.media ?? [],
             room_types: listing.room_types ?? [],
+            promotions: listing.promotions ?? [],
             current_subscription: subs.get(listing.id) ?? null,
             reviews: reviews.get(listing.id) ?? [],
             location: listing.location ?? null,
@@ -580,6 +588,27 @@ export class ListingService {
             const view = await this.loadView(listing.id, strategy, em);
             return strategy.toDTO(view);
         });
+    }
+
+    async updateByVendor<TUpdate, TDTO>(
+        strategy: IListingStrategy<any, TUpdate, TDTO>,
+        id: string,
+        vendorId: string,
+        dto: TUpdate,
+    ): Promise<TDTO> {
+        const resolvedVendor = await this.resolveVendorUserId(AppDataSource.manager, vendorId);
+        if (!resolvedVendor) {
+            throw new AppError("Unauthorized vendor", 403, ErrorCodes.FORBIDDEN);
+        }
+
+        const listing = await this.listingRepo.findOne({
+            where: { id, vendor_id: resolvedVendor },
+        });
+        if (!listing || listing.type !== strategy.type) {
+            throw new AppError(`${strategy.type} not found or access denied`, 404, ErrorCodes.NOT_FOUND);
+        }
+
+        return this.update(strategy, id, dto);
     }
 
     // ---------- delete ----------

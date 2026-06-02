@@ -18,6 +18,11 @@ import propertyRoutes from "./property.routes";
 import { mediaRoutes } from "./media.routes";
 import analyticsRoutes from "./analytics.routes";
 import { flightsRoutes } from "./flights.routes";
+import { bookingRoutes } from "./booking.routes";
+import { notificationRoutes } from "./notification.routes";
+import { reviewRoutes } from "./reviews.routes";
+import { payoutRoutes } from "./payout.routes";
+import { supportTicketRoutes } from "./support-ticket.routes";
 
 
 // Core routes - always enabled
@@ -34,6 +39,11 @@ const routes = [
   subscriptionPlanRoutes, // Public subscription plans
   paymentSettingRoutes, // Admin and public payment settings
   propertyRoutes, // Generic property routes
+  bookingRoutes,
+  payoutRoutes,
+  supportTicketRoutes,
+  notificationRoutes,
+  reviewRoutes,
   analyticsRoutes,
   flightsRoutes, // Google Flights price scraper
 ];

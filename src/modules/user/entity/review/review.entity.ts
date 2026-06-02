@@ -14,6 +14,14 @@ import { ReviewStatus, ReviewTargetType } from "@common/enums/review.enums";
 import { User } from "@modules/user/entity/user/user.entity";
 import { ReviewVote } from "./review-vote.entity";
 
+export type ReviewAspectRatings = {
+    service: number;
+    cleanliness: number;
+    location: number;
+    staff: number;
+    environment: number;
+};
+
 /**
  * The single, polymorphic reviews table. Replaces `hotel_reviews` and
  * `restaurant_reviews`. Targets any reviewable entity via
@@ -55,6 +63,9 @@ export class Review {
 
     @Column({ type: "text" })
     content!: string;
+
+    @Column({ type: "jsonb", nullable: true })
+    aspect_ratings?: ReviewAspectRatings | null;
 
     @Column({ type: "enum", enum: ReviewStatus, default: ReviewStatus.PENDING })
     status!: ReviewStatus;

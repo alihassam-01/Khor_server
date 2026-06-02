@@ -49,6 +49,27 @@ export class UserController {
     reply.send(vendors);
   }
 
+  async getHotelOwners(_req: FastifyRequest, reply: FastifyReply) {
+    const owners = await this.userService.getHotelOwners();
+    reply.send(owners);
+  }
+
+  async approveHotelOwner(
+    req: FastifyRequest<{ Params: IUserIdParams }>,
+    reply: FastifyReply
+  ) {
+    const owner = await this.userService.approveHotelOwner(req.params.id);
+    reply.send(owner);
+  }
+
+  async suspendHotelOwner(
+    req: FastifyRequest<{ Params: IUserIdParams }>,
+    reply: FastifyReply
+  ) {
+    const owner = await this.userService.suspendHotelOwner(req.params.id);
+    reply.send(owner);
+  }
+
   async deleteUser(
     req: FastifyRequest<{ Params: IUserIdParams }>,
     reply: FastifyReply

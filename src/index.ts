@@ -10,6 +10,24 @@ import { logError, logInfo } from './lib/logger';
 import 'dotenv/config';
 
 async function startServer() {
+  const allowedOrigins = new Set([
+    CONFIG.web_domain.url as string,
+    CONFIG.admin_domain.url as string,
+    CONFIG.partner_domain.url as string,
+    "http://localhost:9010",
+    "http://localhost:9002",
+    "http://localhost:9014",
+    "http://127.0.0.1:9010",
+    "http://127.0.0.1:9002",
+    "http://127.0.0.1:9014",
+    "http://[::1]:9010",
+    "http://[::1]:9002",
+    "http://[::1]:9014",
+    "http://::1:9010",
+    "http://::1:9002",
+    "http://::1:9014",
+  ].filter(Boolean));
+
   const app = fastify({
     pluginTimeout: 120000,
     logger: true,
@@ -28,12 +46,26 @@ async function startServer() {
   await app.register(import('@fastify/formbody'));
 
   await app.register(import('@fastify/cors'), {
-    origin: [
-      CONFIG.web_domain.url as string, 
-      CONFIG.admin_domain.url as string,
-      "http://localhost:9010", 
-      "http://localhost:9002"
-    ],
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      try {
+        const parsed = new URL(origin);
+        const isLoopbackHost = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(parsed.hostname);
+        const isAllowedLoopbackPort = ["9010", "9002", "9014"].includes(parsed.port);
+        callback(null, isLoopbackHost && isAllowedLoopbackPort);
+      } catch {
+        callback(null, false);
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   });

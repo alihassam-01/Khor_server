@@ -13,6 +13,10 @@ export interface IPaymentSettingDTO {
     updated_at: Date;
 }
 
+export interface IPayoutCommissionSettingDTO {
+    rate: number;
+}
+
 export interface ICreatePaymentSettingDTO {
     method: PaymentMethod;
     account_name: string;
@@ -31,4 +35,8 @@ export interface IUpdatePaymentSettingDTO {
     branch_code?: string;
     is_active?: boolean;
     notes?: string;
+}
+
+export interface IUpdatePayoutCommissionSettingDTO {
+    rate: number;
 }

@@ -16,3 +16,14 @@ export interface IGetCombinedAdsQuery {
     priceMax?: string;
     isFeatured?: string;
 }
+
+export interface IGetPromotedListingsQuery {
+    page?: string;
+    limit?: string;
+    searchQuery?: string;
+    type?: "restaurant" | "tour" | "all";
+    location_id?: string;
+    rating?: string;
+    priceMax?: string;
+    isFeatured?: string;
+}

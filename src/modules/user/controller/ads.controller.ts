@@ -3,11 +3,13 @@ import { AdsService } from "@modules/user/service/ads.service";
 import { 
     IGetAdsByLocationParams, 
     IGetCombinedAdsQuery, 
+    IGetPromotedListingsQuery,
     IGetAdsByVendorParams 
 } from "@modules/user/types";
 import { 
     ICombinedAdsResponseDTO, 
     IAdsResponseDTO,
+    IPromotedListingsResponseDTO,
     IHotelDTO,
     IRestaurantDTO
 } from "@modules/user/dtos";
@@ -116,6 +118,69 @@ export class AdsController {
             reply
                 .code(500)
                 .send({ message: err.message || "Failed to fetch vendor ads" });
+        }
+    }
+
+    async getPromotedListings(
+        req: FastifyRequest<{ Querystring: IGetPromotedListingsQuery }>,
+        reply: FastifyReply
+    ) {
+        try {
+            const {
+                page = "1",
+                limit = "10",
+                searchQuery = "",
+                type = "all",
+                location_id,
+                rating,
+                priceMax,
+                isFeatured,
+            } = req.query;
+
+            const pageNum = parseInt(page, 10) || 1;
+            const limitNum = parseInt(limit, 10) || 10;
+            const typeValue = type.toLowerCase() as "restaurant" | "tour" | "all";
+
+            if (!["restaurant", "tour", "all"].includes(typeValue)) {
+                return reply.code(400).send({
+                    message: "Invalid type. Use 'restaurant', 'tour', or 'all'",
+                });
+            }
+
+            let parsedLocationId: number | number[] | undefined = undefined;
+            if (location_id) {
+                const locStr = String(location_id);
+                if (locStr.includes(",")) {
+                    parsedLocationId = locStr.split(",")
+                        .map((id) => parseInt(id.trim(), 10))
+                        .filter((id) => !isNaN(id));
+                } else {
+                    const parsed = parseInt(locStr, 10);
+                    if (!isNaN(parsed)) parsedLocationId = parsed;
+                }
+            }
+
+            const result: IPromotedListingsResponseDTO = await this.adsService.getPromotedListings({
+                page: pageNum,
+                limit: limitNum,
+                searchQuery,
+                type: typeValue,
+                location_id: parsedLocationId,
+                rating: rating ? parseFloat(rating) : undefined,
+                priceMax: priceMax ? parseFloat(priceMax) : undefined,
+                isFeatured: isFeatured === "true" || isFeatured === "1"
+                    ? true
+                    : isFeatured === "false" || isFeatured === "0"
+                        ? false
+                        : undefined,
+            });
+
+            reply.send(result);
+        } catch (error: unknown) {
+            const err = error as Error;
+            reply
+                .code(500)
+                .send({ message: err.message || "Failed to fetch promoted listings" });
         }
     }
 }

@@ -125,18 +125,21 @@ export class R2ClientService {
    * Delete a file from R2
    */
   deleteFileFromR2 = async (keyOrUrl: string | string[]): Promise<{ success: boolean; message: string }> => {
-    let keys: string[];
-    const pattern = /\/([^\/]+\/[^\/]+)$/;
+    const normalizeKey = (item: string): string => {
+      const publicUrl = this.getBucketUrl().replace(/\/+$/, "");
+      if (item.startsWith(`${publicUrl}/`)) {
+        return item.slice(publicUrl.length + 1);
+      }
 
-    if (Array.isArray(keyOrUrl)) {
-      keys = keyOrUrl.map((item) => {
-        const match = item.match(pattern);
-        return match ? match[1] : item;
-      });
-    } else {
-      const match = keyOrUrl.match(pattern);
-      keys = [match ? match[1] : keyOrUrl];
-    }
+      try {
+        const parsed = new URL(item);
+        return parsed.pathname.replace(/^\/+/, "");
+      } catch {
+        return item.replace(/^\/+/, "");
+      }
+    };
+
+    const keys = (Array.isArray(keyOrUrl) ? keyOrUrl : [keyOrUrl]).map(normalizeKey);
 
     const command = new DeleteObjectsCommand({
       Bucket: this.getBucketName(),

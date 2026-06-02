@@ -8,6 +8,26 @@ import { bookingConfirmationEmailTemplate } from "./templates/bookingConfirmatio
 export class SendEmail {
   private auditLogService = new AuditLogService();
 
+  private async sendAuditedEmail(
+    eventType: AuditLogEventType,
+    to: string,
+    subject: string,
+    html: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    const success = await sendEmail({ to, subject, html });
+
+    await this.auditLogService.log(
+      eventType,
+      to,
+      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
+      success ? undefined : "Email service returned failure",
+      metadata,
+    );
+
+    return success ? { status: "ok" } : { status: "error" };
+  }
+
   async sendForgotPasswordEmail(
     name: string,
     email: string,
@@ -85,6 +105,110 @@ export class SendEmail {
     );
 
     return success ? { status: "ok" } : { status: "error" };
+  }
+
+  async sendBookingLifecycleEmail(input: {
+    to: string;
+    recipientName?: string | null;
+    subject: string;
+    heading: string;
+    intro: string;
+    bookingNumber: string;
+    hotelName: string;
+    roomName: string;
+    checkInDate: string;
+    checkOutDate: string;
+    totalAmount: number;
+    guestCount: number;
+    reason?: string | null;
+    counterpartyName?: string | null;
+    counterpartyEmail?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #123;">
+        <h2>${input.heading}</h2>
+        <p>Hi ${input.recipientName || "there"},</p>
+        <p>${input.intro}</p>
+        <div style="border: 1px solid #d7e3e3; border-radius: 12px; padding: 16px; margin: 16px 0;">
+          <p><strong>Booking:</strong> ${input.bookingNumber}</p>
+          <p><strong>Hotel:</strong> ${input.hotelName}</p>
+          <p><strong>Room:</strong> ${input.roomName}</p>
+          <p><strong>Check-in:</strong> ${input.checkInDate}</p>
+          <p><strong>Check-out:</strong> ${input.checkOutDate}</p>
+          <p><strong>Guests:</strong> ${input.guestCount}</p>
+          <p><strong>Total:</strong> PKR ${Number(input.totalAmount).toLocaleString()}</p>
+          ${input.counterpartyName ? `<p><strong>Contact:</strong> ${input.counterpartyName}${input.counterpartyEmail ? ` (${input.counterpartyEmail})` : ""}</p>` : ""}
+          ${input.reason ? `<p><strong>Reason:</strong> ${input.reason}</p>` : ""}
+        </div>
+        <p>You can review the booking details in your Khor account.</p>
+      </div>
+    `;
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.BOOKING_UPDATE,
+      input.to,
+      input.subject,
+      html,
+      input.metadata,
+    );
+  }
+
+  async sendAdminBookingLifecycleEmail(input: {
+    subject: string;
+    heading: string;
+    intro: string;
+    bookingNumber: string;
+    hotelName: string;
+    roomName: string;
+    checkInDate: string;
+    checkOutDate: string;
+    totalAmount: number;
+    guestCount: number;
+    customerName?: string | null;
+    customerEmail?: string | null;
+    vendorName?: string | null;
+    vendorEmail?: string | null;
+    reason?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    const adminEmail =
+      process.env.INFO_EMAIL ||
+      process.env.CONTACT_EMAIL ||
+      process.env.SMTP_EMAIL ||
+      "info@gokhor.com";
+
+    if (!adminEmail) {
+      return { status: "error" };
+    }
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #123;">
+        <h2>${input.heading}</h2>
+        <p>${input.intro}</p>
+        <div style="border: 1px solid #d7e3e3; border-radius: 12px; padding: 16px; margin: 16px 0;">
+          <p><strong>Booking:</strong> ${input.bookingNumber}</p>
+          <p><strong>Hotel:</strong> ${input.hotelName}</p>
+          <p><strong>Room:</strong> ${input.roomName}</p>
+          <p><strong>Check-in:</strong> ${input.checkInDate}</p>
+          <p><strong>Check-out:</strong> ${input.checkOutDate}</p>
+          <p><strong>Guests:</strong> ${input.guestCount}</p>
+          <p><strong>Total:</strong> PKR ${Number(input.totalAmount).toLocaleString()}</p>
+          ${input.customerName ? `<p><strong>Customer:</strong> ${input.customerName}${input.customerEmail ? ` (${input.customerEmail})` : ""}</p>` : ""}
+          ${input.vendorName ? `<p><strong>Vendor:</strong> ${input.vendorName}${input.vendorEmail ? ` (${input.vendorEmail})` : ""}</p>` : ""}
+          ${input.reason ? `<p><strong>Reason:</strong> ${input.reason}</p>` : ""}
+        </div>
+        <p>Review this record in the Khor admin dashboard.</p>
+      </div>
+    `;
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.BOOKING_UPDATE,
+      adminEmail,
+      input.subject,
+      html,
+      { ...input.metadata, recipient: "admin" },
+    );
   }
 
   async sendContactEmail(
@@ -233,5 +357,45 @@ export class SendEmail {
     );
 
     return success ? { status: "ok" } : { status: "error" };
+  }
+
+  async sendTicketActivityEmail(input: {
+    to: string;
+    recipientName?: string | null;
+    subject: string;
+    heading: string;
+    intro: string;
+    ticketNumber: string;
+    ticketSubject: string;
+    ticketStatus: string;
+    bookingNumber?: string | null;
+    hotelName?: string | null;
+    actorName?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #123;">
+        <h2>${input.heading}</h2>
+        <p>Hi ${input.recipientName || "there"},</p>
+        <p>${input.intro}</p>
+        <div style="border: 1px solid #d7e3e3; border-radius: 12px; padding: 16px; margin: 16px 0;">
+          <p><strong>Ticket:</strong> ${input.ticketNumber}</p>
+          <p><strong>Subject:</strong> ${input.ticketSubject}</p>
+          <p><strong>Status:</strong> ${input.ticketStatus}</p>
+          ${input.actorName ? `<p><strong>Updated by:</strong> ${input.actorName}</p>` : ""}
+          ${input.bookingNumber ? `<p><strong>Booking:</strong> ${input.bookingNumber}</p>` : ""}
+          ${input.hotelName ? `<p><strong>Hotel:</strong> ${input.hotelName}</p>` : ""}
+        </div>
+        <p>You can review the full conversation in your Khor account.</p>
+      </div>
+    `;
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.TICKET_ACTIVITY,
+      input.to,
+      input.subject,
+      html,
+      input.metadata,
+    );
   }
 }
