@@ -1,6 +1,8 @@
-import { Repository } from "typeorm";
 import { User } from "@modules/user/entity/user/user.entity";
 import { UserProfile } from "@modules/user/entity/user/user-profile.entity";
+import { Location } from "@modules/user/entity/location";
+import { HotelDetails, Listing, ListingContact } from "@modules/user/entity/listing";
+import { EntityManager, Repository } from "typeorm";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
 import * as crypto from "crypto";
@@ -12,6 +14,8 @@ import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { logError, logInfo } from "@lib/logger";
 import { OTP_LENGTH, OTP_EXPIRY_MINUTES } from "@modules/user/constant/otp.constant";
+import { LocationType } from "@common/enums/location.enums";
+import { ListingStatus, ListingType } from "@common/enums/listing.enums";
 import {
     ILoginResponseDto,
     IGoogleLoginResponseDto,
@@ -65,14 +69,119 @@ export class AuthService {
         return user.profile?.username || fallback || user.email.split("@")[0] || "Unknown";
     }
 
+    private buildDraftHotelDescription(name: string): string {
+        return `Draft hotel for ${name}. Update location, rooms, and property details to go live.`;
+    }
+
+    private normalizePhone(phone: string): string {
+        return phone.trim();
+    }
+
+    private validatePhone(phone: string): string {
+        const normalized = this.normalizePhone(phone);
+        if (!/^\+?[0-9\s-]{7,}$/.test(normalized)) {
+            throw new AppError("Phone number must contain only digits, spaces, hyphens and an optional leading +", 400, ErrorCodes.VALIDATION_ERROR);
+        }
+        return normalized;
+    }
+
+    private async resolveDraftHotelLocation(em: EntityManager, cityId: number): Promise<Location> {
+        const locationRepo = em.getRepository(Location);
+        const selected = await locationRepo.findOne({
+            where: {
+                location_id: cityId,
+                is_deleted: false,
+                location_type: LocationType.CITY,
+            },
+        });
+
+        if (!selected) {
+            throw new AppError(
+                "A valid city is required to register a hotel owner.",
+                400,
+                ErrorCodes.VALIDATION_ERROR,
+            );
+        }
+
+        return selected;
+    }
+
+    private async createDraftHotelForVendor(
+        em: EntityManager,
+        user: User,
+        name: string,
+        phone: string,
+        cityId: number,
+    ): Promise<void> {
+        const location = await this.resolveDraftHotelLocation(em, cityId);
+
+        const listingRepo = em.getRepository(Listing);
+        const contactRepo = em.getRepository(ListingContact);
+        const hotelDetailsRepo = em.getRepository(HotelDetails);
+
+        const listing = listingRepo.create({
+            type: ListingType.HOTEL,
+            name,
+            description: this.buildDraftHotelDescription(name),
+            price_from: 0,
+            status: ListingStatus.PENDING,
+            is_active: false,
+            is_featured: false,
+            is_verified: false,
+            rating_avg: 0,
+            rating_count: 0,
+            view_count: 0,
+            latitude: null,
+            longitude: null,
+            amenities: [],
+            vendor_id: user.id,
+            location_id: location.location_id,
+        });
+
+        const savedListing = await listingRepo.save(listing);
+
+        const contact = contactRepo.create({
+            listing_id: savedListing.id,
+            address: null,
+            phone,
+            whatsapp: phone,
+            facebook: null,
+            instagram: null,
+            website: null,
+            map_link: null,
+        });
+        await contactRepo.save(contact);
+
+        const hotelDetails = hotelDetailsRepo.create({
+            listing_id: savedListing.id,
+            check_in_time: "12:00",
+            check_out_time: "11:00",
+            cancellation_policy: null,
+            refund_cutoff_hours: null,
+            auto_confirm_paid_bookings: false,
+        });
+        await hotelDetailsRepo.save(hotelDetails);
+
+        logInfo("Draft hotel created for vendor", {
+            userId: user.id,
+            listingId: savedListing.id,
+            locationId: location.location_id,
+        });
+    }
+
     async register(
         email: string,
         password: string,
         userRole: UserRole,
         name: string,
+        phone?: string,
+        cityId?: number,
     ): Promise<void> {
         await this.userRepository.manager.transaction(async (em) => {
             await this.validateEmailAvailable(email);
+            const normalizedPhone = userRole === UserRole.VENDOR
+                ? this.validatePhone(phone ?? "")
+                : (phone?.trim() || null);
 
             const hashedPassword = await this.hashPassword(password);
             const otp = this.generateOtp();
@@ -114,11 +223,19 @@ export class AuthService {
             const profile = this.profileRepository.create({
                 user_id: savedUser.id,
                 username: name,
+                phone_number: normalizedPhone,
                 business_name: userRole === UserRole.VENDOR ? name : null,
                 is_business_verified: false,
                 profile_picture: this.randomProfileImage(),
             });
             await em.save(UserProfile, profile);
+
+            if (userRole === UserRole.VENDOR) {
+                if (!cityId) {
+                    throw new AppError("City is required for hotel owner registration.", 400, ErrorCodes.VALIDATION_ERROR);
+                }
+                await this.createDraftHotelForVendor(em, savedUser, name, normalizedPhone!, cityId);
+            }
 
             logInfo(`User registered successfully: ${email}, Role: ${userRole}`);
         });

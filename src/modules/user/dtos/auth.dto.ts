@@ -5,6 +5,8 @@ export interface IRegisterDto {
     password: string;
     userType?: UserRole;
     name: string;
+    phone?: string;
+    cityId?: number;
 }
 
 export interface ILoginDto {
