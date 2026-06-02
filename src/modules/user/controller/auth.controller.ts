@@ -21,7 +21,14 @@ export class AuthController {
 
     async register(req: FastifyRequest<{ Body: IRegisterDto }>, reply: FastifyReply) {
         const userRole = req.body.userType ?? UserRole.CUSTOMER;
-        await this.authService.register(req.body.email, req.body.password, userRole, req.body.name);
+        await this.authService.register(
+            req.body.email,
+            req.body.password,
+            userRole,
+            req.body.name,
+            req.body.phone,
+            req.body.cityId,
+        );
         const response: IAuthMessageResponseDto = { 
             message: "Registration successful. Please check your email for a verification code." 
         };
