@@ -4,13 +4,18 @@ export function adActivationTemplate(
     adType: string,
     expiryDate: string
 ) {
+    const isHotel = adType.toLowerCase() === "hotel";
+    const itemLabel = isHotel ? "hotel" : "listing";
+    const titleLabel = isHotel ? "Hotel Activated" : "Listing Activated";
+    const manageLabel = isHotel ? "your hotel" : "your listing";
+
     return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Ad Activated - Khor</title>
+        <title>${titleLabel} - Khor</title>
         <style>
             * {
                 margin: 0;
@@ -163,9 +168,9 @@ export function adActivationTemplate(
             <div class="email-body">
                 <h2 class="greeting">Great news, ${vendorName}!</h2>
                 
-                <p class="message">Your ${adType} listing "<strong>${adName}</strong>" has been activated successfully.</p>
+                <p class="message">Your ${adType} ${itemLabel} "<strong>${adName}</strong>" has been activated successfully.</p>
                 
-                <p class="message">Your listing is now live and visible to travelers on the Khor platform.</p>
+                <p class="message">Your ${itemLabel} is now live and visible to travelers on the Khor platform.</p>
                 
                 <div class="summary-box">
                     <div class="summary-item">
@@ -182,7 +187,7 @@ export function adActivationTemplate(
                     </div>
                 </div>
                 
-                <p class="message">You can manage your listing and view performance analytics from your vendor dashboard.</p>
+                <p class="message">You can manage ${manageLabel} and view performance analytics from your vendor dashboard.</p>
                 
                 <a href="https://gokhor.com/owner-dashboard" class="action-button">GO TO DASHBOARD</a>
                 

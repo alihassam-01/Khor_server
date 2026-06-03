@@ -25,11 +25,14 @@ import {
     AuditLogEventType,
 } from "../constant/audit.constant";
 import { AuditLogService } from "./audit-log.service";
+import { Listing } from "@modules/user/entity/listing";
+import { ListingStatus, ListingType } from "@common/enums/listing.enums";
 
 export class UserService {
     private auditLogService = new AuditLogService();
     private userRepository: Repository<User> = AppDataSource.getRepository(User);
     private profileRepository: Repository<UserProfile> = AppDataSource.getRepository(UserProfile);
+    private listingRepository: Repository<Listing> = AppDataSource.getRepository(Listing);
     private authService = new AuthService(this.userRepository, this.profileRepository);
 
     private profileNameOf(user: User): string {
@@ -214,6 +217,10 @@ export class UserService {
 
         await this.userRepository.save(user);
         await this.profileRepository.save(profile);
+        await this.listingRepository.update(
+            { vendor_id: user.id, type: ListingType.HOTEL },
+            { is_active: true, status: ListingStatus.ACTIVE },
+        );
 
         logInfo(`Hotel owner approved: ${userId}`);
         return {
@@ -247,6 +254,10 @@ export class UserService {
         profile.is_business_verified = false;
         await this.userRepository.save(user);
         await this.profileRepository.save(profile);
+        await this.listingRepository.update(
+            { vendor_id: user.id, type: ListingType.HOTEL },
+            { is_active: false, status: ListingStatus.INACTIVE },
+        );
 
         logInfo(`Hotel owner suspended: ${userId}`);
         return {

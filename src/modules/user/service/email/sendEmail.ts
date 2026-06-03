@@ -8,6 +8,18 @@ import { bookingConfirmationEmailTemplate } from "./templates/bookingConfirmatio
 export class SendEmail {
   private auditLogService = new AuditLogService();
 
+  private getListingEmailSubject(kind: "activation" | "warning" | "expired", listingType: string) {
+    const itemLabel = listingType.toLowerCase() === "hotel" ? "Hotel" : "Listing";
+
+    if (kind === "activation") {
+      return `Your ${itemLabel} is Now Live!`;
+    }
+    if (kind === "warning") {
+      return `Your ${itemLabel} is About to Expire`;
+    }
+    return `Your ${itemLabel} has Expired`;
+  }
+
   private async sendAuditedEmail(
     eventType: AuditLogEventType,
     to: string,
@@ -289,7 +301,7 @@ export class SendEmail {
     
     const success = await sendEmail({
       to: email,
-      subject: EMAIL_SUBJECTS.AD_ACTIVATION,
+      subject: this.getListingEmailSubject("activation", adType),
       html,
     });
 
@@ -317,7 +329,7 @@ export class SendEmail {
     
     const success = await sendEmail({
       to: email,
-      subject: EMAIL_SUBJECTS.AD_EXPIRATION_WARNING,
+      subject: this.getListingEmailSubject("warning", adType),
       html,
     });
 
@@ -344,7 +356,7 @@ export class SendEmail {
     
     const success = await sendEmail({
       to: email,
-      subject: EMAIL_SUBJECTS.AD_EXPIRED,
+      subject: this.getListingEmailSubject("expired", adType),
       html,
     });
 

@@ -4,13 +4,17 @@ export function adExpiredTemplate(
     adType: string,
     expiryDate: string
 ) {
+    const isHotel = adType.toLowerCase() === "hotel";
+    const itemLabel = isHotel ? "hotel" : "listing";
+    const titleLabel = isHotel ? "Hotel Expired" : "Listing Expired";
+
     return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Ad Expired - Khor</title>
+        <title>${titleLabel} - Khor</title>
         <style>
             * {
                 margin: 0;
@@ -163,9 +167,9 @@ export function adExpiredTemplate(
             <div class="email-body">
                 <h2 class="greeting">Hello ${vendorName}, Subscription Expired</h2>
                 
-                <p class="message">Your ${adType} listing "<strong>${adName}</strong>" has expired and is no longer visible to travelers.</p>
+                <p class="message">Your ${adType} ${itemLabel} "<strong>${adName}</strong>" has expired and is no longer visible to travelers.</p>
                 
-                <p class="message">Don't miss out on potential customers! Renew your subscription now to restore your listing's visibility.</p>
+                <p class="message">Don't miss out on potential customers! Renew your subscription now to restore your ${itemLabel}'s visibility.</p>
                 
                 <div class="summary-box">
                     <div class="summary-item">
@@ -182,7 +186,7 @@ export function adExpiredTemplate(
                     </div>
                 </div>
                 
-                <p class="message">Once renewed, your listing will immediately become active again.</p>
+                <p class="message">Once renewed, your ${itemLabel} will immediately become active again.</p>
                 
                 <a href="https://gokhor.com/owner-dashboard" class="action-button">RENEW NOW</a>
                 

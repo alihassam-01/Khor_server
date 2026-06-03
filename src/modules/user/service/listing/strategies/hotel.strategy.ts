@@ -111,6 +111,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             latitude: dto.latitude ?? null,
             longitude: dto.longitude ?? null,
             is_featured: !!dto.is_featured,
+            is_active: dto.is_active,
             is_verified: !!dto.verified,
             contact: {
                 phone: dto.phone ?? null,
