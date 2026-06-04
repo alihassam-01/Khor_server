@@ -14,10 +14,12 @@ import {
     IBookingActionBody,
     IBookingIdParams,
     IBookingListQuery,
+    IBookingPaymentStatusParams,
     IRefundIdParams,
     IRefundListQuery,
     IRefundProcessBody,
     IHotelAvailabilityParams,
+    IPayFastReturnParams,
     IRoomTypeBookingParams,
 } from "@modules/user/types";
 
@@ -48,6 +50,18 @@ export class BookingController {
     ) {
         const booking = await this.bookingService.createCustomerBooking(this.getActor(req), req.body);
         reply.code(201).send(booking);
+    }
+
+    async createCustomerCheckout(
+        req: FastifyRequest<{ Body: ICreateHotelBookingDTO }>,
+        reply: FastifyReply,
+    ) {
+        const checkout = await this.bookingService.createCustomerCheckout(
+            this.getActor(req),
+            req.body,
+            req.ip,
+        );
+        reply.code(201).send(checkout);
     }
 
     async listCustomerBookings(
@@ -339,6 +353,50 @@ export class BookingController {
             req.body?.reason,
         );
         reply.send(refund);
+    }
+
+    async verifyCustomerPayment(
+        req: FastifyRequest<{ Params: IBookingPaymentStatusParams }>,
+        reply: FastifyReply,
+    ) {
+        const booking = await this.bookingService.verifyCustomerPayFastBooking(
+            req.params.id,
+            this.getActor(req),
+        );
+        reply.send(booking);
+    }
+
+    async handlePayFastReturn(
+        req: FastifyRequest<{ Params: IPayFastReturnParams; Body: Record<string, unknown>; Querystring: Record<string, unknown> }>,
+        reply: FastifyReply,
+    ) {
+        const payload = {
+            ...(req.query || {}),
+            ...(req.body || {}),
+        };
+        const bookingId = String(payload.booking_id ?? payload.bookingId ?? "");
+        const redirectUrl = await this.bookingService.handlePayFastReturn(
+            bookingId,
+            req.params.result,
+            payload,
+        );
+        const escapedUrl = redirectUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        reply
+            .code(200)
+            .type("text/html; charset=utf-8")
+            .send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0;url=${escapedUrl}" />
+    <title>Redirecting...</title>
+  </head>
+  <body>
+    <p>Redirecting back to booking status...</p>
+    <p><a href="${escapedUrl}">Continue</a></p>
+    <script>window.location.replace(${JSON.stringify(redirectUrl)});</script>
+  </body>
+</html>`);
     }
 
     async getAvailability(

@@ -1,3 +1,4 @@
+import { CONFIG } from "@config/config";
 import { AppDataSource } from "@config/ormconfig";
 import { EntityManager } from "typeorm";
 import {
@@ -34,6 +35,7 @@ import {
     ICreateHotelBookingDTO,
     IHotelAvailabilityDTO,
     IHotelBookingDTO,
+    IHotelBookingCheckoutResponseDTO,
     IHotelBookingListResponseDTO,
     IRecordBookingPaymentDTO,
     IBookingRefundDTO,
@@ -49,6 +51,7 @@ import { bookingRealtimeService } from "./booking-realtime.service";
 import { SendEmail } from "./email/sendEmail";
 import { pickBestPromotion } from "./listing/hotel-promotion.util";
 import { NotificationService, type NotificationPayload } from "./notification.service";
+import { PayFastService } from "./payfast.service";
 
 const ACTIVE_BOOKING_STATUSES = [
     HotelBookingStatus.PENDING,
@@ -82,6 +85,7 @@ export class BookingService {
     private readonly statusHistoryService = new BookingStatusHistoryService();
     private readonly emailService = new SendEmail();
     private readonly notificationService = new NotificationService();
+    private readonly payFastService = new PayFastService();
     private readonly holdDurationMs = 10 * 60 * 1000;
 
     private assertUuid(value: string, fieldName: string): void {
@@ -205,6 +209,13 @@ export class BookingService {
                 ErrorCodes.VALIDATION_ERROR,
             );
         }
+    }
+
+    private isDeferredPayFastCheckout(
+        dto: ICreateHotelBookingDTO,
+        source: BookingSource,
+    ): boolean {
+        return source === BookingSource.CUSTOMER_WEB && dto.payment_provider === "payfast_redirect";
     }
 
     private validateHoldInput(dto: ICreateHotelBookingHoldDTO): void {
@@ -945,8 +956,21 @@ export class BookingService {
             const discountAmount = this.roundAmount((baseNightlyRate - nightlyRate) * dto.rooms_count * nights);
             const totalAmount = this.roundAmount(subtotal - discountAmount);
             const initialPaymentAmount = this.roundAmount(dto.payment_amount ?? 0);
+            const isDeferredPayFastCheckout = this.isDeferredPayFastCheckout(dto, source);
 
-            if (source === BookingSource.CUSTOMER_WEB && initialPaymentAmount !== totalAmount) {
+            if (isDeferredPayFastCheckout && initialPaymentAmount !== 0) {
+                throw new AppError(
+                    "PayFast checkout sessions must start without a captured payment amount.",
+                    400,
+                    ErrorCodes.VALIDATION_ERROR,
+                );
+            }
+
+            if (
+                source === BookingSource.CUSTOMER_WEB
+                && !isDeferredPayFastCheckout
+                && initialPaymentAmount !== totalAmount
+            ) {
                 throw new AppError(
                     "Online bookings require a single full payment equal to the booking total",
                     400,
@@ -962,12 +986,15 @@ export class BookingService {
                 );
             }
 
-            const initialBookingPaymentStatus = initialPaymentAmount <= 0
+            const initialBookingPaymentStatus = isDeferredPayFastCheckout
+                ? BookingPaymentStatus.PENDING
+                : initialPaymentAmount <= 0
                 ? BookingPaymentStatus.PENDING
                 : initialPaymentAmount < totalAmount
                     ? BookingPaymentStatus.PARTIALLY_PAID
                     : BookingPaymentStatus.PAID;
             const shouldAutoConfirmCustomerBooking = source === BookingSource.CUSTOMER_WEB
+                && !isDeferredPayFastCheckout
                 && initialBookingPaymentStatus === BookingPaymentStatus.PAID
                 && await this.shouldAutoConfirmPaidBooking(manager, dto.listing_id);
 
@@ -1008,13 +1035,15 @@ export class BookingService {
             });
 
             const savedBooking = await manager.getRepository(HotelBooking).save(booking);
-            const allocation = manager.getRepository(HotelBookingAllocation).create({
-                booking_id: savedBooking.id,
-                listing_id: dto.listing_id,
-                room_type_id: dto.room_type_id,
-                quantity_reserved: dto.rooms_count,
-            });
-            await manager.getRepository(HotelBookingAllocation).save(allocation);
+            if (!isDeferredPayFastCheckout) {
+                const allocation = manager.getRepository(HotelBookingAllocation).create({
+                    booking_id: savedBooking.id,
+                    listing_id: dto.listing_id,
+                    room_type_id: dto.room_type_id,
+                    quantity_reserved: dto.rooms_count,
+                });
+                await manager.getRepository(HotelBookingAllocation).save(allocation);
+            }
 
             if (activePromotion?.id) {
                 await manager.getRepository(HotelPromotion).increment(
@@ -1038,6 +1067,23 @@ export class BookingService {
                     notes: dto.payment_notes?.trim() || null,
                     created_by_user_id: actor.userId,
                 });
+            } else if (isDeferredPayFastCheckout) {
+                await this.insertBookingPayment(manager, {
+                    booking_id: savedBooking.id,
+                    payment_method: null,
+                    payment_status: BookingPaymentStatus.PENDING,
+                    currency: savedBooking.currency,
+                    amount: totalAmount,
+                    captured_amount: 0,
+                    refunded_amount: 0,
+                    provider: "payfast_redirect",
+                    notes: dto.payment_notes?.trim() || "Pending PayFast checkout",
+                    metadata: {
+                        checkout_mode: "payfast_redirect",
+                        hold_id: hold?.id ?? null,
+                    },
+                    created_by_user_id: actor.userId,
+                });
             }
 
             const paymentSnapshot = await manager.getRepository(BookingPayment).find({
@@ -1051,7 +1097,7 @@ export class BookingService {
             );
             await manager.getRepository(HotelBooking).save(savedBooking);
 
-            if (hold) {
+            if (hold && !isDeferredPayFastCheckout) {
                 hold.status = BookingHoldStatus.CONSUMED;
                 hold.consumed_at = new Date();
                 await manager.getRepository(BookingRoomHold).save(hold);
@@ -1101,6 +1147,7 @@ export class BookingService {
                     rooms_count: dto.rooms_count,
                     guest_count: dto.guest_count,
                     payment_amount: initialPaymentAmount,
+                    payment_mode: isDeferredPayFastCheckout ? "payfast_redirect" : "direct_capture",
                     hold_id: hold?.id ?? null,
                 },
             }, manager);
@@ -1163,6 +1210,70 @@ export class BookingService {
             throw new AppError("Booking not found", 404, ErrorCodes.NOT_FOUND);
         }
         return booking;
+    }
+
+    private async loadBookingForGateway(
+        bookingId: string,
+        manager: EntityManager = AppDataSource.manager,
+    ): Promise<HotelBooking> {
+        this.assertUuid(bookingId, "booking id");
+
+        const booking = await manager.getRepository(HotelBooking)
+            .createQueryBuilder("booking")
+            .leftJoinAndSelect("booking.listing", "listing")
+            .leftJoinAndSelect("listing.location", "listing_location")
+            .leftJoinAndSelect("listing.contact", "listing_contact")
+            .leftJoinAndSelect("listing.hotel_details", "listing_hotel_details")
+            .leftJoinAndSelect("listing.media", "listing_media")
+            .leftJoinAndSelect("listing.vendor", "listing_vendor")
+            .leftJoinAndSelect("booking.room_type", "room_type")
+            .leftJoinAndSelect("booking.payments", "payments")
+            .leftJoinAndSelect("booking.refunds", "refunds")
+            .where("booking.id = :bookingId", { bookingId })
+            .orderBy("payments.created_at", "DESC")
+            .addOrderBy("refunds.created_at", "DESC")
+            .getOne();
+
+        if (!booking) {
+            throw new AppError("Booking not found", 404, ErrorCodes.NOT_FOUND);
+        }
+        return booking;
+    }
+
+    private getLatestPayFastPayment(booking: HotelBooking): BookingPayment | null {
+        const payments = [...(booking.payments ?? [])]
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        return payments.find((payment) => {
+            const provider = String(payment.provider ?? "").toLowerCase();
+            const mode = String((payment.metadata as Record<string, unknown> | null)?.checkout_mode ?? "").toLowerCase();
+            return provider === "payfast" || provider === "payfast_redirect" || mode === "payfast_redirect";
+        }) ?? null;
+    }
+
+    private buildPayFastReturnUrl(result: "success" | "failure", bookingId: string): string {
+        const apiBase =
+            CONFIG.api_domain.url ||
+            `http://${CONFIG.server.host || "127.0.0.1"}:${CONFIG.server.port || 3008}`;
+        const base = `${apiBase}/api/payments/payfast/return/${result}`;
+        return `${base}?booking_id=${encodeURIComponent(bookingId)}`;
+    }
+
+    private buildPayFastFrontendStatusUrl(bookingId: string, status?: string): string {
+        const base = `${CONFIG.web_domain.url || "http://127.0.0.1:9002"}/payment/result`;
+        const params = new URLSearchParams({ bookingId });
+        if (status) params.set("status", status);
+        return `${base}?${params.toString()}`;
+    }
+
+    private mergePaymentMetadata(
+        payment: BookingPayment,
+        extra: Record<string, unknown>,
+    ): Record<string, unknown> {
+        return {
+            ...((payment.metadata as Record<string, unknown> | null) ?? {}),
+            ...extra,
+        };
     }
 
     private toDTO(booking: HotelBooking): IHotelBookingDTO {
@@ -1666,6 +1777,94 @@ export class BookingService {
 
     async createCustomerBooking(actor: AuthActor, dto: ICreateHotelBookingDTO): Promise<IHotelBookingDTO> {
         return this.createBooking(dto, actor, BookingSource.CUSTOMER_WEB);
+    }
+
+    async createCustomerCheckout(
+        actor: AuthActor,
+        dto: ICreateHotelBookingDTO,
+        customerIp: string,
+    ): Promise<IHotelBookingCheckoutResponseDTO> {
+        const booking = await this.createBooking({
+            ...dto,
+            payment_amount: 0,
+            payment_method: undefined,
+            payment_notes: "Pending PayFast checkout",
+            payment_provider: "payfast_redirect",
+            transaction_id: undefined,
+        }, actor, BookingSource.CUSTOMER_WEB);
+
+        const checkoutExpiryMinutes = Math.max(CONFIG.payfast.checkoutHoldMinutes, 10);
+        const expiresAt = new Date(Date.now() + checkoutExpiryMinutes * 60 * 1000);
+
+        const session = await AppDataSource.transaction(async (manager) => {
+            const bookingEntity = await this.loadBookingForGateway(booking.id, manager);
+            const payment = this.getLatestPayFastPayment(bookingEntity);
+            if (!payment) {
+                throw new AppError(
+                    "Pending PayFast booking payment was not created.",
+                    500,
+                    ErrorCodes.INTERNAL_SERVER_ERROR,
+                );
+            }
+
+            const paymentMetadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+            const holdId = String(paymentMetadata.hold_id ?? dto.hold_id ?? "");
+
+            if (holdId && isValidUuid(holdId)) {
+                const hold = await this.loadLockedActiveHold(manager, holdId, actor.userId);
+                hold.expires_at = expiresAt;
+                await manager.getRepository(BookingRoomHold).save(hold);
+            }
+
+            const checkout = await this.payFastService.createCheckoutSession({
+                basketId: bookingEntity.booking_number,
+                amount: Number(bookingEntity.total_amount),
+                customerEmail: bookingEntity.guest_email,
+                customerMobile: bookingEntity.guest_phone,
+                description: `Hotel booking ${bookingEntity.booking_number}`,
+                successUrl: this.buildPayFastReturnUrl("success", bookingEntity.id),
+                failureUrl: this.buildPayFastReturnUrl("failure", bookingEntity.id),
+                checkoutUrl: this.buildPayFastFrontendStatusUrl(bookingEntity.id, "processing"),
+            });
+
+            payment.provider = "payfast";
+            payment.metadata = this.mergePaymentMetadata(payment, {
+                checkout_mode: "payfast_redirect",
+                basket_id: bookingEntity.booking_number,
+                access_token_issued: true,
+                checkout_url: checkout.checkoutUrl,
+                customer_ip: customerIp || null,
+                expires_at: expiresAt.toISOString(),
+            });
+            await manager.getRepository(BookingPayment).save(payment);
+
+            await this.auditService.record({
+                booking_id: bookingEntity.id,
+                event_type: "booking_payment_checkout_initiated",
+                actor_user_id: actor.userId,
+                actor_role: BookingAuditActorRole.CUSTOMER,
+                source: BookingSource.CUSTOMER_WEB,
+                after_state: {
+                    booking_status: bookingEntity.booking_status,
+                    payment_status: bookingEntity.payment_status,
+                },
+                metadata: {
+                    provider: "payfast",
+                    basket_id: bookingEntity.booking_number,
+                    expires_at: expiresAt.toISOString(),
+                },
+            }, manager);
+
+            return {
+                booking_id: bookingEntity.id,
+                booking_number: bookingEntity.booking_number,
+                checkout_url: checkout.checkoutUrl,
+                form_fields: checkout.formFields,
+                expires_at: expiresAt,
+            };
+        });
+
+        return session;
     }
 
     async createVendorBooking(actor: AuthActor, dto: ICreateHotelBookingDTO): Promise<IHotelBookingDTO> {
@@ -2447,6 +2646,333 @@ export class BookingService {
             await this.notifyBookingLifecycle(booking.id, "payment_recorded", input.notes ?? null);
         }
         return booking;
+    }
+
+    private async finalizeGatewayPaidBooking(
+        manager: EntityManager,
+        booking: HotelBooking,
+        payment: BookingPayment,
+        transactionId?: string | null,
+    ): Promise<void> {
+        if (booking.payment_status === BookingPaymentStatus.PAID && booking.booking_status === HotelBookingStatus.CONFIRMED) {
+            return;
+        }
+
+        const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+        const holdId = String(metadata.hold_id ?? "");
+
+        const roomType = await this.loadLockedRoomType(manager, booking.room_type_id);
+        const reservedRooms = await this.getReservedRoomCount(
+            manager,
+            booking.room_type_id,
+            booking.check_in_date,
+            booking.check_out_date,
+        );
+        const heldRooms = await this.getActiveHoldRoomCount(
+            manager,
+            booking.room_type_id,
+            booking.check_in_date,
+            booking.check_out_date,
+            holdId && isValidUuid(holdId) ? holdId : undefined,
+        );
+        const availableRooms = roomType.total_rooms - reservedRooms - heldRooms;
+
+        if (booking.rooms_count > availableRooms) {
+            throw new AppError(
+                "Payment succeeded but the room inventory is no longer available. Manual review is required.",
+                409,
+                ErrorCodes.CONFLICT,
+            );
+        }
+
+        const allocationRepo = manager.getRepository(HotelBookingAllocation);
+        const existingAllocation = await allocationRepo.findOne({
+            where: { booking_id: booking.id },
+        });
+        if (!existingAllocation) {
+            const allocation = allocationRepo.create({
+                booking_id: booking.id,
+                listing_id: booking.listing_id,
+                room_type_id: booking.room_type_id,
+                quantity_reserved: booking.rooms_count,
+            });
+            await allocationRepo.save(allocation);
+        }
+
+        if (holdId && isValidUuid(holdId)) {
+            const hold = await manager.getRepository(BookingRoomHold).findOne({
+                where: { id: holdId },
+                relations: ["listing"],
+            });
+            if (hold && hold.status === BookingHoldStatus.ACTIVE) {
+                hold.status = BookingHoldStatus.CONSUMED;
+                hold.consumed_at = new Date();
+                await manager.getRepository(BookingRoomHold).save(hold);
+                if (hold.listing) {
+                    await this.publishHoldEvent(
+                        hold as BookingRoomHold & { listing: Listing },
+                        "hold_consumed",
+                        manager,
+                    );
+                }
+            }
+        }
+
+        const previousBookingStatus = booking.booking_status;
+        const previousPaymentStatus = booking.payment_status;
+        booking.payment_status = BookingPaymentStatus.PAID;
+        payment.payment_status = BookingPaymentStatus.PAID;
+        payment.captured_amount = Number(booking.total_amount);
+        payment.transaction_id = transactionId ?? payment.transaction_id ?? null;
+        payment.provider_payment_id = transactionId ?? payment.provider_payment_id ?? null;
+        payment.metadata = this.mergePaymentMetadata(payment, {
+            checkout_status: "verified_success",
+            verified_at: new Date().toISOString(),
+        });
+        await manager.getRepository(BookingPayment).save(payment);
+
+        booking.booking_status = await this.shouldAutoConfirmPaidBooking(manager, booking.listing_id)
+            ? HotelBookingStatus.CONFIRMED
+            : HotelBookingStatus.CONFIRMED;
+        booking.confirmed_at = booking.confirmed_at ?? new Date();
+        await manager.getRepository(HotelBooking).save(booking);
+
+        await this.statusHistoryService.record({
+            booking_id: booking.id,
+            status_type: BookingStatusType.PAYMENT,
+            from_status: previousPaymentStatus,
+            to_status: booking.payment_status,
+            changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
+            metadata: {
+                provider: "payfast",
+                transaction_id: payment.transaction_id ?? null,
+            },
+        }, manager);
+
+        if (previousBookingStatus !== booking.booking_status) {
+            await this.statusHistoryService.record({
+                booking_id: booking.id,
+                status_type: BookingStatusType.BOOKING,
+                from_status: previousBookingStatus,
+                to_status: booking.booking_status,
+                changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
+                metadata: {
+                    provider: "payfast",
+                    auto_confirm_paid_bookings: true,
+                },
+            }, manager);
+        }
+
+        await this.auditService.record({
+            booking_id: booking.id,
+            event_type: "booking_payment_verified_by_gateway",
+            actor_user_id: null,
+            actor_role: BookingAuditActorRole.SYSTEM,
+            source: "payfast",
+            before_state: {
+                booking_status: previousBookingStatus,
+                payment_status: previousPaymentStatus,
+            },
+            after_state: {
+                booking_status: booking.booking_status,
+                payment_status: booking.payment_status,
+            },
+            metadata: {
+                provider: "payfast",
+                transaction_id: payment.transaction_id ?? null,
+            },
+        }, manager);
+
+        await this.publishBookingEvent(
+            booking as HotelBooking & { listing: Listing },
+            "booking_payment_verified_by_gateway",
+            manager,
+        );
+    }
+
+    private async markGatewayPaymentFailed(
+        manager: EntityManager,
+        booking: HotelBooking,
+        payment: BookingPayment,
+        state: "failed" | "cancelled" | "pending",
+        transactionId?: string | null,
+        message?: string | null,
+    ): Promise<void> {
+        const previousPaymentStatus = booking.payment_status;
+        payment.payment_status = state === "pending" ? BookingPaymentStatus.PENDING : BookingPaymentStatus.FAILED;
+        payment.transaction_id = transactionId ?? payment.transaction_id ?? null;
+        payment.provider_payment_id = transactionId ?? payment.provider_payment_id ?? null;
+        payment.metadata = this.mergePaymentMetadata(payment, {
+            checkout_status: state,
+            gateway_message: message ?? null,
+            verified_at: new Date().toISOString(),
+        });
+        await manager.getRepository(BookingPayment).save(payment);
+
+        booking.payment_status = payment.payment_status;
+        await manager.getRepository(HotelBooking).save(booking);
+
+        if (previousPaymentStatus !== booking.payment_status) {
+            await this.statusHistoryService.record({
+                booking_id: booking.id,
+                status_type: BookingStatusType.PAYMENT,
+                from_status: previousPaymentStatus,
+                to_status: booking.payment_status,
+                changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
+                metadata: {
+                    provider: "payfast",
+                    transaction_id: payment.transaction_id ?? null,
+                    gateway_state: state,
+                },
+            }, manager);
+        }
+
+        await this.auditService.record({
+            booking_id: booking.id,
+            event_type: state === "cancelled"
+                ? "booking_payment_cancelled_by_gateway"
+                : state === "failed"
+                    ? "booking_payment_failed_by_gateway"
+                    : "booking_payment_pending_gateway_review",
+            actor_role: BookingAuditActorRole.SYSTEM,
+            source: "payfast",
+            before_state: {
+                payment_status: previousPaymentStatus,
+            },
+            after_state: {
+                payment_status: booking.payment_status,
+            },
+            metadata: {
+                provider: "payfast",
+                transaction_id: payment.transaction_id ?? null,
+                gateway_message: message ?? null,
+            },
+        }, manager);
+    }
+
+    private async verifyPayFastBookingInternal(
+        bookingId: string,
+        manager: EntityManager = AppDataSource.manager,
+    ): Promise<HotelBooking> {
+        const booking = await this.loadBookingForGateway(bookingId, manager);
+        const payment = this.getLatestPayFastPayment(booking);
+        if (!payment) {
+            return booking;
+        }
+
+        const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+        const basketId = String(metadata.basket_id ?? booking.booking_number ?? "");
+        const statusResult = await this.payFastService.getTransactionStatus({
+            transactionId: payment.transaction_id ?? payment.provider_payment_id ?? null,
+            basketId,
+        });
+
+        if (statusResult.state === "paid") {
+            await this.finalizeGatewayPaidBooking(
+                manager,
+                booking,
+                payment,
+                statusResult.transactionId ?? payment.transaction_id ?? null,
+            );
+        } else {
+            await this.markGatewayPaymentFailed(
+                manager,
+                booking,
+                payment,
+                statusResult.state,
+                statusResult.transactionId ?? payment.transaction_id ?? null,
+                statusResult.message,
+            );
+        }
+
+        return this.loadBookingForGateway(bookingId, manager);
+    }
+
+    async verifyCustomerPayFastBooking(bookingId: string, actor: AuthActor): Promise<IHotelBookingDTO> {
+        if (actor.userType !== UserRole.CUSTOMER) {
+            throw new AppError("Only customers can verify web booking payments", 403, ErrorCodes.FORBIDDEN);
+        }
+
+        const ownedBooking = await this.loadBookingForActor(bookingId, actor, "customer");
+        const verified = await AppDataSource.transaction((manager) => this.verifyPayFastBookingInternal(ownedBooking.id, manager));
+        return this.toDTO(verified);
+    }
+
+    async handlePayFastReturn(
+        bookingId: string,
+        result: string,
+        payload: Record<string, unknown>,
+    ): Promise<string> {
+        if (!bookingId || !isValidUuid(bookingId)) {
+            return this.buildPayFastFrontendStatusUrl("", "failed");
+        }
+
+        try {
+            const booking = await AppDataSource.transaction(async (manager) => {
+                const booking = await this.loadBookingForGateway(bookingId, manager);
+                const payment = this.getLatestPayFastPayment(booking);
+                if (!payment) {
+                    return booking;
+                }
+
+                const transactionId = payload.transaction_id ?? payload.transactionId ?? payload.txn_id ?? null;
+                const errCode = payload.err_code ?? payload.errCode ?? payload.code ?? null;
+                const basketId = String(
+                    payload.basket_id
+                    ?? payload.basketId
+                    ?? (payment.metadata as Record<string, unknown> | null)?.basket_id
+                    ?? booking.booking_number
+                    ?? "",
+                );
+                const validationHash = payload.validation_hash ?? payload.validationHash ?? null;
+                const isValidHash = this.payFastService.validateReturnHash({
+                    basketId,
+                    errCode: errCode ? String(errCode) : null,
+                    validationHash: validationHash ? String(validationHash) : null,
+                });
+
+                payment.transaction_id = transactionId ? String(transactionId) : payment.transaction_id ?? null;
+                payment.provider_payment_id = transactionId ? String(transactionId) : payment.provider_payment_id ?? null;
+                payment.metadata = this.mergePaymentMetadata(payment, {
+                    return_result: result,
+                    basket_id: basketId || null,
+                    callback_hash_valid: isValidHash,
+                    callback_payload: payload,
+                });
+                await manager.getRepository(BookingPayment).save(payment);
+
+                if (!isValidHash) {
+                    await this.auditService.record({
+                        booking_id: booking.id,
+                        event_type: "booking_payment_callback_hash_invalid",
+                        actor_role: BookingAuditActorRole.SYSTEM,
+                        source: BookingSource.CUSTOMER_WEB,
+                        after_state: {
+                            booking_status: booking.booking_status,
+                            payment_status: booking.payment_status,
+                        },
+                        metadata: {
+                            provider: "payfast",
+                            basket_id: basketId,
+                            err_code: errCode ?? null,
+                        },
+                    }, manager);
+
+                    return booking;
+                }
+
+                return this.verifyPayFastBookingInternal(bookingId, manager);
+            });
+
+            const status = booking.payment_status === BookingPaymentStatus.PAID
+                ? "success"
+                : booking.payment_status === BookingPaymentStatus.FAILED
+                    ? "failed"
+                    : "pending";
+            return this.buildPayFastFrontendStatusUrl(booking.id, status);
+        } catch {
+            return this.buildPayFastFrontendStatusUrl(bookingId, result === "success" ? "pending" : "failed");
+        }
     }
 
     async getAvailability(

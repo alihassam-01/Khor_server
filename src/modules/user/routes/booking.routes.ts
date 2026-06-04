@@ -83,6 +83,12 @@ export async function bookingRoutes(fastify: FastifyInstance) {
     const bookingController = new BookingController();
 
     fastify.post<{ Body: ICreateHotelBookingDTO }>(
+        "/bookings/hotel/checkout",
+        { preHandler: authenticate },
+        bookingController.createCustomerCheckout.bind(bookingController),
+    );
+
+    fastify.post<{ Body: ICreateHotelBookingDTO }>(
         "/bookings/hotel",
         { preHandler: authenticate },
         bookingController.createCustomerBooking.bind(bookingController),
@@ -242,6 +248,22 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         "/admin/refunds/:id/process",
         { preHandler: [authenticate, authorizeAdmin] },
         bookingController.processRefund.bind(bookingController),
+    );
+
+    fastify.get<{ Params: IBookingIdParams }>(
+        "/bookings/:id/payment-status",
+        { preHandler: authenticate },
+        bookingController.verifyCustomerPayment.bind(bookingController),
+    );
+
+    fastify.get(
+        "/payments/payfast/return/:result",
+        bookingController.handlePayFastReturn.bind(bookingController),
+    );
+
+    fastify.post(
+        "/payments/payfast/return/:result",
+        bookingController.handlePayFastReturn.bind(bookingController),
     );
 
     fastify.get<{ Params: IHotelAvailabilityParams; Querystring: IAvailabilityQuery }>(

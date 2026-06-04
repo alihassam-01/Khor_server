@@ -31,11 +31,30 @@ export const CONFIG = {
   web_domain: {
     url: process.env.WEB_DOMAIN,
   },
+  api_domain: {
+    url: process.env.API_PUBLIC_URL || "",
+  },
   admin_domain: {
     url: process.env.ADMIN_DOMAIN || "https://admin.gokhor.com",
   },
   partner_domain: {
     url: process.env.PARTNER_DOMAIN || "http://127.0.0.1:9014",
+  },
+  payfast: {
+    merchantId: process.env.PAYFAST_MERCHANT_ID || "",
+    securedKey: process.env.PAYFAST_SECURED_KEY || "",
+    merchantName: process.env.PAYFAST_MERCHANT_NAME || "Khor",
+    currencyCode: process.env.PAYFAST_CURRENCY_CODE || "PKR",
+    version: process.env.PAYFAST_VERSION || "MERCHANTCART-0.1",
+    transactionType: process.env.PAYFAST_TRANSACTION_TYPE || "ECOMM_PURCHASE",
+    procCode: process.env.PAYFAST_PROC_CODE || "00",
+    storeId: process.env.PAYFAST_STORE_ID || "",
+    signature: process.env.PAYFAST_SIGNATURE || "",
+    accessTokenUrl: process.env.PAYFAST_ACCESS_TOKEN_URL || "https://ipguat.apps.net.pk/Ecommerce/api/Transaction/GetAccessToken",
+    checkoutPostUrl: process.env.PAYFAST_CHECKOUT_POST_URL || "https://ipguat.apps.net.pk/Ecommerce/api/Transaction/PostTransaction",
+    transactionStatusUrl: process.env.PAYFAST_TRANSACTION_STATUS_URL || "https://ipguat.apps.net.pk/Ecommerce/api/transaction",
+    transactionStatusByBasketUrl: process.env.PAYFAST_TRANSACTION_STATUS_BY_BASKET_URL || "",
+    checkoutHoldMinutes: Number(process.env.PAYFAST_CHECKOUT_HOLD_MINUTES) || 30,
   },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',

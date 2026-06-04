@@ -12,6 +12,7 @@
     "typeorm": "node -r ts-node/register/transpile-only -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "migration:generate": "npm run typeorm -- migration:generate -d src/config/ormconfig.ts",
     "migration:run": "npm run typeorm -- migration:run -d src/config/ormconfig.ts",
+    "migration:run:dist": "node ./node_modules/typeorm/cli.js migration:run -d dist/config/ormconfig.js",
     "migration:revert": "npm run typeorm -- migration:revert -d src/config/ormconfig.ts",
     "migration:show": "npm run typeorm -- migration:show -d src/config/ormconfig.ts",
     "seed:locations": "ts-node src/scripts/seed-locations.ts",

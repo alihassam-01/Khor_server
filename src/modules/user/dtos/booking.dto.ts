@@ -28,6 +28,14 @@ export interface ICreateHotelBookingDTO {
     transaction_id?: string;
 }
 
+export interface IHotelBookingCheckoutResponseDTO {
+    booking_id: string;
+    booking_number: string;
+    checkout_url: string;
+    form_fields: Record<string, string>;
+    expires_at: Date;
+}
+
 export interface ICreateHotelBookingHoldDTO {
     listing_id: string;
     room_type_id: string;

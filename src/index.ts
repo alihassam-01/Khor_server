@@ -1,4 +1,3 @@
-import 'tsconfig-paths/register';
 import fastify from "fastify";
 import typeormPlugin from './app/plugins/typeorm';
 import swaggerPlugin from './app/plugins/swagger';
