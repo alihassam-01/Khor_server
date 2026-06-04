@@ -1,6 +1,7 @@
 import { CONFIG } from "@config/config";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { logInfo, logWarn } from "@lib/logger";
 import { createHash } from "node:crypto";
 
 type CreateCheckoutSessionInput = {
@@ -8,6 +9,7 @@ type CreateCheckoutSessionInput = {
     amount: number;
     customerEmail: string;
     customerMobile: string;
+    customerIp?: string | null;
     description: string;
     successUrl: string;
     failureUrl: string;
@@ -24,6 +26,48 @@ type PayFastTransactionResult = {
 };
 
 export class PayFastService {
+    private formatOrderDate(date: Date): string {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        const seconds = String(date.getSeconds()).padStart(2, "0");
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    }
+
+    private normalizeCustomerIp(value?: string | null): string {
+        const raw = String(value ?? "").trim();
+        if (!raw) return "";
+
+        const first = raw.split(",")[0]?.trim() ?? "";
+        if (!first) return "";
+        if (first === "::1") return "127.0.0.1";
+        if (first.startsWith("::ffff:")) return first.slice(7);
+        return first;
+    }
+
+    private isPublicCallbackUrl(value: string): boolean {
+        try {
+            const parsed = new URL(value);
+            if (!/^https?:$/.test(parsed.protocol)) return false;
+
+            const hostname = parsed.hostname.toLowerCase();
+            if (
+                hostname === "localhost"
+                || hostname === "127.0.0.1"
+                || hostname === "0.0.0.0"
+                || hostname === "::1"
+            ) {
+                return false;
+            }
+
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     private sha256HexLower(input: string): string {
         return createHash("sha256").update(input, "utf8").digest("hex").toLowerCase();
     }
@@ -172,6 +216,32 @@ export class PayFastService {
     }> {
         const config = this.getRequiredConfig();
         const amount = input.amount.toFixed(2);
+        const customerIp = this.normalizeCustomerIp(input.customerIp);
+        const orderDate = this.formatOrderDate(new Date());
+
+        const callbackUrls = {
+            successUrl: input.successUrl,
+            failureUrl: input.failureUrl,
+            checkoutUrl: input.checkoutUrl,
+        };
+
+        const invalidUrls = Object.entries(callbackUrls)
+            .filter(([, value]) => !this.isPublicCallbackUrl(value))
+            .map(([key]) => key);
+
+        if (invalidUrls.length > 0) {
+            logWarn("PayFast checkout was created with non-public callback URLs", {
+                basketId: input.basketId,
+                invalidUrls,
+                callbackUrls,
+            });
+        }
+
+        if (!customerIp) {
+            logWarn("PayFast checkout is missing customer_ip for token request", {
+                basketId: input.basketId,
+            });
+        }
 
         const tokenRequest = new URLSearchParams({
             MERCHANT_ID: config.merchantId,
@@ -180,6 +250,10 @@ export class PayFastService {
             TXNAMT: amount,
             CURRENCY_CODE: config.currencyCode,
         });
+        if (customerIp) {
+            tokenRequest.set("CUSTOMER_IP", customerIp);
+            tokenRequest.set("customer_ip", customerIp);
+        }
 
         const tokenPayload = await this.postForm(config.accessTokenUrl, tokenRequest);
         const accessToken = String(tokenPayload.ACCESS_TOKEN ?? "").trim();
@@ -201,6 +275,18 @@ export class PayFastService {
             config.securedKey,
         );
 
+        logInfo("PayFast checkout session created", {
+            basketId: input.basketId,
+            amount,
+            orderDate,
+            customerIp: customerIp || null,
+            accessTokenUrl: config.accessTokenUrl,
+            checkoutPostUrl: config.checkoutPostUrl,
+            successUrl: input.successUrl,
+            failureUrl: input.failureUrl,
+            checkoutUrl: input.checkoutUrl,
+        });
+
         return {
             checkoutUrl: config.checkoutPostUrl,
             accessToken,
@@ -211,7 +297,7 @@ export class PayFastService {
                 TOKEN: accessToken,
                 BASKET_ID: input.basketId,
                 TXNAMT: amount,
-                ORDER_DATE: new Date().toISOString().slice(0, 19).replace("T", " "),
+                ORDER_DATE: orderDate,
                 SUCCESS_URL: input.successUrl,
                 FAILURE_URL: input.failureUrl,
                 CHECKOUT_URL: input.checkoutUrl,

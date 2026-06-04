@@ -45,6 +45,7 @@ import {
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { isValidUuid } from "@common/utils/uuid.util";
+import { logInfo, logWarn } from "@lib/logger";
 import { BookingAuditService } from "./booking-audit.service";
 import { BookingStatusHistoryService } from "./booking-status-history.service";
 import { bookingRealtimeService } from "./booking-realtime.service";
@@ -1821,6 +1822,7 @@ export class BookingService {
                 amount: Number(bookingEntity.total_amount),
                 customerEmail: bookingEntity.guest_email,
                 customerMobile: bookingEntity.guest_phone,
+                customerIp,
                 description: `Hotel booking ${bookingEntity.booking_number}`,
                 successUrl: this.buildPayFastReturnUrl("success", bookingEntity.id),
                 failureUrl: this.buildPayFastReturnUrl("failure", bookingEntity.id),
@@ -2931,6 +2933,16 @@ export class BookingService {
                     validationHash: validationHash ? String(validationHash) : null,
                 });
 
+                logInfo("PayFast return callback received", {
+                    bookingId: booking.id,
+                    result,
+                    basketId,
+                    errCode: errCode ? String(errCode) : null,
+                    transactionId: transactionId ? String(transactionId) : null,
+                    validationHashPresent: Boolean(validationHash),
+                    callbackHashValid: isValidHash,
+                });
+
                 payment.transaction_id = transactionId ? String(transactionId) : payment.transaction_id ?? null;
                 payment.provider_payment_id = transactionId ? String(transactionId) : payment.provider_payment_id ?? null;
                 payment.metadata = this.mergePaymentMetadata(payment, {
@@ -2942,6 +2954,13 @@ export class BookingService {
                 await manager.getRepository(BookingPayment).save(payment);
 
                 if (!isValidHash) {
+                    logWarn("PayFast return callback hash validation failed", {
+                        bookingId: booking.id,
+                        result,
+                        basketId,
+                        errCode: errCode ? String(errCode) : null,
+                    });
+
                     await this.auditService.record({
                         booking_id: booking.id,
                         event_type: "booking_payment_callback_hash_invalid",
