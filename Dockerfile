@@ -9,8 +9,9 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package*.json tsconfig.json ./
 COPY src ./src
 
-# Install dependencies without running lifecycle scripts so the build stays explicit.
-RUN npm ci --ignore-scripts
+# Keep dependency install scripts enabled for native modules, but skip the app's
+# implicit postinstall build so the Docker build remains explicit and predictable.
+RUN npm pkg delete scripts.postinstall && npm ci
 
 # Compile the application once the source tree is in place.
 RUN npm run build
