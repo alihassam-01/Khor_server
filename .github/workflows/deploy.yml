@@ -57,5 +57,6 @@ jobs:
 
             cd "$STAGING_DIR"
             docker compose -f docker-compose.backend.yml --profile staging build server-staging
+            docker rm -f khor-server-staging || true
             docker compose -f docker-compose.backend.yml --profile staging up -d server-staging
             docker exec khor-server-staging node -e "const dsModule=require('./dist/config/ormconfig.js'); const ds=dsModule.default || dsModule.AppDataSource; (async()=>{ await ds.initialize(); const results=await ds.runMigrations(); console.log(results.map(m => m.name)); await ds.destroy(); })().catch(async(err)=>{ console.error(err); try { if (ds && ds.isInitialized) await ds.destroy(); } catch {} process.exit(1); });"
