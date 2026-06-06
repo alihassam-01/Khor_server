@@ -127,6 +127,12 @@ export class HotelBooking {
     refund_status!: BookingRefundStatus;
 
     @Column({ type: "text", nullable: true })
+    cancellation_policy_snapshot?: string | null;
+
+    @Column({ type: "int", nullable: true })
+    refund_cutoff_hours_snapshot?: number | null;
+
+    @Column({ type: "text", nullable: true })
     special_requests?: string | null;
 
     @Column({ type: "uuid", nullable: true })

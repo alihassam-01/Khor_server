@@ -19,8 +19,9 @@ export class BookingPayoutController {
         const authUser = (req.user ?? {}) as { id?: string; userId?: string; userType?: UserRole };
         const authUserId = authUser.id || authUser.userId;
         const isAdmin = authUser.userType === UserRole.ADMIN;
+        const isOwnVendorAccount = authUser.userType === UserRole.VENDOR && authUserId === req.params.vendorId;
 
-        if (!isAdmin && authUserId !== req.params.vendorId) {
+        if (!isAdmin && !isOwnVendorAccount) {
             return reply.status(403).send({
                 message: "Forbidden: You can only view payouts for your own account.",
             });

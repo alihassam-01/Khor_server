@@ -64,6 +64,18 @@ export class BookingController {
         reply.code(201).send(checkout);
     }
 
+    async resumeCustomerCheckout(
+        req: FastifyRequest<{ Params: IBookingIdParams }>,
+        reply: FastifyReply,
+    ) {
+        const checkout = await this.bookingService.resumeCustomerCheckout(
+            req.params.id,
+            this.getActor(req),
+            req.ip,
+        );
+        reply.code(201).send(checkout);
+    }
+
     async listCustomerBookings(
         req: FastifyRequest<{ Querystring: IBookingListQuery }>,
         reply: FastifyReply,

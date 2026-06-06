@@ -17,6 +17,7 @@ export enum BookingPaymentStatus {
     PARTIALLY_PAID = "partially_paid",
     PAID = "paid",
     FAILED = "failed",
+    EXPIRED = "expired",
     PARTIALLY_REFUNDED = "partially_refunded",
     REFUNDED = "refunded",
 }
