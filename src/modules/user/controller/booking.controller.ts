@@ -44,14 +44,6 @@ export class BookingController {
         return { userId, userType };
     }
 
-    async createCustomerBooking(
-        req: FastifyRequest<{ Body: ICreateHotelBookingDTO }>,
-        reply: FastifyReply,
-    ) {
-        const booking = await this.bookingService.createCustomerBooking(this.getActor(req), req.body);
-        reply.code(201).send(booking);
-    }
-
     async createCustomerCheckout(
         req: FastifyRequest<{ Body: ICreateHotelBookingDTO }>,
         reply: FastifyReply,

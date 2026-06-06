@@ -9,12 +9,4 @@ export const EmailConfig = {
     pass: process.env.SMTP_PASS,
     from: process.env.SMTP_FROM || process.env.MAIL_FROM,
   },
-
-  // SES configuration (not currently in use but kept for type safety)
-  ses: {
-    region: process.env.AWS_SES_REGION,
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    from: process.env.SES_FROM,
-  },
 };

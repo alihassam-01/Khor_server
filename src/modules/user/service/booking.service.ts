@@ -1924,10 +1924,10 @@ export class BookingService {
         eventType: string,
         reason?: string,
     ): Promise<IHotelBookingDTO> {
-        const booking = await AppDataSource.transaction(async (manager) => {
-            const booking = await this.loadBookingForActor(bookingId, actor, scope, manager);
-            const previousStatus = booking.booking_status;
-            const previousCancellationStatus = booking.cancellation_status;
+        const updatedBooking = await AppDataSource.transaction(async (manager) => {
+            const currentBooking = await this.loadBookingForActor(bookingId, actor, scope, manager);
+            const previousStatus = currentBooking.booking_status;
+            const previousCancellationStatus = currentBooking.cancellation_status;
 
             if (previousStatus === HotelBookingStatus.CANCELLED) {
                 throw new AppError("Cancelled bookings cannot be updated", 409, ErrorCodes.CONFLICT);
@@ -1946,22 +1946,22 @@ export class BookingService {
                 throw new AppError("Only checked-in bookings can be completed", 409, ErrorCodes.CONFLICT);
             }
 
-            booking.booking_status = nextStatus;
+            currentBooking.booking_status = nextStatus;
             if (nextStatus === HotelBookingStatus.CONFIRMED) {
-                booking.confirmed_by_user_id = actor.userId;
-                booking.confirmed_at = new Date();
+                currentBooking.confirmed_by_user_id = actor.userId;
+                currentBooking.confirmed_at = new Date();
             }
             if (nextStatus === HotelBookingStatus.CANCELLED) {
-                booking.cancellation_status = BookingCancellationStatus.CANCELLED;
-                booking.cancelled_by_user_id = actor.userId;
-                booking.cancelled_at = new Date();
+                currentBooking.cancellation_status = BookingCancellationStatus.CANCELLED;
+                currentBooking.cancelled_by_user_id = actor.userId;
+                currentBooking.cancelled_at = new Date();
             }
             if (nextStatus === HotelBookingStatus.COMPLETED) {
-                booking.completed_by_user_id = actor.userId;
-                booking.completed_at = new Date();
+                currentBooking.completed_by_user_id = actor.userId;
+                currentBooking.completed_at = new Date();
             }
 
-            const saved = await manager.getRepository(HotelBooking).save(booking);
+            const saved = await manager.getRepository(HotelBooking).save(currentBooking);
 
             await this.statusHistoryService.record({
                 booking_id: saved.id,
@@ -2001,20 +2001,18 @@ export class BookingService {
 
             return this.getBookingById(saved.id, actor, scope, manager);
         });
-        if (nextStatus === HotelBookingStatus.CONFIRMED) {
-            await this.notifyBookingLifecycle(booking.id, "confirmed", reason ?? null);
-        } else if (nextStatus === HotelBookingStatus.CANCELLED) {
-            await this.notifyBookingLifecycle(booking.id, "cancelled", reason ?? null);
-        } else if (nextStatus === HotelBookingStatus.CHECKED_IN) {
-            await this.notifyBookingLifecycle(booking.id, "checked_in", reason ?? null);
-        } else if (nextStatus === HotelBookingStatus.COMPLETED) {
-            await this.notifyBookingLifecycle(booking.id, "completed", reason ?? null);
-        }
-        return booking;
-    }
 
-    async createCustomerBooking(actor: AuthActor, dto: ICreateHotelBookingDTO): Promise<IHotelBookingDTO> {
-        return this.createBooking(dto, actor, BookingSource.CUSTOMER_WEB);
+        if (nextStatus === HotelBookingStatus.CONFIRMED) {
+            await this.notifyBookingLifecycle(updatedBooking.id, "confirmed", reason ?? null);
+        } else if (nextStatus === HotelBookingStatus.CANCELLED) {
+            await this.notifyBookingLifecycle(updatedBooking.id, "cancelled", reason ?? null);
+        } else if (nextStatus === HotelBookingStatus.CHECKED_IN) {
+            await this.notifyBookingLifecycle(updatedBooking.id, "checked_in", reason ?? null);
+        } else if (nextStatus === HotelBookingStatus.COMPLETED) {
+            await this.notifyBookingLifecycle(updatedBooking.id, "completed", reason ?? null);
+        }
+
+        return updatedBooking;
     }
 
     async createCustomerCheckout(

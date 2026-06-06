@@ -19,7 +19,3 @@ export function getListingStrategy<T extends IListingStrategy<any, any, any>>(
     }
     return strategy as T;
 }
-
-export function listAllStrategies(): IListingStrategy<any, any, any>[] {
-    return Array.from(registry.values());
-}
