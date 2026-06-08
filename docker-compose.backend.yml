@@ -14,6 +14,7 @@ services:
       PORT: 5000
       SERVER_HOST: 0.0.0.0
       RUN_MIGRATIONS: "false"
+      PROCESS_ROLE: api
     network_mode: host
     restart: unless-stopped
 
@@ -32,5 +33,42 @@ services:
       PORT: 5001
       SERVER_HOST: 0.0.0.0
       RUN_MIGRATIONS: "false"
+      PROCESS_ROLE: api
+    network_mode: host
+    restart: unless-stopped
+
+  worker-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: khor-server:latest
+    container_name: khor-worker-prod
+    profiles:
+      - prod
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PROCESS_ROLE: worker
+      RUN_MIGRATIONS: "false"
+    command: ["node", "dist/worker.js"]
+    network_mode: host
+    restart: unless-stopped
+
+  worker-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: khor-server:latest
+    container_name: khor-worker-staging
+    profiles:
+      - staging
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: production
+      PROCESS_ROLE: worker
+      RUN_MIGRATIONS: "false"
+    command: ["node", "dist/worker.js"]
     network_mode: host
     restart: unless-stopped

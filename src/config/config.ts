@@ -75,4 +75,17 @@ export const CONFIG = {
     expiryMinutes: Number(process.env.OTP_EXPIRY_MINUTES) || 10,
     resendCooldownSeconds: Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60,
   },
+  notifications: {
+    processRole: process.env.PROCESS_ROLE
+      || (process.env.NODE_ENV === "production" ? "api" : "all"),
+    timezone: process.env.NOTIFICATION_TIMEZONE || "Asia/Karachi",
+    whatsappEnabled: process.env.WHATSAPP_NOTIFICATIONS_ENABLED === "true",
+    whatsappBookingLifecycleEnabled: process.env.WHATSAPP_BOOKING_LIFECYCLE_ENABLED === "true",
+    whatsappOwnerCheckInDigestEnabled: process.env.WHATSAPP_OWNER_CHECKIN_DIGEST_ENABLED === "true",
+    whatsappAdapterUrl: process.env.WHATSAPP_ADAPTER_URL || "http://127.0.0.1:3000",
+    whatsappAdapterToken: process.env.WHATSAPP_ADAPTER_TOKEN || "",
+    whatsappTimeoutMs: Number(process.env.WHATSAPP_ADAPTER_TIMEOUT_MS) || 15_000,
+    workerBatchSize: Number(process.env.NOTIFICATION_WORKER_BATCH_SIZE) || 20,
+    workerMaxAttempts: Number(process.env.NOTIFICATION_WORKER_MAX_ATTEMPTS) || 5,
+  },
 };
