@@ -44,6 +44,7 @@ export interface IListingCreatePayload {
     latitude?: number | null;
     longitude?: number | null;
     is_featured?: boolean;
+    is_active?: boolean;
     is_verified?: boolean;
     contact: IContactInput;
     media: IMediaInput[];

@@ -5,6 +5,7 @@ import {
     ListingContact,
     ListingSubscription,
 } from "@modules/user/entity/listing";
+import { User } from "@modules/user/entity/user/user.entity";
 import { Location } from "@modules/user/entity/location";
 import { Review } from "@modules/user/entity/review/review.entity";
 import { ReviewStatus, ReviewTargetType } from "@common/enums/review.enums";
@@ -13,6 +14,7 @@ import {
     ListingStatus,
     ListingType,
 } from "@common/enums/listing.enums";
+import { UserRole } from "@common/enums/user.enums";
 import { SubscriptionType } from "@common/enums/subscription.enums";
 import { PAGINATION_DEFAULTS } from "@common/constants";
 import { logError, logInfo, logWarn } from "@lib/logger";
@@ -83,6 +85,16 @@ export class ListingService {
             select: ["id"],
         } as any);
         return user ? candidateId : candidateId;
+    }
+
+    private async loadVendorUser(em: EntityManager, vendorId?: string | null): Promise<User | null> {
+        if (!vendorId) return null;
+        if (!isValidUuid(vendorId)) return null;
+
+        return em.getRepository(User).findOne({
+            where: { id: vendorId },
+            relations: ["profile"],
+        });
     }
 
     private async assertLocationExists(em: EntityManager, locationId: number): Promise<Location> {
@@ -193,6 +205,11 @@ export class ListingService {
         return AppDataSource.transaction(async (em) => {
             await this.assertLocationExists(em, payload.location_id);
             const vendorId = await this.resolveVendorUserId(em, payload.vendor_id ?? null);
+            const vendor = await this.loadVendorUser(em, vendorId);
+            const autoActivateHotel = strategy.type === ListingType.HOTEL
+                && vendor?.userType === UserRole.VENDOR
+                && vendor.isActive
+                && payload.is_active !== false;
 
             const listing = new Listing();
             listing.type = strategy.type;
@@ -206,10 +223,10 @@ export class ListingService {
             listing.longitude = payload.longitude ?? null;
             listing.is_featured = !!payload.is_featured;
             listing.is_verified = !!payload.is_verified;
-            // All new listings start in PENDING/inactive — admin or vendor
-            // payment activates them later.
-            listing.status = ListingStatus.PENDING;
-            listing.is_active = false;
+            // Approved hotel owners can publish directly; everything else
+            // keeps the legacy pending/inactive flow.
+            listing.status = autoActivateHotel ? ListingStatus.ACTIVE : ListingStatus.PENDING;
+            listing.is_active = autoActivateHotel;
             const saved = await em.getRepository(Listing).save(listing);
 
             // Contact + extension + media

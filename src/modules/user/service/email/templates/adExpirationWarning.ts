@@ -5,13 +5,17 @@ export function adExpirationWarningTemplate(
     expiryDate: string,
     daysRemaining: number
 ) {
+    const isHotel = adType.toLowerCase() === "hotel";
+    const itemLabel = isHotel ? "hotel" : "listing";
+    const titleLabel = isHotel ? "Hotel Expiring Soon" : "Listing Expiring Soon";
+
     return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Ad Expiring Soon - Khor</title>
+        <title>${titleLabel} - Khor</title>
         <style>
             * {
                 margin: 0;
@@ -164,9 +168,9 @@ export function adExpirationWarningTemplate(
             <div class="email-body">
                 <h2 class="greeting">Hello ${vendorName}, Subscription Expiring Soon!</h2>
                 
-                <p class="message">Your ${adType} listing "<strong>${adName}</strong>" is about to expire in ${daysRemaining} days.</p>
+                <p class="message">Your ${adType} ${itemLabel} "<strong>${adName}</strong>" is about to expire in ${daysRemaining} days.</p>
                 
-                <p class="message">To keep your listing live and maintain your visibility, please renew your subscription before it expires.</p>
+                <p class="message">To keep your ${itemLabel} live and maintain your visibility, please renew your subscription before it expires.</p>
                 
                 <div class="summary-box">
                     <div class="summary-item">
