@@ -13,7 +13,6 @@ type VendorBookingRow = HotelBooking & {
 export class BookingDailyEmailJobService {
     private readonly bookingRepo = AppDataSource.getRepository(HotelBooking);
     private readonly emailService = new SendEmail();
-
     private getTodayIsoDate(): string {
         const now = new Date();
         const year = now.getFullYear();
@@ -113,12 +112,11 @@ export class BookingDailyEmailJobService {
             grouped.set(vendor.id, group);
         }
 
+        const dateLabel = this.formatDateLabel(today);
         if (grouped.size === 0) {
             logInfo("No owner check-in digest emails to send after filtering vendors.", { date: today });
-            return;
         }
 
-        const dateLabel = this.formatDateLabel(today);
         const results = await Promise.allSettled(
             Array.from(grouped.values()).map((group) =>
                 this.emailService.sendOwnerDailyCheckInsEmail({

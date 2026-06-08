@@ -96,12 +96,13 @@ async function startServer() {
 
   app.setErrorHandler(globalErrorHandler);
 
-  // Initialize background jobs
-  try {
-    const { initJobs } = await import('./modules/user/jobs');
-    initJobs();
-  } catch (error) {
-    logError(error, "Jobs initialization");
+  if (CONFIG.notifications.processRole === "all") {
+    try {
+      const { initJobs } = await import('./modules/user/jobs');
+      initJobs();
+    } catch (error) {
+      logError(error, "Jobs initialization");
+    }
   }
 
   try {
