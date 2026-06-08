@@ -52,6 +52,7 @@ import { bookingRealtimeService } from "./booking-realtime.service";
 import { SendEmail } from "./email/sendEmail";
 import { pickBestPromotion } from "./listing/hotel-promotion.util";
 import { NotificationService, type NotificationPayload } from "./notification.service";
+import { NotificationOutboxService } from "./notification-outbox.service";
 import { PayFastService } from "./payfast.service";
 
 const ACTIVE_BOOKING_STATUSES = [
@@ -99,6 +100,7 @@ export class BookingService {
     private readonly statusHistoryService = new BookingStatusHistoryService();
     private readonly emailService = new SendEmail();
     private readonly notificationService = new NotificationService();
+    private readonly notificationOutboxService = new NotificationOutboxService();
     private readonly payFastService = new PayFastService();
     private readonly holdDurationMs = 10 * 60 * 1000;
 
@@ -860,6 +862,7 @@ export class BookingService {
         manager: EntityManager = AppDataSource.manager,
     ): Promise<void> {
         await this.notificationService.createMany(this.buildBookingNotifications(booking, action), manager);
+        await this.notificationOutboxService.enqueueBookingLifecycle(manager, booking.id, action);
         bookingRealtimeService.publish({
             type: "booking_changed",
             action,
@@ -3311,7 +3314,6 @@ export class BookingService {
             manager,
         );
 
-        await this.notifyBookingLifecycle(booking.id, "confirmed");
     }
 
     private async markGatewayPaymentFailed(
@@ -3419,6 +3421,10 @@ export class BookingService {
 
         const ownedBooking = await this.loadBookingForActor(bookingId, actor, "customer");
         const verified = await AppDataSource.transaction((manager) => this.verifyPayFastBookingInternal(ownedBooking.id, manager));
+        if (ownedBooking.payment_status !== BookingPaymentStatus.PAID
+            && verified.payment_status === BookingPaymentStatus.PAID) {
+            await this.notifyBookingLifecycle(verified.id, "confirmed");
+        }
         return this.toDTO(verified);
     }
 
@@ -3432,6 +3438,7 @@ export class BookingService {
         }
 
         try {
+            const previousBooking = await this.loadBookingForGateway(bookingId);
             const booking = await AppDataSource.transaction(async (manager) => {
                 const booking = await this.loadBookingForGateway(bookingId, manager);
                 const payment = this.getLatestPayFastPayment(booking);
@@ -3505,6 +3512,10 @@ export class BookingService {
                 return this.verifyPayFastBookingInternal(bookingId, manager);
             });
 
+            if (previousBooking.payment_status !== BookingPaymentStatus.PAID
+                && booking.payment_status === BookingPaymentStatus.PAID) {
+                await this.notifyBookingLifecycle(booking.id, "confirmed");
+            }
             const status = booking.payment_status === BookingPaymentStatus.PAID
                 ? "success"
                 : booking.payment_status === BookingPaymentStatus.FAILED

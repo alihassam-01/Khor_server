@@ -5,6 +5,8 @@ import { BookingHoldJobService } from "../service/booking-hold-job.service";
 import { BookingDailyEmailJobService } from "../service/booking-daily-email-job.service";
 import { SubscriptionJobService } from "../service/subscription-job.service";
 import { logInfo } from "@lib/logger";
+import { NotificationOutboxWorkerService } from "../service/notification-outbox-worker.service";
+import { BookingDailyWhatsAppJobService } from "../service/booking-daily-whatsapp-job.service";
 
 export const initJobs = () => {
     logInfo("Initializing background jobs...");
@@ -13,10 +15,13 @@ export const initJobs = () => {
     const bookingHoldJob = new BookingHoldJobService();
     const bookingDailyEmailJob = new BookingDailyEmailJobService();
     const subscriptionJob = new SubscriptionJobService();
+    const notificationWorker = new NotificationOutboxWorkerService();
+    const bookingDailyWhatsAppJob = new BookingDailyWhatsAppJobService();
 
     SimpleScheduler.schedule(SchedulePattern.MINUTELY, async () => {
         await bookingHoldJob.releaseExpiredHolds();
         await bookingHoldJob.expireExpiredPayments();
+        await notificationWorker.processDue();
     });
 
     // Schedule monthly reports
@@ -26,7 +31,10 @@ export const initJobs = () => {
     SimpleScheduler.schedule(SchedulePattern.DAILY, () => subscriptionJob.checkExpirations());
 
     // Schedule hotel owner arrival digests
-    SimpleScheduler.scheduleDailyAt(6, 0, () => bookingDailyEmailJob.sendTodayOwnerCheckInDigests());
+    SimpleScheduler.scheduleDailyAt(6, 0, async () => {
+        await bookingDailyEmailJob.sendTodayOwnerCheckInDigests();
+        await bookingDailyWhatsAppJob.enqueueTodayOwnerCheckInDigests();
+    });
 
     logInfo("Background jobs initialized.");
 };

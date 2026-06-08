@@ -49,6 +49,33 @@ npm test
 Runs `node:test` against `tests/**/*.test.ts`. See
 [`docs/TESTING.md`](./docs/TESTING.md) for details.
 
+### WhatsApp notification worker
+
+Booking WhatsApp messages use a PostgreSQL outbox and a separate OpenClaw
+adapter. API processes should use `PROCESS_ROLE=api`; run one or more workers
+with:
+
+```bash
+PROCESS_ROLE=worker npm run start:worker
+```
+
+Required rollout configuration:
+
+```dotenv
+WHATSAPP_NOTIFICATIONS_ENABLED=false
+WHATSAPP_BOOKING_LIFECYCLE_ENABLED=false
+WHATSAPP_OWNER_CHECKIN_DIGEST_ENABLED=false
+WHATSAPP_ADAPTER_URL=http://127.0.0.1:3000
+WHATSAPP_ADAPTER_TOKEN=
+WHATSAPP_ADAPTER_TIMEOUT_MS=15000
+NOTIFICATION_TIMEZONE=Asia/Karachi
+NOTIFICATION_WORKER_BATCH_SIZE=20
+NOTIFICATION_WORKER_MAX_ATTEMPTS=5
+```
+
+Apply migrations before enabling the flags. Keep the adapter on localhost or a
+private network.
+
 ### Type-checking
 
 ```bash
