@@ -4,11 +4,16 @@ on:
   push:
     branches:
       - main
+      - development
+
+concurrency:
+  group: server-deploy-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development')
 
     steps:
       - name: Execute remote commands via SSH
@@ -19,10 +24,40 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
-            cd /var/www/server
-            git pull origin main
-            npm ci
-            npm run build
-            # Run migrations if needed
-            # npm run migration:run
-            pm2 reload gokhor-api
+            set -euo pipefail
+
+            BRANCH="${{ github.ref_name }}"
+            PROD_DIR="/var/www/server"
+            STAGING_DIR="/var/www/server-staging"
+
+            if [ "$BRANCH" = "main" ]; then
+              cd "$PROD_DIR"
+              git fetch origin main
+              git checkout main
+              git reset --hard origin/main
+              npm ci
+              npm run build
+              pm2 reload gokhor-api
+              exit 0
+            fi
+
+            REPO_URL="$(git -C "$PROD_DIR" config --get remote.origin.url)"
+
+            if [ ! -d "$STAGING_DIR/.git" ]; then
+              git clone --branch development "$REPO_URL" "$STAGING_DIR"
+            else
+              git -C "$STAGING_DIR" fetch origin development
+              git -C "$STAGING_DIR" checkout development
+              git -C "$STAGING_DIR" reset --hard origin/development
+            fi
+
+            if [ ! -f "$STAGING_DIR/.env.staging" ]; then
+              cp "$PROD_DIR/.env.staging" "$STAGING_DIR/.env.staging"
+            fi
+
+            cd "$STAGING_DIR"
+            MIGRATION_CMD="const dsModule=require('./dist/config/ormconfig.js'); const ds=dsModule.default || dsModule.AppDataSource; (async()=>{ await ds.initialize(); const results=await ds.runMigrations(); console.log(results.map(m => m.name)); await ds.destroy(); })().catch(async(err)=>{ console.error(err); try { if (ds && ds.isInitialized) await ds.destroy(); } catch {} process.exit(1); });"
+            docker compose -f docker-compose.backend.yml --profile staging build server-staging
+            docker compose -f docker-compose.backend.yml --profile staging run --rm --no-deps server-staging node -e "$MIGRATION_CMD"
+            docker rm -f khor-server-staging || true
+            docker compose -f docker-compose.backend.yml --profile staging up -d server-staging

@@ -1,7 +1,5 @@
 export interface ICreateBookingPayoutDTO {
     booking_id: string;
-    vendor_id?: string | null;
-    amount?: number;
 }
 
 export interface IUpdateBookingPayoutDTO {

@@ -45,3 +45,11 @@ export interface IRefundProcessBody {
     provider_refund_id?: string;
     reason?: string;
 }
+
+export interface IBookingPaymentStatusParams {
+    id: string;
+}
+
+export interface IPayFastReturnParams {
+    result: string;
+}

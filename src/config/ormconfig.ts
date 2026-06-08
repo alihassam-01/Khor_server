@@ -63,3 +63,5 @@ export const AppDataSource = new DataSource(
       logging: false,
     }
 );
+
+export default AppDataSource;

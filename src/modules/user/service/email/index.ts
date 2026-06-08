@@ -1,7 +1,6 @@
 import { EmailConfig } from "@config/emailConfig/emailConfig";
 import { sendSMTP } from "./provider/smtpProvider";
 import { sendResend } from "./provider/resendProvider";
-// import { sendSES } from "./provider/sesProvider"; // Disabled - not using SES
 
 export async function sendEmail({
   to,

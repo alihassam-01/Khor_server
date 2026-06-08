@@ -4,6 +4,11 @@ export class RemoveLocationCascades1777191902539 implements MigrationInterface {
     name = 'RemoveLocationCascades1777191902539'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
+        const hasLegacyUserProfiles = await queryRunner.hasTable("user_profiles");
+        if (!hasLegacyUserProfiles) {
+            return;
+        }
+
         await queryRunner.query(`ALTER TABLE "user_profiles" DROP CONSTRAINT "fk_user_profiles_user"`);
         await queryRunner.query(`ALTER TABLE "user" DROP CONSTRAINT "fk_user_address"`);
         await queryRunner.query(`ALTER TABLE "address" DROP CONSTRAINT "fk_address_location"`);

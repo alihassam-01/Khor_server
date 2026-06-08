@@ -1,9 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { AuthController } from "@modules/user/controller/auth.controller";
 import { AuthService } from "@modules/user/service/auth.service";
-
-import "fastify";
-import { Repository } from "typeorm";
 import { User } from "@modules/user/entity/user/user.entity";
 import { UserProfile } from "@modules/user/entity/user/user-profile.entity";
 import { AppDataSource } from "@config/ormconfig";
@@ -16,13 +13,6 @@ import {
     googleVerifySchema,
 } from "@modules/user/schemas/auth.schema";
 import { authenticate } from "@middlewares/authenticate";
-
-declare module "fastify" {
-    interface FastifyInstance {
-        userRepository: Repository<User>;
-        userProfileRepository: Repository<UserProfile>;
-    }
-}
 
 const userRepository = AppDataSource.getRepository(User);
 const userProfileRepository = AppDataSource.getRepository(UserProfile);

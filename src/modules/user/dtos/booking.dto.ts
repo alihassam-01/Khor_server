@@ -28,6 +28,14 @@ export interface ICreateHotelBookingDTO {
     transaction_id?: string;
 }
 
+export interface IHotelBookingCheckoutResponseDTO {
+    booking_id: string;
+    booking_number: string;
+    checkout_url: string;
+    form_fields: Record<string, string>;
+    expires_at: Date;
+}
+
 export interface ICreateHotelBookingHoldDTO {
     listing_id: string;
     room_type_id: string;
@@ -92,9 +100,17 @@ export interface IBookingRefundSummaryDTO {
     status: BookingRefundStatus;
     reason?: string | null;
     provider_refund_id?: string | null;
+    metadata?: Record<string, unknown> | null;
     processed_at?: Date | null;
     created_at: Date;
     updated_at: Date;
+}
+
+export interface IBookingCancellationRefundOutcomeDTO {
+    refund_requested: boolean;
+    refund_eligible: boolean | null;
+    refund_message?: string | null;
+    refund_amount?: number | null;
 }
 
 export interface IBookingTimelineActorDTO {
@@ -141,10 +157,18 @@ export interface IHotelBookingDTO {
     total_amount: number;
     outstanding_amount: number;
     booking_status: HotelBookingStatus;
+    display_status: HotelBookingStatus | "expired";
     payment_status: BookingPaymentStatus;
+    can_resume_payment: boolean;
+    payment_expires_at?: Date | null;
+    requires_manual_review: boolean;
+    payment_issue?: string | null;
     cancellation_status: BookingCancellationStatus;
     refund_status: BookingRefundStatus;
+    cancellation_policy_snapshot?: string | null;
+    refund_cutoff_hours_snapshot?: number | null;
     special_requests?: string | null;
+    cancellation_refund?: IBookingCancellationRefundOutcomeDTO | null;
     confirmed_at?: Date | null;
     cancelled_at?: Date | null;
     completed_at?: Date | null;
@@ -226,6 +250,7 @@ export interface IBookingRefundDTO {
     status: BookingRefundStatus;
     reason?: string | null;
     provider_refund_id?: string | null;
+    metadata?: Record<string, unknown> | null;
     requested_by_user_id?: string | null;
     approved_by_user_id?: string | null;
     processed_at?: Date | null;

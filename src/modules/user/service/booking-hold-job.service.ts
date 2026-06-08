@@ -11,4 +11,12 @@ export class BookingHoldJobService {
         }
         return released;
     }
+
+    async expireExpiredPayments(): Promise<number> {
+        const expired = await this.bookingService.expireExpiredPayments();
+        if (expired > 0) {
+            logInfo(`Expired ${expired} stale booking payment(s).`);
+        }
+        return expired;
+    }
 }

@@ -1,3 +1,4 @@
+import { CONFIG } from "@config/config";
 import { AppDataSource } from "@config/ormconfig";
 import { EntityManager } from "typeorm";
 import {
@@ -34,6 +35,7 @@ import {
     ICreateHotelBookingDTO,
     IHotelAvailabilityDTO,
     IHotelBookingDTO,
+    IHotelBookingCheckoutResponseDTO,
     IHotelBookingListResponseDTO,
     IRecordBookingPaymentDTO,
     IBookingRefundDTO,
@@ -43,12 +45,14 @@ import {
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { isValidUuid } from "@common/utils/uuid.util";
+import { logInfo, logWarn } from "@lib/logger";
 import { BookingAuditService } from "./booking-audit.service";
 import { BookingStatusHistoryService } from "./booking-status-history.service";
 import { bookingRealtimeService } from "./booking-realtime.service";
 import { SendEmail } from "./email/sendEmail";
 import { pickBestPromotion } from "./listing/hotel-promotion.util";
 import { NotificationService, type NotificationPayload } from "./notification.service";
+import { PayFastService } from "./payfast.service";
 
 const ACTIVE_BOOKING_STATUSES = [
     HotelBookingStatus.PENDING,
@@ -74,6 +78,19 @@ type RefundListParams = {
     status?: string;
 };
 
+type RefundPolicySnapshot = {
+    cancellationPolicy: string | null;
+    refundCutoffHours: number | null;
+};
+
+type RefundEligibilityResult = {
+    eligible: boolean;
+    message: string | null;
+    refundCutoffHours: number | null;
+    cancellationPolicy: string | null;
+    source: "snapshot" | "current";
+};
+
 export class BookingService {
     private readonly bookingRepo = AppDataSource.getRepository(HotelBooking);
     private readonly roomTypeRepo = AppDataSource.getRepository(HotelRoomType);
@@ -82,7 +99,12 @@ export class BookingService {
     private readonly statusHistoryService = new BookingStatusHistoryService();
     private readonly emailService = new SendEmail();
     private readonly notificationService = new NotificationService();
+    private readonly payFastService = new PayFastService();
     private readonly holdDurationMs = 10 * 60 * 1000;
+
+    private isDevelopmentEnv(): boolean {
+        return CONFIG.env === "development";
+    }
 
     private assertUuid(value: string, fieldName: string): void {
         if (!isValidUuid(value)) {
@@ -103,20 +125,21 @@ export class BookingService {
         return new Date(checkIn.getTime() - (cutoffHours * 60 * 60 * 1000));
     }
 
-    private async getHotelRefundCutoffHours(
+    private async getHotelRefundPolicySnapshot(
         manager: EntityManager,
         listingId: string,
-    ): Promise<number | null> {
+    ): Promise<RefundPolicySnapshot> {
         const details = await manager.getRepository(HotelDetails).findOne({
             where: { listing_id: listingId },
-            select: ["listing_id", "refund_cutoff_hours"],
+            select: ["listing_id", "refund_cutoff_hours", "cancellation_policy"],
         });
 
-        if (details?.refund_cutoff_hours == null) {
-            return null;
-        }
-
-        return Math.max(0, Number(details.refund_cutoff_hours));
+        return {
+            cancellationPolicy: details?.cancellation_policy?.trim() || null,
+            refundCutoffHours: details?.refund_cutoff_hours == null
+                ? null
+                : Math.max(0, Number(details.refund_cutoff_hours)),
+        };
     }
 
     private async shouldAutoConfirmPaidBooking(
@@ -143,31 +166,80 @@ export class BookingService {
         return pickBestPromotion(Number(roomType.price), promotions, roomType.type ?? null);
     }
 
-    private async assertRefundRequestAllowed(
+    private async getRefundEligibility(
         manager: EntityManager,
         booking: HotelBooking,
-    ): Promise<void> {
-        const cutoffHours = await this.getHotelRefundCutoffHours(manager, booking.listing_id);
+    ): Promise<RefundEligibilityResult> {
+        const snapshotCutoff = booking.refund_cutoff_hours_snapshot != null
+            ? Math.max(0, Number(booking.refund_cutoff_hours_snapshot))
+            : null;
+        const snapshotPolicy = booking.cancellation_policy_snapshot?.trim() || null;
+
+        let cutoffHours = snapshotCutoff;
+        let cancellationPolicy = snapshotPolicy;
+        let source: "snapshot" | "current" = "snapshot";
+
+        if (cutoffHours == null && !cancellationPolicy) {
+            const livePolicy = await this.getHotelRefundPolicySnapshot(manager, booking.listing_id);
+            cutoffHours = livePolicy.refundCutoffHours;
+            cancellationPolicy = livePolicy.cancellationPolicy;
+            source = "current";
+        }
+
         if (cutoffHours == null) {
-            return;
+            return {
+                eligible: true,
+                message: null,
+                refundCutoffHours: null,
+                cancellationPolicy,
+                source,
+            };
         }
 
         if (cutoffHours === 0) {
-            throw new AppError(
-                "Refund requests are not available for this hotel.",
-                409,
-                ErrorCodes.CONFLICT,
-            );
+            return {
+                eligible: false,
+                message: "This booking is not eligible for a refund under the hotel policy.",
+                refundCutoffHours: 0,
+                cancellationPolicy,
+                source,
+            };
         }
 
         const deadline = this.getRefundEligibilityDeadline(booking.check_in_date, cutoffHours);
         if (Date.now() > deadline.getTime()) {
-            throw new AppError(
-                `Refund requests for this hotel must be submitted at least ${cutoffHours} hour(s) before check-in.`,
-                409,
-                ErrorCodes.CONFLICT,
-            );
+            return {
+                eligible: false,
+                message: `This booking is outside the refund window. The policy requires cancellation at least ${cutoffHours} hour(s) before check-in.`,
+                refundCutoffHours: cutoffHours,
+                cancellationPolicy,
+                source,
+            };
         }
+
+        return {
+            eligible: true,
+            message: `Refund request created under the booking policy snapshot (${cutoffHours} hour(s) before check-in).`,
+            refundCutoffHours: cutoffHours,
+            cancellationPolicy,
+            source,
+        };
+    }
+
+    private async assertRefundRequestAllowed(
+        manager: EntityManager,
+        booking: HotelBooking,
+    ): Promise<void> {
+        const eligibility = await this.getRefundEligibility(manager, booking);
+        if (eligibility.eligible) {
+            return;
+        }
+
+        throw new AppError(
+            eligibility.message || "Refund requests are not available for this booking.",
+            409,
+            ErrorCodes.CONFLICT,
+        );
     }
 
     private validateCreateInput(dto: ICreateHotelBookingDTO): void {
@@ -205,6 +277,13 @@ export class BookingService {
                 ErrorCodes.VALIDATION_ERROR,
             );
         }
+    }
+
+    private isDeferredPayFastCheckout(
+        dto: ICreateHotelBookingDTO,
+        source: BookingSource,
+    ): boolean {
+        return source === BookingSource.CUSTOMER_WEB && dto.payment_provider === "payfast_redirect";
     }
 
     private validateHoldInput(dto: ICreateHotelBookingHoldDTO): void {
@@ -442,6 +521,69 @@ export class BookingService {
         return staleHolds.length;
     }
 
+    private async expireStalePendingPayments(manager: EntityManager = AppDataSource.manager): Promise<number> {
+        const stalePayments = await manager.getRepository(BookingPayment)
+            .createQueryBuilder("payment")
+            .innerJoinAndSelect("payment.booking", "booking")
+            .where("payment.payment_status = :status", { status: BookingPaymentStatus.PENDING })
+            .andWhere("booking.booking_status = :bookingStatus", { bookingStatus: HotelBookingStatus.PENDING })
+            .andWhere("(payment.provider = :provider OR payment.provider = :redirectProvider)", {
+                provider: "payfast",
+                redirectProvider: "payfast_redirect",
+            })
+            .andWhere("payment.metadata ->> 'checkout_mode' = :checkoutMode", { checkoutMode: "payfast_redirect" })
+            .andWhere("(payment.metadata ->> 'expires_at') IS NOT NULL")
+            .andWhere("((payment.metadata ->> 'expires_at')::timestamptz) <= NOW()")
+            .getMany();
+
+        if (stalePayments.length === 0) {
+            return 0;
+        }
+
+        for (const payment of stalePayments) {
+            payment.payment_status = BookingPaymentStatus.EXPIRED;
+            payment.metadata = this.mergePaymentMetadata(payment, {
+                checkout_status: "expired",
+                expired_at: new Date().toISOString(),
+            });
+            await manager.getRepository(BookingPayment).save(payment);
+
+            if (payment.booking.payment_status === BookingPaymentStatus.PENDING) {
+                payment.booking.payment_status = BookingPaymentStatus.EXPIRED;
+                await manager.getRepository(HotelBooking).save(payment.booking);
+
+                await this.statusHistoryService.record({
+                    booking_id: payment.booking.id,
+                    status_type: BookingStatusType.PAYMENT,
+                    from_status: BookingPaymentStatus.PENDING,
+                    to_status: BookingPaymentStatus.EXPIRED,
+                    changed_by_user_id: null,
+                    metadata: {
+                        provider: "payfast",
+                        reason: "checkout_expired",
+                    },
+                }, manager);
+            }
+
+            await this.auditService.record({
+                booking_id: payment.booking.id,
+                event_type: "booking_payment_expired",
+                actor_role: BookingAuditActorRole.SYSTEM,
+                source: "payfast",
+                after_state: {
+                    booking_status: payment.booking.booking_status,
+                    payment_status: BookingPaymentStatus.EXPIRED,
+                },
+                metadata: {
+                    provider: "payfast",
+                    payment_id: payment.id,
+                },
+            }, manager);
+        }
+
+        return stalePayments.length;
+    }
+
     private toHoldDTO(hold: BookingRoomHold): IBookingHoldDTO {
         return {
             id: hold.id,
@@ -541,6 +683,13 @@ export class BookingService {
                 customerMessage: `${hotelName} cancelled your booking for ${roomName}.`,
                 vendorTitle: "Booking cancelled",
                 vendorMessage: `${roomName} booking has been cancelled by the hotel.`,
+            },
+            booking_cancelled_by_customer: {
+                category: "booking",
+                customerTitle: "Booking cancelled",
+                customerMessage: `Your booking for ${roomName} at ${hotelName} has been cancelled.`,
+                vendorTitle: "Booking cancelled",
+                vendorMessage: `A customer cancelled the booking for ${roomName}.`,
             },
             booking_cancelled_by_admin: {
                 category: "booking",
@@ -935,6 +1084,7 @@ export class BookingService {
 
             const nights = this.calculateNights(dto.check_in_date, dto.check_out_date);
             const baseNightlyRate = Number(roomType.price);
+            const refundPolicySnapshot = await this.getHotelRefundPolicySnapshot(manager, dto.listing_id);
             const activePromotion = await this.getActivePromotionForRoomType(
                 manager,
                 dto.listing_id,
@@ -944,11 +1094,29 @@ export class BookingService {
             const subtotal = this.roundAmount(baseNightlyRate * dto.rooms_count * nights);
             const discountAmount = this.roundAmount((baseNightlyRate - nightlyRate) * dto.rooms_count * nights);
             const totalAmount = this.roundAmount(subtotal - discountAmount);
-            const initialPaymentAmount = this.roundAmount(dto.payment_amount ?? 0);
+            const requestedDevelopmentDirectCheckout = source === BookingSource.CUSTOMER_WEB
+                && this.isDevelopmentEnv()
+                && dto.payment_provider === "development_direct";
+            const initialPaymentAmount = requestedDevelopmentDirectCheckout
+                ? totalAmount
+                : this.roundAmount(dto.payment_amount ?? 0);
+            const isDeferredPayFastCheckout = this.isDeferredPayFastCheckout(dto, source);
+            const isDevelopmentDirectCheckout = source === BookingSource.CUSTOMER_WEB
+                && requestedDevelopmentDirectCheckout
+                && !isDeferredPayFastCheckout
+                && totalAmount > 0;
 
-            if (source === BookingSource.CUSTOMER_WEB && initialPaymentAmount !== totalAmount) {
+            if (isDeferredPayFastCheckout && initialPaymentAmount !== 0) {
                 throw new AppError(
-                    "Online bookings require a single full payment equal to the booking total",
+                    "PayFast checkout sessions must start without a captured payment amount.",
+                    400,
+                    ErrorCodes.VALIDATION_ERROR,
+                );
+            }
+
+            if (source === BookingSource.CUSTOMER_WEB && !isDeferredPayFastCheckout && !isDevelopmentDirectCheckout) {
+                throw new AppError(
+                    "Online bookings must be paid through a verified checkout session.",
                     400,
                     ErrorCodes.VALIDATION_ERROR,
                 );
@@ -962,14 +1130,20 @@ export class BookingService {
                 );
             }
 
-            const initialBookingPaymentStatus = initialPaymentAmount <= 0
+            const initialBookingPaymentStatus = isDeferredPayFastCheckout
+                ? BookingPaymentStatus.PENDING
+                : initialPaymentAmount <= 0
                 ? BookingPaymentStatus.PENDING
                 : initialPaymentAmount < totalAmount
                     ? BookingPaymentStatus.PARTIALLY_PAID
                     : BookingPaymentStatus.PAID;
             const shouldAutoConfirmCustomerBooking = source === BookingSource.CUSTOMER_WEB
+                && !isDeferredPayFastCheckout
                 && initialBookingPaymentStatus === BookingPaymentStatus.PAID
-                && await this.shouldAutoConfirmPaidBooking(manager, dto.listing_id);
+                && (
+                    isDevelopmentDirectCheckout
+                    || await this.shouldAutoConfirmPaidBooking(manager, dto.listing_id)
+                );
 
             const booking = manager.getRepository(HotelBooking).create({
                 source,
@@ -996,6 +1170,8 @@ export class BookingService {
                 payment_status: initialBookingPaymentStatus,
                 cancellation_status: BookingCancellationStatus.NOT_REQUESTED,
                 special_requests: dto.special_requests?.trim() || null,
+                cancellation_policy_snapshot: refundPolicySnapshot.cancellationPolicy,
+                refund_cutoff_hours_snapshot: refundPolicySnapshot.refundCutoffHours,
                 created_by_user_id: actor.userId,
                 confirmed_by_user_id: source === BookingSource.PARTNER_MANUAL
                     ? actor.userId
@@ -1008,13 +1184,15 @@ export class BookingService {
             });
 
             const savedBooking = await manager.getRepository(HotelBooking).save(booking);
-            const allocation = manager.getRepository(HotelBookingAllocation).create({
-                booking_id: savedBooking.id,
-                listing_id: dto.listing_id,
-                room_type_id: dto.room_type_id,
-                quantity_reserved: dto.rooms_count,
-            });
-            await manager.getRepository(HotelBookingAllocation).save(allocation);
+            if (!isDeferredPayFastCheckout) {
+                const allocation = manager.getRepository(HotelBookingAllocation).create({
+                    booking_id: savedBooking.id,
+                    listing_id: dto.listing_id,
+                    room_type_id: dto.room_type_id,
+                    quantity_reserved: dto.rooms_count,
+                });
+                await manager.getRepository(HotelBookingAllocation).save(allocation);
+            }
 
             if (activePromotion?.id) {
                 await manager.getRepository(HotelPromotion).increment(
@@ -1033,9 +1211,31 @@ export class BookingService {
                     amount: initialPaymentAmount,
                     captured_amount: initialPaymentAmount,
                     refunded_amount: 0,
-                    provider: dto.payment_provider ?? null,
-                    transaction_id: dto.transaction_id ?? null,
-                    notes: dto.payment_notes?.trim() || null,
+                    provider: dto.payment_provider ?? (isDevelopmentDirectCheckout ? "development_direct" : null),
+                    transaction_id: dto.transaction_id ?? (isDevelopmentDirectCheckout ? `dev-booking-${savedBooking.id}` : null),
+                    notes: dto.payment_notes?.trim() || (isDevelopmentDirectCheckout
+                        ? "Development-mode direct booking payment bypass"
+                        : null),
+                    metadata: isDevelopmentDirectCheckout
+                        ? { checkout_mode: "development_direct_bypass" }
+                        : undefined,
+                    created_by_user_id: actor.userId,
+                });
+            } else if (isDeferredPayFastCheckout) {
+                await this.insertBookingPayment(manager, {
+                    booking_id: savedBooking.id,
+                    payment_method: null,
+                    payment_status: BookingPaymentStatus.PENDING,
+                    currency: savedBooking.currency,
+                    amount: totalAmount,
+                    captured_amount: 0,
+                    refunded_amount: 0,
+                    provider: "payfast_redirect",
+                    notes: dto.payment_notes?.trim() || "Pending PayFast checkout",
+                    metadata: {
+                        checkout_mode: "payfast_redirect",
+                        hold_id: hold?.id ?? null,
+                    },
                     created_by_user_id: actor.userId,
                 });
             }
@@ -1051,7 +1251,7 @@ export class BookingService {
             );
             await manager.getRepository(HotelBooking).save(savedBooking);
 
-            if (hold) {
+            if (hold && !isDeferredPayFastCheckout) {
                 hold.status = BookingHoldStatus.CONSUMED;
                 hold.consumed_at = new Date();
                 await manager.getRepository(BookingRoomHold).save(hold);
@@ -1101,6 +1301,11 @@ export class BookingService {
                     rooms_count: dto.rooms_count,
                     guest_count: dto.guest_count,
                     payment_amount: initialPaymentAmount,
+                    payment_mode: isDeferredPayFastCheckout
+                        ? "payfast_redirect"
+                        : isDevelopmentDirectCheckout
+                            ? "development_direct_bypass"
+                            : "direct_capture",
                     hold_id: hold?.id ?? null,
                 },
             }, manager);
@@ -1117,10 +1322,12 @@ export class BookingService {
 
             return this.getBookingById(savedBooking.id, actor, source === BookingSource.CUSTOMER_WEB ? "customer" : "vendor", manager);
         });
-        await this.notifyBookingLifecycle(
-            booking.id,
-            booking.booking_status === HotelBookingStatus.CONFIRMED ? "confirmed" : "created",
-        );
+        if (!this.isDeferredPayFastCheckout(dto, source)) {
+            await this.notifyBookingLifecycle(
+                booking.id,
+                booking.booking_status === HotelBookingStatus.CONFIRMED ? "confirmed" : "created",
+            );
+        }
         return booking;
     }
 
@@ -1165,7 +1372,132 @@ export class BookingService {
         return booking;
     }
 
+    private async loadBookingForGateway(
+        bookingId: string,
+        manager: EntityManager = AppDataSource.manager,
+    ): Promise<HotelBooking> {
+        this.assertUuid(bookingId, "booking id");
+
+        const booking = await manager.getRepository(HotelBooking)
+            .createQueryBuilder("booking")
+            .leftJoinAndSelect("booking.listing", "listing")
+            .leftJoinAndSelect("listing.location", "listing_location")
+            .leftJoinAndSelect("listing.contact", "listing_contact")
+            .leftJoinAndSelect("listing.hotel_details", "listing_hotel_details")
+            .leftJoinAndSelect("listing.media", "listing_media")
+            .leftJoinAndSelect("listing.vendor", "listing_vendor")
+            .leftJoinAndSelect("booking.room_type", "room_type")
+            .leftJoinAndSelect("booking.payments", "payments")
+            .leftJoinAndSelect("booking.refunds", "refunds")
+            .where("booking.id = :bookingId", { bookingId })
+            .orderBy("payments.created_at", "DESC")
+            .addOrderBy("refunds.created_at", "DESC")
+            .getOne();
+
+        if (!booking) {
+            throw new AppError("Booking not found", 404, ErrorCodes.NOT_FOUND);
+        }
+        return booking;
+    }
+
+    private getLatestPayFastPayment(booking: HotelBooking): BookingPayment | null {
+        const payments = [...(booking.payments ?? [])]
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        return payments.find((payment) => {
+            const provider = String(payment.provider ?? "").toLowerCase();
+            const mode = String((payment.metadata as Record<string, unknown> | null)?.checkout_mode ?? "").toLowerCase();
+            return provider === "payfast" || provider === "payfast_redirect" || mode === "payfast_redirect";
+        }) ?? null;
+    }
+
+    private buildPayFastReturnUrl(result: "success" | "failure", bookingId: string): string {
+        const apiBase = this.isDevelopmentEnv()
+            ? `http://${CONFIG.server.host || "127.0.0.1"}:${CONFIG.server.port || 3008}`
+            : (
+                CONFIG.api_domain.url ||
+                `http://${CONFIG.server.host || "127.0.0.1"}:${CONFIG.server.port || 3008}`
+            );
+        const base = `${apiBase}/api/payments/payfast/return/${result}`;
+        return `${base}?booking_id=${encodeURIComponent(bookingId)}`;
+    }
+
+    private buildPayFastFrontendStatusUrl(bookingId: string, status?: string): string {
+        const webBase = this.isDevelopmentEnv()
+            ? (CONFIG.web_domain.url || "http://localhost:9002")
+            : (CONFIG.web_domain.url || "http://localhost:9002");
+        const base = `${webBase}/payment/result`;
+        const params = new URLSearchParams({ bookingId });
+        if (status) params.set("status", status);
+        return `${base}?${params.toString()}`;
+    }
+
+    private mergePaymentMetadata(
+        payment: BookingPayment,
+        extra: Record<string, unknown>,
+    ): Record<string, unknown> {
+        return {
+            ...((payment.metadata as Record<string, unknown> | null) ?? {}),
+            ...extra,
+        };
+    }
+
+    private getPaymentCheckoutExpiry(payment?: BookingPayment | null): Date | null {
+        const raw = (payment?.metadata as Record<string, unknown> | null)?.expires_at;
+        if (!raw) return null;
+
+        const parsed = new Date(String(raw));
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    private isDeferredPayFastPayment(payment?: BookingPayment | null): boolean {
+        if (!payment) return false;
+        const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+        const provider = String(payment.provider ?? "").toLowerCase();
+        const checkoutMode = String(metadata.checkout_mode ?? "").toLowerCase();
+
+        return provider === "payfast" || provider === "payfast_redirect" || checkoutMode === "payfast_redirect";
+    }
+
+    private isCheckoutExpiredForBooking(booking: HotelBooking, payment?: BookingPayment | null): boolean {
+        if (booking.booking_status !== HotelBookingStatus.PENDING) return false;
+        if (![BookingPaymentStatus.PENDING, BookingPaymentStatus.EXPIRED].includes(booking.payment_status)) return false;
+        if (!this.isDeferredPayFastPayment(payment)) return false;
+
+        if (booking.payment_status === BookingPaymentStatus.EXPIRED || payment?.payment_status === BookingPaymentStatus.EXPIRED) {
+            return true;
+        }
+
+        const expiresAt = this.getPaymentCheckoutExpiry(payment);
+        return Boolean(expiresAt && expiresAt.getTime() <= Date.now());
+    }
+
+    private canResumePaymentForBooking(booking: HotelBooking, payment?: BookingPayment | null): boolean {
+        if (booking.booking_status !== HotelBookingStatus.PENDING) return false;
+        if (booking.payment_status !== BookingPaymentStatus.PENDING) return false;
+        if (!this.isDeferredPayFastPayment(payment)) return false;
+
+        return !this.isCheckoutExpiredForBooking(booking, payment);
+    }
+
+    private requiresManualReview(booking: HotelBooking, payment?: BookingPayment | null): boolean {
+        const metadata = (payment?.metadata as Record<string, unknown> | null) ?? {};
+        return booking.payment_status === BookingPaymentStatus.PAID && metadata.manual_review_required === true;
+    }
+
+    private getPaymentIssue(booking: HotelBooking, payment?: BookingPayment | null): string | null {
+        const metadata = (payment?.metadata as Record<string, unknown> | null) ?? {};
+        if (this.requiresManualReview(booking, payment)) {
+            return String(metadata.payment_issue ?? "inventory_unavailable_after_payment");
+        }
+        return null;
+    }
+
     private toDTO(booking: HotelBooking): IHotelBookingDTO {
+        const latestPayFastPayment = this.getLatestPayFastPayment(booking);
+        const paymentExpiresAt = this.getPaymentCheckoutExpiry(latestPayFastPayment);
+        const isExpired = this.isCheckoutExpiredForBooking(booking, latestPayFastPayment);
+
         return {
             id: booking.id,
             booking_number: booking.booking_number,
@@ -1191,8 +1523,12 @@ export class BookingService {
                     website: booking.listing.contact?.website ?? null,
                     map_link: booking.listing.contact?.map_link ?? null,
                 },
-                cancellation_policy: booking.listing.hotel_details?.cancellation_policy ?? null,
-                refund_cutoff_hours: booking.listing.hotel_details?.refund_cutoff_hours ?? null,
+                cancellation_policy: booking.cancellation_policy_snapshot
+                    ?? booking.listing.hotel_details?.cancellation_policy
+                    ?? null,
+                refund_cutoff_hours: booking.refund_cutoff_hours_snapshot
+                    ?? booking.listing.hotel_details?.refund_cutoff_hours
+                    ?? null,
                 check_in_time: booking.listing.hotel_details?.check_in_time ?? null,
                 check_out_time: booking.listing.hotel_details?.check_out_time ?? null,
             },
@@ -1218,10 +1554,18 @@ export class BookingService {
                 booking.payments ?? [],
             ),
             booking_status: booking.booking_status,
+            display_status: isExpired ? "expired" : booking.booking_status,
             payment_status: booking.payment_status,
+            can_resume_payment: this.canResumePaymentForBooking(booking, latestPayFastPayment),
+            payment_expires_at: paymentExpiresAt,
+            requires_manual_review: this.requiresManualReview(booking, latestPayFastPayment),
+            payment_issue: this.getPaymentIssue(booking, latestPayFastPayment),
             cancellation_status: booking.cancellation_status,
             refund_status: booking.refund_status,
+            cancellation_policy_snapshot: booking.cancellation_policy_snapshot ?? null,
+            refund_cutoff_hours_snapshot: booking.refund_cutoff_hours_snapshot ?? null,
             special_requests: booking.special_requests ?? null,
+            cancellation_refund: null,
             confirmed_at: booking.confirmed_at ?? null,
             cancelled_at: booking.cancelled_at ?? null,
             completed_at: booking.completed_at ?? null,
@@ -1247,6 +1591,7 @@ export class BookingService {
                 status: refund.status,
                 reason: refund.reason ?? null,
                 provider_refund_id: refund.provider_refund_id ?? null,
+                metadata: refund.metadata ?? null,
                 processed_at: refund.processed_at ?? null,
                 created_at: refund.created_at,
                 updated_at: refund.updated_at,
@@ -1271,6 +1616,8 @@ export class BookingService {
             booking_completed_by_vendor: "Stay completed",
             booking_completed_by_admin: "Stay completed",
             booking_payment_recorded_by_vendor: "Payment recorded",
+            booking_cancelled_by_customer: "Booking cancelled by customer",
+            booking_payment_expired: "Payment expired",
             booking_cancellation_requested: "Cancellation requested",
             booking_refund_requested: "Refund requested",
             booking_refund_approved: "Refund approved",
@@ -1411,7 +1758,7 @@ export class BookingService {
             cancellation_requested: {
                 customerSubject: `Cancellation request received: ${booking.booking_number}`,
                 customerHeading: "Cancellation request received",
-                customerIntro: "Your cancellation request has been recorded and the room is available again.",
+                customerIntro: "Your cancellation request has been recorded and is waiting for review.",
                 vendorSubject: `Customer requested cancellation: ${booking.booking_number}`,
                 vendorHeading: "Cancellation requested",
                 vendorIntro: "A customer requested cancellation for this booking.",
@@ -1517,6 +1864,8 @@ export class BookingService {
         scope: "customer" | "vendor" | "admin",
         params: BookingListParams,
     ): Promise<IHotelBookingListResponseDTO> {
+        await this.expireStalePendingPayments();
+
         const page = params.page && params.page > 0 ? params.page : 1;
         const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 20;
         const skip = (page - 1) * limit;
@@ -1575,10 +1924,10 @@ export class BookingService {
         eventType: string,
         reason?: string,
     ): Promise<IHotelBookingDTO> {
-        const booking = await AppDataSource.transaction(async (manager) => {
-            const booking = await this.loadBookingForActor(bookingId, actor, scope, manager);
-            const previousStatus = booking.booking_status;
-            const previousCancellationStatus = booking.cancellation_status;
+        const updatedBooking = await AppDataSource.transaction(async (manager) => {
+            const currentBooking = await this.loadBookingForActor(bookingId, actor, scope, manager);
+            const previousStatus = currentBooking.booking_status;
+            const previousCancellationStatus = currentBooking.cancellation_status;
 
             if (previousStatus === HotelBookingStatus.CANCELLED) {
                 throw new AppError("Cancelled bookings cannot be updated", 409, ErrorCodes.CONFLICT);
@@ -1597,22 +1946,22 @@ export class BookingService {
                 throw new AppError("Only checked-in bookings can be completed", 409, ErrorCodes.CONFLICT);
             }
 
-            booking.booking_status = nextStatus;
+            currentBooking.booking_status = nextStatus;
             if (nextStatus === HotelBookingStatus.CONFIRMED) {
-                booking.confirmed_by_user_id = actor.userId;
-                booking.confirmed_at = new Date();
+                currentBooking.confirmed_by_user_id = actor.userId;
+                currentBooking.confirmed_at = new Date();
             }
             if (nextStatus === HotelBookingStatus.CANCELLED) {
-                booking.cancellation_status = BookingCancellationStatus.CANCELLED;
-                booking.cancelled_by_user_id = actor.userId;
-                booking.cancelled_at = new Date();
+                currentBooking.cancellation_status = BookingCancellationStatus.CANCELLED;
+                currentBooking.cancelled_by_user_id = actor.userId;
+                currentBooking.cancelled_at = new Date();
             }
             if (nextStatus === HotelBookingStatus.COMPLETED) {
-                booking.completed_by_user_id = actor.userId;
-                booking.completed_at = new Date();
+                currentBooking.completed_by_user_id = actor.userId;
+                currentBooking.completed_at = new Date();
             }
 
-            const saved = await manager.getRepository(HotelBooking).save(booking);
+            const saved = await manager.getRepository(HotelBooking).save(currentBooking);
 
             await this.statusHistoryService.record({
                 booking_id: saved.id,
@@ -1652,20 +2001,208 @@ export class BookingService {
 
             return this.getBookingById(saved.id, actor, scope, manager);
         });
+
         if (nextStatus === HotelBookingStatus.CONFIRMED) {
-            await this.notifyBookingLifecycle(booking.id, "confirmed", reason ?? null);
+            await this.notifyBookingLifecycle(updatedBooking.id, "confirmed", reason ?? null);
         } else if (nextStatus === HotelBookingStatus.CANCELLED) {
-            await this.notifyBookingLifecycle(booking.id, "cancelled", reason ?? null);
+            await this.notifyBookingLifecycle(updatedBooking.id, "cancelled", reason ?? null);
         } else if (nextStatus === HotelBookingStatus.CHECKED_IN) {
-            await this.notifyBookingLifecycle(booking.id, "checked_in", reason ?? null);
+            await this.notifyBookingLifecycle(updatedBooking.id, "checked_in", reason ?? null);
         } else if (nextStatus === HotelBookingStatus.COMPLETED) {
-            await this.notifyBookingLifecycle(booking.id, "completed", reason ?? null);
+            await this.notifyBookingLifecycle(updatedBooking.id, "completed", reason ?? null);
         }
-        return booking;
+
+        return updatedBooking;
     }
 
-    async createCustomerBooking(actor: AuthActor, dto: ICreateHotelBookingDTO): Promise<IHotelBookingDTO> {
-        return this.createBooking(dto, actor, BookingSource.CUSTOMER_WEB);
+    async createCustomerCheckout(
+        actor: AuthActor,
+        dto: ICreateHotelBookingDTO,
+        customerIp: string,
+    ): Promise<IHotelBookingCheckoutResponseDTO> {
+        if (this.isDevelopmentEnv()) {
+            const booking = await this.createBooking({
+                ...dto,
+                payment_amount: Number.MAX_SAFE_INTEGER,
+                payment_method: dto.payment_method,
+                payment_notes: dto.payment_notes?.trim() || "Development checkout bypass",
+                payment_provider: "development_direct",
+                transaction_id: dto.transaction_id ?? undefined,
+            }, actor, BookingSource.CUSTOMER_WEB);
+
+            return {
+                booking_id: booking.id,
+                booking_number: booking.booking_number,
+                checkout_url: this.buildPayFastFrontendStatusUrl(booking.id, "success"),
+                form_fields: {},
+                expires_at: new Date(),
+            };
+        }
+
+        const booking = await this.createBooking({
+            ...dto,
+            payment_amount: 0,
+            payment_method: undefined,
+            payment_notes: "Pending PayFast checkout",
+            payment_provider: "payfast_redirect",
+            transaction_id: undefined,
+        }, actor, BookingSource.CUSTOMER_WEB);
+
+        const session = await AppDataSource.transaction(async (manager) => {
+            const bookingEntity = await this.loadBookingForGateway(booking.id, manager);
+            const payment = this.getLatestPayFastPayment(bookingEntity);
+            if (!payment) {
+                throw new AppError(
+                    "Pending PayFast booking payment was not created.",
+                    500,
+                    ErrorCodes.INTERNAL_SERVER_ERROR,
+                );
+            }
+
+            const paymentMetadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+            const holdId = String(paymentMetadata.hold_id ?? dto.hold_id ?? "");
+            let expiresAt = new Date();
+
+            if (holdId && isValidUuid(holdId)) {
+                const hold = await this.loadLockedActiveHold(manager, holdId, actor.userId);
+                expiresAt = hold.expires_at;
+            }
+
+            const checkout = await this.payFastService.createCheckoutSession({
+                basketId: bookingEntity.booking_number,
+                amount: Number(bookingEntity.total_amount),
+                customerEmail: bookingEntity.guest_email,
+                customerMobile: bookingEntity.guest_phone,
+                customerIp,
+                description: `Hotel booking ${bookingEntity.booking_number}`,
+                successUrl: this.buildPayFastReturnUrl("success", bookingEntity.id),
+                failureUrl: this.buildPayFastReturnUrl("failure", bookingEntity.id),
+                checkoutUrl: this.buildPayFastFrontendStatusUrl(bookingEntity.id, "processing"),
+            });
+
+            payment.provider = "payfast";
+            payment.metadata = this.mergePaymentMetadata(payment, {
+                checkout_mode: "payfast_redirect",
+                basket_id: bookingEntity.booking_number,
+                access_token_issued: true,
+                checkout_url: checkout.checkoutUrl,
+                customer_ip: customerIp || null,
+                expires_at: expiresAt.toISOString(),
+            });
+            await manager.getRepository(BookingPayment).save(payment);
+
+            await this.auditService.record({
+                booking_id: bookingEntity.id,
+                event_type: "booking_payment_checkout_initiated",
+                actor_user_id: actor.userId,
+                actor_role: BookingAuditActorRole.CUSTOMER,
+                source: BookingSource.CUSTOMER_WEB,
+                after_state: {
+                    booking_status: bookingEntity.booking_status,
+                    payment_status: bookingEntity.payment_status,
+                },
+                metadata: {
+                    provider: "payfast",
+                    basket_id: bookingEntity.booking_number,
+                    expires_at: expiresAt.toISOString(),
+                },
+            }, manager);
+
+            return {
+                booking_id: bookingEntity.id,
+                booking_number: bookingEntity.booking_number,
+                checkout_url: checkout.checkoutUrl,
+                form_fields: checkout.formFields,
+                expires_at: expiresAt,
+            };
+        });
+
+        return session;
+    }
+
+    async resumeCustomerCheckout(
+        bookingId: string,
+        actor: AuthActor,
+        customerIp: string,
+    ): Promise<IHotelBookingCheckoutResponseDTO> {
+        if (actor.userType !== UserRole.CUSTOMER) {
+            throw new AppError("Only customers can resume web booking payments", 403, ErrorCodes.FORBIDDEN);
+        }
+
+        return AppDataSource.transaction(async (manager) => {
+            const booking = await this.loadBookingForActor(bookingId, actor, "customer", manager);
+            const payment = this.getLatestPayFastPayment(booking);
+
+            if (!payment || !this.isDeferredPayFastPayment(payment)) {
+                throw new AppError("This booking does not have a resumable PayFast checkout.", 409, ErrorCodes.CONFLICT);
+            }
+
+            if (booking.booking_status !== HotelBookingStatus.PENDING || booking.payment_status !== BookingPaymentStatus.PENDING) {
+                throw new AppError("Only pending unpaid bookings can be resumed.", 409, ErrorCodes.CONFLICT);
+            }
+
+            if (this.isCheckoutExpiredForBooking(booking, payment)) {
+                throw new AppError("This payment window has expired. Please start a new booking.", 409, ErrorCodes.CONFLICT);
+            }
+
+            const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+            const holdId = String(metadata.hold_id ?? "");
+
+            if (!holdId || !isValidUuid(holdId)) {
+                throw new AppError("This booking is missing its room hold and cannot be resumed.", 409, ErrorCodes.CONFLICT);
+            }
+
+            const hold = await this.loadLockedActiveHold(manager, holdId, actor.userId);
+            const expiresAt = hold.expires_at;
+
+            const checkout = await this.payFastService.createCheckoutSession({
+                basketId: booking.booking_number,
+                amount: Number(booking.total_amount),
+                customerEmail: booking.guest_email,
+                customerMobile: booking.guest_phone,
+                customerIp,
+                description: `Hotel booking ${booking.booking_number}`,
+                successUrl: this.buildPayFastReturnUrl("success", booking.id),
+                failureUrl: this.buildPayFastReturnUrl("failure", booking.id),
+                checkoutUrl: this.buildPayFastFrontendStatusUrl(booking.id, "processing"),
+            });
+
+            payment.provider = "payfast";
+            payment.metadata = this.mergePaymentMetadata(payment, {
+                checkout_mode: "payfast_redirect",
+                basket_id: booking.booking_number,
+                access_token_issued: true,
+                checkout_url: checkout.checkoutUrl,
+                customer_ip: customerIp || null,
+                expires_at: expiresAt.toISOString(),
+            });
+            await manager.getRepository(BookingPayment).save(payment);
+
+            await this.auditService.record({
+                booking_id: booking.id,
+                event_type: "booking_payment_checkout_resumed",
+                actor_user_id: actor.userId,
+                actor_role: BookingAuditActorRole.CUSTOMER,
+                source: BookingSource.CUSTOMER_WEB,
+                after_state: {
+                    booking_status: booking.booking_status,
+                    payment_status: booking.payment_status,
+                },
+                metadata: {
+                    provider: "payfast",
+                    basket_id: booking.booking_number,
+                    expires_at: expiresAt.toISOString(),
+                },
+            }, manager);
+
+            return {
+                booking_id: booking.id,
+                booking_number: booking.booking_number,
+                checkout_url: checkout.checkoutUrl,
+                form_fields: checkout.formFields,
+                expires_at: expiresAt,
+            };
+        });
     }
 
     async createVendorBooking(actor: AuthActor, dto: ICreateHotelBookingDTO): Promise<IHotelBookingDTO> {
@@ -1725,7 +2262,10 @@ export class BookingService {
         actor: AuthActor,
         reason?: string,
     ): Promise<IHotelBookingDTO> {
-        const booking = await AppDataSource.transaction(async (manager) => {
+        const {
+            booking,
+            refundRequested,
+        } = await AppDataSource.transaction(async (manager) => {
             const booking = await this.loadBookingForActor(bookingId, actor, "customer", manager);
 
             if (![HotelBookingStatus.PENDING, HotelBookingStatus.CONFIRMED].includes(booking.booking_status)) {
@@ -1736,20 +2276,125 @@ export class BookingService {
                 );
             }
 
-            if (booking.cancellation_status === BookingCancellationStatus.REQUESTED) {
-                throw new AppError(
-                    "Cancellation has already been requested for this booking",
-                    409,
-                    ErrorCodes.CONFLICT,
-                );
-            }
-
             const previousBookingStatus = booking.booking_status;
             const previousStatus = booking.cancellation_status;
+            const previousRefundStatus = booking.refund_status;
+            let refundEligible: boolean | null = null;
+            let refundMessage: string | null = null;
+            let refundAmount: number | null = null;
+
             booking.booking_status = HotelBookingStatus.CANCELLED;
             booking.cancellation_status = BookingCancellationStatus.CANCELLED;
             booking.cancelled_by_user_id = actor.userId;
             booking.cancelled_at = new Date();
+
+            let refundRequested = false;
+
+            const hasPaidBalance = [
+                BookingPaymentStatus.PAID,
+                BookingPaymentStatus.PARTIALLY_PAID,
+                BookingPaymentStatus.PARTIALLY_REFUNDED,
+                BookingPaymentStatus.REFUNDED,
+            ].includes(booking.payment_status);
+
+            if (hasPaidBalance) {
+                const existingRequestedRefund = (booking.refunds ?? []).find((refund) =>
+                    [
+                        BookingRefundStatus.REQUESTED,
+                        BookingRefundStatus.APPROVED,
+                        BookingRefundStatus.PROCESSING,
+                    ].includes(refund.status),
+                );
+
+                if (existingRequestedRefund) {
+                    refundRequested = true;
+                    refundEligible = null;
+                    refundAmount = Number(existingRequestedRefund.amount);
+                    refundMessage = "Your booking was cancelled. A refund request for this booking is already in progress.";
+                } else {
+                    const refundablePayment = (booking.payments ?? []).find((payment) =>
+                        Number(payment.captured_amount) - Number(payment.refunded_amount) > 0,
+                    );
+
+                    if (refundablePayment) {
+                        const eligibility = await this.getRefundEligibility(manager, booking);
+                        const refundableAmount = Number(refundablePayment.captured_amount) - Number(refundablePayment.refunded_amount);
+                        const trimmedReason = reason?.trim();
+                        const refund = manager.getRepository(BookingRefund).create({
+                            booking_id: booking.id,
+                            booking,
+                            payment_id: refundablePayment.id,
+                            payment: refundablePayment,
+                            refund_type: BookingRefundType.FULL,
+                            amount: Number(refundableAmount.toFixed(2)),
+                            reason: trimmedReason || "Refund requested after customer cancellation",
+                            requested_by_user_id: actor.userId,
+                            status: BookingRefundStatus.REQUESTED,
+                            metadata: {
+                                auto_requested_on_cancellation: true,
+                                policy_eligible: eligibility.eligible,
+                                policy_reason: eligibility.message,
+                                refund_cutoff_hours_snapshot: eligibility.refundCutoffHours,
+                                cancellation_policy_snapshot: eligibility.cancellationPolicy,
+                                policy_source: eligibility.source,
+                            },
+                        });
+                        const savedRefund = await manager.getRepository(BookingRefund).save(refund);
+
+                        booking.refund_status = BookingRefundStatus.REQUESTED;
+                        refundRequested = true;
+                        refundEligible = eligibility.eligible;
+                        refundMessage = eligibility.eligible
+                            ? "Your booking was cancelled and a refund request was created."
+                            : eligibility.message || "Your booking was cancelled, but this refund request is not eligible under the booking policy.";
+                        refundAmount = Number(savedRefund.amount);
+
+                        await this.statusHistoryService.record({
+                            booking_id: booking.id,
+                            status_type: BookingStatusType.REFUND,
+                            from_status: previousRefundStatus,
+                            to_status: BookingRefundStatus.REQUESTED,
+                            changed_by_user_id: actor.userId,
+                            reason: trimmedReason ?? null,
+                            metadata: {
+                                refund_id: savedRefund.id,
+                                payment_id: refundablePayment.id,
+                                amount: Number(savedRefund.amount),
+                                auto_requested_on_cancellation: true,
+                                policy_eligible: eligibility.eligible,
+                            },
+                        }, manager);
+
+                        await this.auditService.record({
+                            booking_id: booking.id,
+                            event_type: "booking_refund_requested",
+                            actor_user_id: actor.userId,
+                            actor_role: BookingAuditActorRole.CUSTOMER,
+                            source: "customer",
+                            before_state: { refund_status: previousRefundStatus },
+                            after_state: { refund_status: BookingRefundStatus.REQUESTED },
+                            metadata: {
+                                refund_id: savedRefund.id,
+                                payment_id: refundablePayment.id,
+                                amount: Number(savedRefund.amount),
+                                reason: savedRefund.reason ?? null,
+                                auto_requested_on_cancellation: true,
+                                policy_eligible: eligibility.eligible,
+                                policy_reason: eligibility.message,
+                            },
+                        }, manager);
+                    } else {
+                        refundRequested = false;
+                        refundEligible = null;
+                        refundMessage = "Your booking was cancelled. No refundable payment was found for this booking.";
+                    }
+                }
+            } else {
+                refundRequested = false;
+                refundEligible = null;
+                refundMessage = "Your booking was cancelled. No refundable payment was found for this booking.";
+            }
+
             await manager.getRepository(HotelBooking).save(booking);
 
             await this.statusHistoryService.record({
@@ -1772,7 +2417,7 @@ export class BookingService {
 
             await this.auditService.record({
                 booking_id: booking.id,
-                event_type: "booking_cancellation_requested",
+                event_type: "booking_cancelled_by_customer",
                 actor_user_id: actor.userId,
                 source: "customer",
                 before_state: {
@@ -1782,19 +2427,45 @@ export class BookingService {
                 after_state: {
                     booking_status: HotelBookingStatus.CANCELLED,
                     cancellation_status: BookingCancellationStatus.CANCELLED,
+                    refund_status: booking.refund_status,
                 },
                 metadata: reason ? { reason } : null,
             }, manager);
 
             await this.publishBookingEvent(
                 booking as HotelBooking & { listing: Listing },
-                "booking_cancellation_requested",
+                "booking_cancelled_by_customer",
                 manager,
             );
 
-            return this.getBookingById(booking.id, actor, "customer", manager);
+            if (refundRequested) {
+                await this.publishBookingEvent(
+                    booking as HotelBooking & { listing: Listing },
+                    "booking_refund_requested",
+                    manager,
+                );
+            }
+
+            return {
+                booking: {
+                    ...(await this.getBookingById(booking.id, actor, "customer", manager)),
+                    cancellation_refund: {
+                        refund_requested: refundRequested,
+                        refund_eligible: refundEligible,
+                        refund_message: refundMessage,
+                        refund_amount: refundAmount,
+                    },
+                },
+                refundRequested,
+                refundEligible,
+                refundMessage,
+                refundAmount,
+            };
         });
-        await this.notifyBookingLifecycle(booking.id, "cancellation_requested", reason ?? null);
+        await this.notifyBookingLifecycle(booking.id, "cancelled", reason ?? null);
+        if (refundRequested) {
+            await this.notifyBookingLifecycle(booking.id, "refund_requested", reason ?? null);
+        }
         return booking;
     }
 
@@ -1865,7 +2536,9 @@ export class BookingService {
 
             const refund = manager.getRepository(BookingRefund).create({
                 booking_id: booking.id,
+                booking,
                 payment_id: payment.id,
+                payment,
                 refund_type: input.amount === refundableAmount
                     ? BookingRefundType.FULL
                     : BookingRefundType.PARTIAL,
@@ -1961,6 +2634,7 @@ export class BookingService {
             status: refund.status,
             reason: refund.reason ?? null,
             provider_refund_id: refund.provider_refund_id ?? null,
+            metadata: refund.metadata ?? null,
             requested_by_user_id: refund.requested_by_user_id ?? null,
             approved_by_user_id: refund.approved_by_user_id ?? null,
             processed_at: refund.processed_at ?? null,
@@ -2449,6 +3123,399 @@ export class BookingService {
         return booking;
     }
 
+    private async finalizeGatewayPaidBooking(
+        manager: EntityManager,
+        booking: HotelBooking,
+        payment: BookingPayment,
+        transactionId?: string | null,
+    ): Promise<void> {
+        if (booking.payment_status === BookingPaymentStatus.PAID && booking.booking_status === HotelBookingStatus.CONFIRMED) {
+            return;
+        }
+
+        const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+        const holdId = String(metadata.hold_id ?? "");
+
+        const roomType = await this.loadLockedRoomType(manager, booking.room_type_id);
+        const reservedRooms = await this.getReservedRoomCount(
+            manager,
+            booking.room_type_id,
+            booking.check_in_date,
+            booking.check_out_date,
+        );
+        const heldRooms = await this.getActiveHoldRoomCount(
+            manager,
+            booking.room_type_id,
+            booking.check_in_date,
+            booking.check_out_date,
+            holdId && isValidUuid(holdId) ? holdId : undefined,
+        );
+        const availableRooms = roomType.total_rooms - reservedRooms - heldRooms;
+
+        if (booking.rooms_count > availableRooms) {
+            const previousPaymentStatus = booking.payment_status;
+            booking.payment_status = BookingPaymentStatus.PAID;
+            payment.payment_status = BookingPaymentStatus.PAID;
+            payment.captured_amount = Number(booking.total_amount);
+            payment.transaction_id = transactionId ?? payment.transaction_id ?? null;
+            payment.provider_payment_id = transactionId ?? payment.provider_payment_id ?? null;
+            payment.metadata = this.mergePaymentMetadata(payment, {
+                checkout_status: "verified_success_manual_review",
+                verified_at: new Date().toISOString(),
+                manual_review_required: true,
+                payment_issue: "inventory_unavailable_after_payment",
+            });
+            await manager.getRepository(BookingPayment).save(payment);
+            await manager.getRepository(HotelBooking).save(booking);
+
+            if (previousPaymentStatus !== booking.payment_status) {
+                await this.statusHistoryService.record({
+                    booking_id: booking.id,
+                    status_type: BookingStatusType.PAYMENT,
+                    from_status: previousPaymentStatus,
+                    to_status: booking.payment_status,
+                    changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
+                    metadata: {
+                        provider: "payfast",
+                        transaction_id: payment.transaction_id ?? null,
+                        manual_review_required: true,
+                    },
+                }, manager);
+            }
+
+            await this.auditService.record({
+                booking_id: booking.id,
+                event_type: "booking_payment_captured_manual_review_required",
+                actor_user_id: null,
+                actor_role: BookingAuditActorRole.SYSTEM,
+                source: "payfast",
+                before_state: {
+                    booking_status: booking.booking_status,
+                    payment_status: previousPaymentStatus,
+                },
+                after_state: {
+                    booking_status: booking.booking_status,
+                    payment_status: booking.payment_status,
+                },
+                metadata: {
+                    provider: "payfast",
+                    transaction_id: payment.transaction_id ?? null,
+                    payment_issue: "inventory_unavailable_after_payment",
+                },
+            }, manager);
+
+            return;
+        }
+
+        const allocationRepo = manager.getRepository(HotelBookingAllocation);
+        const existingAllocation = await allocationRepo.findOne({
+            where: { booking_id: booking.id },
+        });
+        if (!existingAllocation) {
+            const allocation = allocationRepo.create({
+                booking_id: booking.id,
+                listing_id: booking.listing_id,
+                room_type_id: booking.room_type_id,
+                quantity_reserved: booking.rooms_count,
+            });
+            await allocationRepo.save(allocation);
+        }
+
+        if (holdId && isValidUuid(holdId)) {
+            const hold = await manager.getRepository(BookingRoomHold).findOne({
+                where: { id: holdId },
+                relations: ["listing"],
+            });
+            if (hold && hold.status === BookingHoldStatus.ACTIVE) {
+                hold.status = BookingHoldStatus.CONSUMED;
+                hold.consumed_at = new Date();
+                await manager.getRepository(BookingRoomHold).save(hold);
+                if (hold.listing) {
+                    await this.publishHoldEvent(
+                        hold as BookingRoomHold & { listing: Listing },
+                        "hold_consumed",
+                        manager,
+                    );
+                }
+            }
+        }
+
+        const previousBookingStatus = booking.booking_status;
+        const previousPaymentStatus = booking.payment_status;
+        booking.payment_status = BookingPaymentStatus.PAID;
+        payment.payment_status = BookingPaymentStatus.PAID;
+        payment.captured_amount = Number(booking.total_amount);
+        payment.transaction_id = transactionId ?? payment.transaction_id ?? null;
+        payment.provider_payment_id = transactionId ?? payment.provider_payment_id ?? null;
+        payment.metadata = this.mergePaymentMetadata(payment, {
+            checkout_status: "verified_success",
+            verified_at: new Date().toISOString(),
+        });
+        await manager.getRepository(BookingPayment).save(payment);
+
+        booking.booking_status = await this.shouldAutoConfirmPaidBooking(manager, booking.listing_id)
+            ? HotelBookingStatus.CONFIRMED
+            : HotelBookingStatus.CONFIRMED;
+        booking.confirmed_at = booking.confirmed_at ?? new Date();
+        await manager.getRepository(HotelBooking).save(booking);
+
+        await this.statusHistoryService.record({
+            booking_id: booking.id,
+            status_type: BookingStatusType.PAYMENT,
+            from_status: previousPaymentStatus,
+            to_status: booking.payment_status,
+            changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
+            metadata: {
+                provider: "payfast",
+                transaction_id: payment.transaction_id ?? null,
+            },
+        }, manager);
+
+        if (previousBookingStatus !== booking.booking_status) {
+            await this.statusHistoryService.record({
+                booking_id: booking.id,
+                status_type: BookingStatusType.BOOKING,
+                from_status: previousBookingStatus,
+                to_status: booking.booking_status,
+                changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
+                metadata: {
+                    provider: "payfast",
+                    auto_confirm_paid_bookings: true,
+                },
+            }, manager);
+        }
+
+        await this.auditService.record({
+            booking_id: booking.id,
+            event_type: "booking_payment_verified_by_gateway",
+            actor_user_id: null,
+            actor_role: BookingAuditActorRole.SYSTEM,
+            source: "payfast",
+            before_state: {
+                booking_status: previousBookingStatus,
+                payment_status: previousPaymentStatus,
+            },
+            after_state: {
+                booking_status: booking.booking_status,
+                payment_status: booking.payment_status,
+            },
+            metadata: {
+                provider: "payfast",
+                transaction_id: payment.transaction_id ?? null,
+            },
+        }, manager);
+
+        await this.publishBookingEvent(
+            booking as HotelBooking & { listing: Listing },
+            "booking_payment_verified_by_gateway",
+            manager,
+        );
+
+        await this.notifyBookingLifecycle(booking.id, "confirmed");
+    }
+
+    private async markGatewayPaymentFailed(
+        manager: EntityManager,
+        booking: HotelBooking,
+        payment: BookingPayment,
+        state: "failed" | "cancelled" | "pending",
+        transactionId?: string | null,
+        message?: string | null,
+    ): Promise<void> {
+        const previousPaymentStatus = booking.payment_status;
+        payment.payment_status = state === "pending" ? BookingPaymentStatus.PENDING : BookingPaymentStatus.FAILED;
+        payment.transaction_id = transactionId ?? payment.transaction_id ?? null;
+        payment.provider_payment_id = transactionId ?? payment.provider_payment_id ?? null;
+        payment.metadata = this.mergePaymentMetadata(payment, {
+            checkout_status: state,
+            gateway_message: message ?? null,
+            verified_at: new Date().toISOString(),
+        });
+        await manager.getRepository(BookingPayment).save(payment);
+
+        booking.payment_status = payment.payment_status;
+        await manager.getRepository(HotelBooking).save(booking);
+
+        if (previousPaymentStatus !== booking.payment_status) {
+            await this.statusHistoryService.record({
+                booking_id: booking.id,
+                status_type: BookingStatusType.PAYMENT,
+                from_status: previousPaymentStatus,
+                to_status: booking.payment_status,
+                changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
+                metadata: {
+                    provider: "payfast",
+                    transaction_id: payment.transaction_id ?? null,
+                    gateway_state: state,
+                },
+            }, manager);
+        }
+
+        await this.auditService.record({
+            booking_id: booking.id,
+            event_type: state === "cancelled"
+                ? "booking_payment_cancelled_by_gateway"
+                : state === "failed"
+                    ? "booking_payment_failed_by_gateway"
+                    : "booking_payment_pending_gateway_review",
+            actor_role: BookingAuditActorRole.SYSTEM,
+            source: "payfast",
+            before_state: {
+                payment_status: previousPaymentStatus,
+            },
+            after_state: {
+                payment_status: booking.payment_status,
+            },
+            metadata: {
+                provider: "payfast",
+                transaction_id: payment.transaction_id ?? null,
+                gateway_message: message ?? null,
+            },
+        }, manager);
+    }
+
+    private async verifyPayFastBookingInternal(
+        bookingId: string,
+        manager: EntityManager = AppDataSource.manager,
+    ): Promise<HotelBooking> {
+        const booking = await this.loadBookingForGateway(bookingId, manager);
+        const payment = this.getLatestPayFastPayment(booking);
+        if (!payment) {
+            return booking;
+        }
+
+        const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+        const basketId = String(metadata.basket_id ?? booking.booking_number ?? "");
+        const statusResult = await this.payFastService.getTransactionStatus({
+            transactionId: payment.transaction_id ?? payment.provider_payment_id ?? null,
+            basketId,
+        });
+
+        if (statusResult.state === "paid") {
+            await this.finalizeGatewayPaidBooking(
+                manager,
+                booking,
+                payment,
+                statusResult.transactionId ?? payment.transaction_id ?? null,
+            );
+        } else {
+            await this.markGatewayPaymentFailed(
+                manager,
+                booking,
+                payment,
+                statusResult.state,
+                statusResult.transactionId ?? payment.transaction_id ?? null,
+                statusResult.message,
+            );
+        }
+
+        return this.loadBookingForGateway(bookingId, manager);
+    }
+
+    async verifyCustomerPayFastBooking(bookingId: string, actor: AuthActor): Promise<IHotelBookingDTO> {
+        if (actor.userType !== UserRole.CUSTOMER) {
+            throw new AppError("Only customers can verify web booking payments", 403, ErrorCodes.FORBIDDEN);
+        }
+
+        const ownedBooking = await this.loadBookingForActor(bookingId, actor, "customer");
+        const verified = await AppDataSource.transaction((manager) => this.verifyPayFastBookingInternal(ownedBooking.id, manager));
+        return this.toDTO(verified);
+    }
+
+    async handlePayFastReturn(
+        bookingId: string,
+        result: string,
+        payload: Record<string, unknown>,
+    ): Promise<string> {
+        if (!bookingId || !isValidUuid(bookingId)) {
+            return this.buildPayFastFrontendStatusUrl("", "failed");
+        }
+
+        try {
+            const booking = await AppDataSource.transaction(async (manager) => {
+                const booking = await this.loadBookingForGateway(bookingId, manager);
+                const payment = this.getLatestPayFastPayment(booking);
+                if (!payment) {
+                    return booking;
+                }
+
+                const transactionId = payload.transaction_id ?? payload.transactionId ?? payload.txn_id ?? null;
+                const errCode = payload.err_code ?? payload.errCode ?? payload.code ?? null;
+                const basketId = String(
+                    payload.basket_id
+                    ?? payload.basketId
+                    ?? (payment.metadata as Record<string, unknown> | null)?.basket_id
+                    ?? booking.booking_number
+                    ?? "",
+                );
+                const validationHash = payload.validation_hash ?? payload.validationHash ?? null;
+                const isValidHash = this.payFastService.validateReturnHash({
+                    basketId,
+                    errCode: errCode ? String(errCode) : null,
+                    validationHash: validationHash ? String(validationHash) : null,
+                });
+
+                logInfo("PayFast return callback received", {
+                    bookingId: booking.id,
+                    result,
+                    basketId,
+                    errCode: errCode ? String(errCode) : null,
+                    transactionId: transactionId ? String(transactionId) : null,
+                    validationHashPresent: Boolean(validationHash),
+                    callbackHashValid: isValidHash,
+                });
+
+                payment.transaction_id = transactionId ? String(transactionId) : payment.transaction_id ?? null;
+                payment.provider_payment_id = transactionId ? String(transactionId) : payment.provider_payment_id ?? null;
+                payment.metadata = this.mergePaymentMetadata(payment, {
+                    return_result: result,
+                    basket_id: basketId || null,
+                    callback_hash_valid: isValidHash,
+                    callback_payload: payload,
+                });
+                await manager.getRepository(BookingPayment).save(payment);
+
+                if (!isValidHash) {
+                    logWarn("PayFast return callback hash validation failed", {
+                        bookingId: booking.id,
+                        result,
+                        basketId,
+                        errCode: errCode ? String(errCode) : null,
+                    });
+
+                    await this.auditService.record({
+                        booking_id: booking.id,
+                        event_type: "booking_payment_callback_hash_invalid",
+                        actor_role: BookingAuditActorRole.SYSTEM,
+                        source: BookingSource.CUSTOMER_WEB,
+                        after_state: {
+                            booking_status: booking.booking_status,
+                            payment_status: booking.payment_status,
+                        },
+                        metadata: {
+                            provider: "payfast",
+                            basket_id: basketId,
+                            err_code: errCode ?? null,
+                        },
+                    }, manager);
+
+                    return booking;
+                }
+
+                return this.verifyPayFastBookingInternal(bookingId, manager);
+            });
+
+            const status = booking.payment_status === BookingPaymentStatus.PAID
+                ? "success"
+                : booking.payment_status === BookingPaymentStatus.FAILED
+                    ? "failed"
+                    : "pending";
+            return this.buildPayFastFrontendStatusUrl(booking.id, status);
+        } catch {
+            return this.buildPayFastFrontendStatusUrl(bookingId, result === "success" ? "pending" : "failed");
+        }
+    }
+
     async getAvailability(
         listingId: string,
         roomTypeId: string,
@@ -2631,6 +3698,10 @@ export class BookingService {
 
     async releaseExpiredHolds(): Promise<number> {
         return this.expireStaleHolds();
+    }
+
+    async expireExpiredPayments(): Promise<number> {
+        return this.expireStalePendingPayments();
     }
 
     async getBookedDatesForRoomType(roomTypeId: string): Promise<Array<{ start: string; end: string }>> {

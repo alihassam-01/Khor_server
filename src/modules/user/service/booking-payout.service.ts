@@ -4,7 +4,12 @@ import { ErrorCodes } from "@common/errors/error-codes";
 import { BookingPayout } from "@modules/user/entity/booking/booking-payout.entity";
 import { HotelBooking } from "@modules/user/entity/booking/hotel-booking.entity";
 import { PlatformSetting } from "@modules/user/entity/payment/platform-setting.entity";
-import { BookingSource } from "@common/enums/booking.enums";
+import {
+    BookingPaymentStatus,
+    BookingRefundStatus,
+    BookingSource,
+    HotelBookingStatus,
+} from "@common/enums/booking.enums";
 import { IBookingPayoutDTO, ICreateBookingPayoutDTO, IUpdateBookingPayoutDTO } from "@modules/user/dtos";
 
 export class BookingPayoutService {
@@ -18,6 +23,15 @@ export class BookingPayoutService {
             return 0;
         }
         return rate <= 1 ? rate : rate / 100;
+    }
+
+    private roundAmount(value: number): number {
+        return Number(value.toFixed(2));
+    }
+
+    private getEligibilityTimestamp(checkInDate: string): Date {
+        const parsedCheckIn = new Date(`${checkInDate}T00:00:00.000Z`);
+        return new Date(parsedCheckIn.getTime() + 24 * 60 * 60 * 1000);
     }
 
     private toDTO(payout: BookingPayout): IBookingPayoutDTO {
@@ -52,9 +66,18 @@ export class BookingPayoutService {
     }
 
     async createPayout(input: ICreateBookingPayoutDTO): Promise<IBookingPayoutDTO> {
+        const requestedAmount = (input as ICreateBookingPayoutDTO & { amount?: unknown }).amount;
+        if (requestedAmount !== undefined) {
+            throw new AppError(
+                "Payout amount is calculated from captured booking payments and cannot be supplied by the client",
+                400,
+                ErrorCodes.BAD_REQUEST,
+            );
+        }
+
         const booking = await this.bookingRepo.findOne({
             where: { id: input.booking_id },
-            relations: ["listing"],
+            relations: ["listing", "payments", "refunds"],
         });
 
         if (!booking) {
@@ -65,6 +88,30 @@ export class BookingPayoutService {
             throw new AppError("Payouts are only available for online bookings", 400, ErrorCodes.BAD_REQUEST);
         }
 
+        if (![HotelBookingStatus.CHECKED_IN, HotelBookingStatus.COMPLETED].includes(booking.booking_status)) {
+            throw new AppError("Payouts can only be created for checked-in or completed bookings", 409, ErrorCodes.CONFLICT);
+        }
+
+        const eligibleAt = this.getEligibilityTimestamp(booking.check_in_date);
+        if (Date.now() < eligibleAt.getTime()) {
+            throw new AppError("Payouts can only be created 24 hours after the check-in date", 409, ErrorCodes.CONFLICT);
+        }
+
+        if (![BookingPaymentStatus.PAID, BookingPaymentStatus.PARTIALLY_REFUNDED].includes(booking.payment_status)) {
+            throw new AppError("Payouts can only be created for paid bookings", 409, ErrorCodes.CONFLICT);
+        }
+
+        const activeRefund = (booking.refunds ?? []).find((refund) =>
+            [
+                BookingRefundStatus.REQUESTED,
+                BookingRefundStatus.APPROVED,
+                BookingRefundStatus.PROCESSING,
+            ].includes(refund.status),
+        );
+        if (activeRefund) {
+            throw new AppError("Cannot create a payout while a refund is in progress", 409, ErrorCodes.CONFLICT);
+        }
+
         const existingPayout = await this.payoutRepo.findOne({
             where: { booking_id: booking.id },
         });
@@ -73,18 +120,30 @@ export class BookingPayoutService {
             throw new AppError("Payout already exists for this booking", 409, ErrorCodes.CONFLICT);
         }
 
+        const capturedAmount = this.roundAmount(
+            (booking.payments ?? []).reduce((sum, payment) => sum + Number(payment.captured_amount ?? 0), 0),
+        );
+        const refundedAmount = this.roundAmount(
+            (booking.payments ?? []).reduce((sum, payment) => sum + Number(payment.refunded_amount ?? 0), 0),
+        );
+        const netCapturedAmount = this.roundAmount(capturedAmount - refundedAmount);
+
+        if (netCapturedAmount <= 0) {
+            throw new AppError("Cannot create a payout without a positive captured balance", 409, ErrorCodes.CONFLICT);
+        }
+
         const globalCommissionSetting = await this.platformSettingRepo.findOne({
             where: { setting_key: this.payoutCommissionKey },
         });
         const rawGlobalRate = globalCommissionSetting ? Number(globalCommissionSetting.setting_value) : 0;
         const commissionRate = this.normalizeRate(rawGlobalRate);
-        const grossAmount = Number(booking.total_amount);
-        const commissionAmount = grossAmount * commissionRate;
-        const payoutAmount = input.amount ?? Math.max(grossAmount - commissionAmount, 0);
+        const grossAmount = netCapturedAmount;
+        const commissionAmount = this.roundAmount(grossAmount * commissionRate);
+        const payoutAmount = this.roundAmount(Math.max(grossAmount - commissionAmount, 0));
 
         const payout = this.payoutRepo.create({
             booking_id: booking.id,
-            vendor_id: booking.listing?.vendor_id ?? input.vendor_id ?? null,
+            vendor_id: booking.listing?.vendor_id ?? null,
             amount: payoutAmount,
             gross_amount: grossAmount,
             commission_rate: commissionRate,

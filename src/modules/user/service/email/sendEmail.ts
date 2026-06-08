@@ -1,9 +1,9 @@
-import { IEmailBookingData } from "@modules/user/dtos/bookingConfirmation.dto";
 import { sendEmail } from "./index";
-import { accountActivationTemplate } from "./templates/accountActivation";
 import { AuditLogStatus, AuditLogEventType, EMAIL_SUBJECTS } from "@modules/user/constant/audit.constant";
 import { AuditLogService } from "@modules/user/service/audit-log.service";
-import { bookingConfirmationEmailTemplate } from "./templates/bookingConfirmation";
+import { bookingLifecycleTemplate, type BookingLifecycleTemplateInput } from "./templates/bookingLifecycle";
+import { ownerDailyCheckInsTemplate, type OwnerDailyCheckInItem } from "./templates/ownerDailyCheckIns";
+import { ticketActivityTemplate, type TicketActivityTemplateInput } from "./templates/ticketActivity";
 
 export class SendEmail {
   private auditLogService = new AuditLogService();
@@ -40,85 +40,6 @@ export class SendEmail {
     return success ? { status: "ok" } : { status: "error" };
   }
 
-  async sendForgotPasswordEmail(
-    name: string,
-    email: string,
-    resetLink: string
-  ) {
-    const { forgotPasswordTemplate } = await import("./templates/forgotPassword");
-    const html = forgotPasswordTemplate(name, resetLink);
-    const success = await sendEmail({
-      to: email,
-      subject: EMAIL_SUBJECTS.FORGOT_PASSWORD_OTP,
-      html,
-    });
-
-    await this.auditLogService.log(
-      AuditLogEventType.FORGOT_PASSWORD_OTP,
-      email,
-      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
-      success ? undefined : "Email service returned failure",
-      { name }
-    );
-
-    return success ? { status: "ok" } : { status: "error" };
-  }
-
-  async sendAccountActivationEmail(
-    name: string,
-    email: string,
-    activationLink: string,
-    callBackUrl: string
-  ) {
-    const html = accountActivationTemplate(name, activationLink, callBackUrl);
-
-    const success = await sendEmail({
-      to: email,
-      subject: EMAIL_SUBJECTS.ACCOUNT_ACTIVATION,
-      html,
-    });
-
-    await this.auditLogService.log(
-      AuditLogEventType.ACCOUNT_ACTIVATION,
-      email,
-      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
-      success ? undefined : "Email service returned failure",
-      { name }
-    );
-
-    return success ? { status: "ok" } : { status: "error" };
-  }
-
-  async sendBookingConfirmationEmail(
-    bookingInfo: IEmailBookingData,
-    pdfBuffer: Buffer
-  ) {
-    const html = bookingConfirmationEmailTemplate(bookingInfo);
-
-    const success = await sendEmail({
-      to: bookingInfo.customerEmail,
-      subject: EMAIL_SUBJECTS.BOOKING_CONFIRMATION,
-      html,
-      attachment: [
-        {
-          filename: "booking-confirmation.pdf",
-          content: pdfBuffer,
-          contentType: "application/pdf",
-        },
-      ],
-    });
-
-    await this.auditLogService.log(
-      AuditLogEventType.BOOKING_CONFIRMATION,
-      bookingInfo.customerEmail,
-      success ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILED,
-      success ? undefined : "Email service returned failure",
-      { bookingId: bookingInfo.bookingId }
-    );
-
-    return success ? { status: "ok" } : { status: "error" };
-  }
-
   async sendBookingLifecycleEmail(input: {
     to: string;
     recipientName?: string | null;
@@ -137,25 +58,7 @@ export class SendEmail {
     counterpartyEmail?: string | null;
     metadata?: Record<string, unknown>;
   }) {
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #123;">
-        <h2>${input.heading}</h2>
-        <p>Hi ${input.recipientName || "there"},</p>
-        <p>${input.intro}</p>
-        <div style="border: 1px solid #d7e3e3; border-radius: 12px; padding: 16px; margin: 16px 0;">
-          <p><strong>Booking:</strong> ${input.bookingNumber}</p>
-          <p><strong>Hotel:</strong> ${input.hotelName}</p>
-          <p><strong>Room:</strong> ${input.roomName}</p>
-          <p><strong>Check-in:</strong> ${input.checkInDate}</p>
-          <p><strong>Check-out:</strong> ${input.checkOutDate}</p>
-          <p><strong>Guests:</strong> ${input.guestCount}</p>
-          <p><strong>Total:</strong> PKR ${Number(input.totalAmount).toLocaleString()}</p>
-          ${input.counterpartyName ? `<p><strong>Contact:</strong> ${input.counterpartyName}${input.counterpartyEmail ? ` (${input.counterpartyEmail})` : ""}</p>` : ""}
-          ${input.reason ? `<p><strong>Reason:</strong> ${input.reason}</p>` : ""}
-        </div>
-        <p>You can review the booking details in your Khor account.</p>
-      </div>
-    `;
+    const html = bookingLifecycleTemplate(input as BookingLifecycleTemplateInput);
 
     return this.sendAuditedEmail(
       AuditLogEventType.BOOKING_UPDATE,
@@ -163,63 +66,6 @@ export class SendEmail {
       input.subject,
       html,
       input.metadata,
-    );
-  }
-
-  async sendAdminBookingLifecycleEmail(input: {
-    subject: string;
-    heading: string;
-    intro: string;
-    bookingNumber: string;
-    hotelName: string;
-    roomName: string;
-    checkInDate: string;
-    checkOutDate: string;
-    totalAmount: number;
-    guestCount: number;
-    customerName?: string | null;
-    customerEmail?: string | null;
-    vendorName?: string | null;
-    vendorEmail?: string | null;
-    reason?: string | null;
-    metadata?: Record<string, unknown>;
-  }) {
-    const adminEmail =
-      process.env.INFO_EMAIL ||
-      process.env.CONTACT_EMAIL ||
-      process.env.SMTP_EMAIL ||
-      "info@gokhor.com";
-
-    if (!adminEmail) {
-      return { status: "error" };
-    }
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #123;">
-        <h2>${input.heading}</h2>
-        <p>${input.intro}</p>
-        <div style="border: 1px solid #d7e3e3; border-radius: 12px; padding: 16px; margin: 16px 0;">
-          <p><strong>Booking:</strong> ${input.bookingNumber}</p>
-          <p><strong>Hotel:</strong> ${input.hotelName}</p>
-          <p><strong>Room:</strong> ${input.roomName}</p>
-          <p><strong>Check-in:</strong> ${input.checkInDate}</p>
-          <p><strong>Check-out:</strong> ${input.checkOutDate}</p>
-          <p><strong>Guests:</strong> ${input.guestCount}</p>
-          <p><strong>Total:</strong> PKR ${Number(input.totalAmount).toLocaleString()}</p>
-          ${input.customerName ? `<p><strong>Customer:</strong> ${input.customerName}${input.customerEmail ? ` (${input.customerEmail})` : ""}</p>` : ""}
-          ${input.vendorName ? `<p><strong>Vendor:</strong> ${input.vendorName}${input.vendorEmail ? ` (${input.vendorEmail})` : ""}</p>` : ""}
-          ${input.reason ? `<p><strong>Reason:</strong> ${input.reason}</p>` : ""}
-        </div>
-        <p>Review this record in the Khor admin dashboard.</p>
-      </div>
-    `;
-
-    return this.sendAuditedEmail(
-      AuditLogEventType.BOOKING_UPDATE,
-      adminEmail,
-      input.subject,
-      html,
-      { ...input.metadata, recipient: "admin" },
     );
   }
 
@@ -385,27 +231,34 @@ export class SendEmail {
     actorName?: string | null;
     metadata?: Record<string, unknown>;
   }) {
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #123;">
-        <h2>${input.heading}</h2>
-        <p>Hi ${input.recipientName || "there"},</p>
-        <p>${input.intro}</p>
-        <div style="border: 1px solid #d7e3e3; border-radius: 12px; padding: 16px; margin: 16px 0;">
-          <p><strong>Ticket:</strong> ${input.ticketNumber}</p>
-          <p><strong>Subject:</strong> ${input.ticketSubject}</p>
-          <p><strong>Status:</strong> ${input.ticketStatus}</p>
-          ${input.actorName ? `<p><strong>Updated by:</strong> ${input.actorName}</p>` : ""}
-          ${input.bookingNumber ? `<p><strong>Booking:</strong> ${input.bookingNumber}</p>` : ""}
-          ${input.hotelName ? `<p><strong>Hotel:</strong> ${input.hotelName}</p>` : ""}
-        </div>
-        <p>You can review the full conversation in your Khor account.</p>
-      </div>
-    `;
+    const html = ticketActivityTemplate(input as TicketActivityTemplateInput);
 
     return this.sendAuditedEmail(
       AuditLogEventType.TICKET_ACTIVITY,
       input.to,
       input.subject,
+      html,
+      input.metadata,
+    );
+  }
+
+  async sendOwnerDailyCheckInsEmail(input: {
+    to: string;
+    ownerName: string;
+    dateLabel: string;
+    items: OwnerDailyCheckInItem[];
+    metadata?: Record<string, unknown>;
+  }) {
+    const html = ownerDailyCheckInsTemplate({
+      ownerName: input.ownerName,
+      dateLabel: input.dateLabel,
+      items: input.items,
+    });
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.OWNER_DAILY_CHECKINS,
+      input.to,
+      `Today's check-ins: ${input.dateLabel}`,
       html,
       input.metadata,
     );
