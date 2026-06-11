@@ -65,6 +65,24 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
         { preHandler: authenticate }, 
         restaurantController.renewAdByVendor.bind(restaurantController)
     );
+
+    fastify.post<{ Body: ICreateRestaurantDTO | any }>(
+        "/vendor/restaurants",
+        { preHandler: authenticate },
+        restaurantController.createRestaurant.bind(restaurantController)
+    );
+
+    fastify.put<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantDTO | any }>(
+        "/vendor/restaurants/:id",
+        { preHandler: authenticate },
+        restaurantController.updateRestaurantByVendor.bind(restaurantController)
+    );
+
+    fastify.get(
+        "/vendor/restaurants",
+        { preHandler: authenticate },
+        restaurantController.getVendorRestaurants.bind(restaurantController)
+    );
     
     fastify.get(
         "/admin/restaurants/expired", 

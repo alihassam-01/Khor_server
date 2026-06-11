@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AnalyticsService, AnalyticsBatchItem } from "@modules/user/service/analytics.service";
+import { ListingType } from "@common/enums/listing.enums";
 import crypto from "crypto";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
@@ -40,15 +41,25 @@ export class AnalyticsController {
         const stats = await this.analyticsService.getAdStats(adId);
         reply.send(stats);
     }
-    getVendorStats = async (request: FastifyRequest<{ Params: { vendorId: string }, Querystring: { startDate?: string, endDate?: string } }>, reply: FastifyReply) => {
+    getVendorStats = async (request: FastifyRequest<{ Params: { vendorId: string }, Querystring: { startDate?: string, endDate?: string, listingType?: string } }>, reply: FastifyReply) => {
         const { vendorId } = request.params;
-        const { startDate, endDate } = request.query;
+        const { startDate, endDate, listingType } = request.query;
         
         if (!vendorId) {
             throw new AppError("Vendor ID is required", 400, ErrorCodes.BAD_REQUEST);
         }
 
-        const stats = await this.analyticsService.getVendorAnalytics(vendorId, startDate, endDate);
+        const normalizedListingType = listingType && Object.values(ListingType).includes(listingType as ListingType)
+            ? (listingType as ListingType)
+            : undefined;
+
+        const stats = await this.analyticsService.getVendorAnalytics(
+            vendorId,
+            startDate,
+            endDate,
+            undefined,
+            normalizedListingType,
+        );
         reply.send(stats);
     }
 }

@@ -7,6 +7,7 @@ import {
 import { normalizePhoneToE164 } from "@common/utils/phone.util";
 import { HotelBooking } from "@modules/user/entity/booking";
 import { NotificationOutbox } from "@modules/user/entity/user";
+import { BookingPaymentStatus } from "@common/enums/booking.enums";
 
 type LifecycleConfig = {
     eventType: string;
@@ -95,6 +96,7 @@ export class NotificationOutboxService {
             .leftJoinAndSelect("listing.vendor", "vendor")
             .leftJoinAndSelect("vendor.profile", "vendor_profile")
             .leftJoinAndSelect("booking.room_type", "room_type")
+            .leftJoinAndSelect("booking.payments", "payments")
             .where("booking.id = :bookingId", { bookingId })
             .getOne();
         if (!booking) return;
@@ -110,6 +112,30 @@ export class NotificationOutboxService {
             }
             : event;
 
+        const amountPaid = booking.payments?.reduce((sum, payment) => {
+            const status = payment.payment_status;
+            if (status === BookingPaymentStatus.FAILED || status === BookingPaymentStatus.EXPIRED) {
+                return sum;
+            }
+
+            const capturedAmount = Number(payment.captured_amount ?? 0);
+            if (capturedAmount > 0) {
+                return sum + capturedAmount;
+            }
+
+            if (
+                status === BookingPaymentStatus.PAID
+                || status === BookingPaymentStatus.PARTIALLY_PAID
+                || status === BookingPaymentStatus.PARTIALLY_REFUNDED
+                || status === BookingPaymentStatus.REFUNDED
+                || status === BookingPaymentStatus.AUTHORIZED
+            ) {
+                return sum + Number(payment.amount ?? 0);
+            }
+
+            return sum;
+        }, 0) ?? 0;
+
         const occurrence = effectiveEvent.repeatable
             ? `:${booking.updated_at.toISOString()}`
             : "";
@@ -120,8 +146,11 @@ export class NotificationOutboxService {
             checkInDate: booking.check_in_date,
             checkOutDate: booking.check_out_date,
             guestCount: booking.guest_count,
+            amountPaid,
             totalAmount: Number(booking.total_amount),
             currency: booking.currency,
+            hotelPhone: booking.listing.contact?.phone ?? null,
+            hotelWhatsApp: booking.listing.contact?.whatsapp ?? null,
             eventLabel: effectiveEvent.label,
         };
 
@@ -226,6 +255,47 @@ export class NotificationOutboxService {
                     dateLabel: input.dateLabel,
                     ownerName: input.ownerName,
                     items: input.items,
+                },
+                status: NotificationOutboxStatus.PENDING,
+                attempt_count: 0,
+                next_attempt_at: new Date(),
+            })
+            .orIgnore()
+            .execute();
+    }
+
+    async enqueuePartnerApproval(input: {
+        manager: EntityManager;
+        userId: string;
+        phoneNumber: string | null | undefined;
+        ownerName: string;
+        businessName: string;
+        approvedCapabilities: string[];
+        partnerPortalUrl: string;
+    }): Promise<void> {
+        if (!CONFIG.notifications.whatsappEnabled) {
+            return;
+        }
+
+        const destination = normalizePhoneToE164(input.phoneNumber);
+        if (!destination) return;
+
+        await input.manager.createQueryBuilder()
+            .insert()
+            .into(NotificationOutbox)
+            .values({
+                event_key: `partner-approval:${input.userId}:whatsapp`,
+                channel: NotificationChannel.WHATSAPP,
+                event_type: "partner.approved",
+                recipient_type: "owner",
+                recipient_user_id: input.userId,
+                destination,
+                template_key: "partner_approval_v1",
+                payload: {
+                    ownerName: input.ownerName,
+                    businessName: input.businessName,
+                    approvedCapabilities: input.approvedCapabilities,
+                    partnerPortalUrl: input.partnerPortalUrl,
                 },
                 status: NotificationOutboxStatus.PENDING,
                 attempt_count: 0,

@@ -111,10 +111,14 @@ export class AnalyticsService {
         startDate?: string,
         endDate?: string,
         timezone?: string,
+        listingType?: ListingType,
     ) {
         try {
             const ads = await this.listingRepository.find({
-                where: { vendor_id: vendorId },
+                where: {
+                    vendor_id: vendorId,
+                    ...(listingType ? { type: listingType } : {}),
+                },
                 relations: ["subscriptions"],
             });
 

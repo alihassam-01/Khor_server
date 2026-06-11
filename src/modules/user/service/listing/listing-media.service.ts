@@ -1,5 +1,6 @@
 import { EntityManager, In } from "typeorm";
 import { ListingMedia } from "@modules/user/entity/listing/listing-media.entity";
+import { Listing } from "@modules/user/entity/listing/listing.entity";
 import { ListingMediaRole } from "@common/enums/listing.enums";
 import { S3ImagesEntity } from "@modules/user/entity/images/s3Images.entity";
 import { R2ClientService } from "@modules/user/service/r2client.service";
@@ -66,6 +67,9 @@ export class ListingMediaService {
             const existingRow = keptByKey.get(key);
             const row = existingRow ?? new ListingMedia();
             row.listing_id = listingId;
+            if (!row.listing) {
+                row.listing = { id: listingId } as Listing;
+            }
             row.url = input.url;
             row.role = input.role;
             row.display_order = input.display_order ?? idx;

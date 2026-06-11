@@ -4,6 +4,8 @@ import { NotificationOutboxStatus } from "@common/enums/notification.enums";
 import { NotificationOutbox } from "@modules/user/entity/user";
 import { logError, logInfo } from "@lib/logger";
 import { renderWhatsAppMessage } from "./whatsapp-message.service";
+import { AuditLogService } from "./audit-log.service";
+import { AuditLogEventType, AuditLogStatus } from "../constant/audit.constant";
 import {
     WhatsAppAdapterError,
     WhatsAppAdapterService,
@@ -11,6 +13,7 @@ import {
 
 export class NotificationOutboxWorkerService {
     private readonly adapter = new WhatsAppAdapterService();
+    private readonly auditLogService = new AuditLogService();
 
     private getRetryDate(attemptCount: number): Date {
         const delaySeconds = Math.min(30 * (2 ** Math.max(attemptCount - 1, 0)), 15 * 60);
@@ -60,6 +63,15 @@ export class NotificationOutboxWorkerService {
 
     private async processRow(row: NotificationOutbox): Promise<void> {
         const repo = AppDataSource.getRepository(NotificationOutbox);
+        const auditMetadata = {
+            outboxId: row.id,
+            eventType: row.event_type,
+            templateKey: row.template_key,
+            recipientType: row.recipient_type,
+            bookingId: row.booking_id ?? null,
+            listingId: row.listing_id ?? null,
+            attemptCount: row.attempt_count,
+        };
         try {
             const message = renderWhatsAppMessage(
                 row.template_key,
@@ -77,6 +89,13 @@ export class NotificationOutboxWorkerService {
                 locked_at: null,
                 last_error: null,
             });
+            await this.auditLogService.log(
+                AuditLogEventType.WHATSAPP_NOTIFICATION,
+                row.destination,
+                AuditLogStatus.SUCCESS,
+                undefined,
+                auditMetadata,
+            );
         } catch (error) {
             const adapterError = error instanceof WhatsAppAdapterError ? error : null;
             const exhausted = row.attempt_count >= CONFIG.notifications.workerMaxAttempts;
@@ -93,6 +112,16 @@ export class NotificationOutboxWorkerService {
                 locked_at: null,
                 last_error: error instanceof Error ? error.message.slice(0, 2000) : "Unknown delivery error",
             });
+            await this.auditLogService.log(
+                AuditLogEventType.WHATSAPP_NOTIFICATION,
+                row.destination,
+                AuditLogStatus.FAILED,
+                error instanceof Error ? error.message.slice(0, 2000) : "Unknown delivery error",
+                {
+                    ...auditMetadata,
+                    outboxStatus: status,
+                },
+            );
             logError(error, `WhatsApp outbox delivery ${row.id}`);
         }
     }

@@ -19,7 +19,8 @@
     "seed:locations": "ts-node -r tsconfig-paths/register src/scripts/seed-locations.ts",
     "seed:articles": "ts-node -r tsconfig-paths/register src/scripts/seed-articles.ts",
     "seed:all": "ts-node -r tsconfig-paths/register src/scripts/seed-locations.ts && ts-node -r tsconfig-paths/register src/scripts/seed-articles.ts",
-    "migrate:legacy": "ts-node -r tsconfig-paths/register src/scripts/migrate-legacy-data.ts"
+    "migrate:legacy": "ts-node -r tsconfig-paths/register src/scripts/migrate-legacy-data.ts",
+    "backfill:business-onboarding": "ts-node -r tsconfig-paths/register src/scripts/backfill-business-onboarding.ts"
   },
   "engines": {
     "node": ">=23.0.0"

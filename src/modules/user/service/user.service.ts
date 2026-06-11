@@ -13,8 +13,10 @@ import {
     ICustomerProfileDTO,
 } from "@modules/user/dtos";
 import { AuthService } from "./auth.service";
+import { AdminBusinessReviewService } from "./admin-business-review.service";
 import { forgotPasswordTemplate } from "./email/templates/forgotPassword";
 import { UserRole } from "@common/enums";
+import { BusinessCapabilityType, BusinessOnboardingStatus } from "@common/enums/business.enums";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { sendEmail } from "./email";
@@ -25,15 +27,13 @@ import {
     AuditLogEventType,
 } from "../constant/audit.constant";
 import { AuditLogService } from "./audit-log.service";
-import { Listing } from "@modules/user/entity/listing";
-import { ListingStatus, ListingType } from "@common/enums/listing.enums";
 
 export class UserService {
     private auditLogService = new AuditLogService();
     private userRepository: Repository<User> = AppDataSource.getRepository(User);
     private profileRepository: Repository<UserProfile> = AppDataSource.getRepository(UserProfile);
-    private listingRepository: Repository<Listing> = AppDataSource.getRepository(Listing);
     private authService = new AuthService(this.userRepository, this.profileRepository);
+    private adminBusinessReviewService = new AdminBusinessReviewService();
 
     private profileNameOf(user: User): string {
         return user.profile?.username || user.email.split("@")[0] || "Unknown User";
@@ -199,30 +199,15 @@ export class UserService {
     }
 
     async approveHotelOwner(userId: string): Promise<IVendorListItemDTO> {
-        const user = await this.userRepository.findOne({
-            where: { id: userId, userType: UserRole.VENDOR },
+        const business = await this.adminBusinessReviewService.reviewCapability(userId, BusinessCapabilityType.HOTEL, {
+            action: "approve",
+            note: "Approved from legacy hotel owner workflow.",
+        });
+        const user = await this.userRepository.findOneOrFail({
+            where: { id: business.userId },
             relations: ["profile"],
         });
-
-        if (!user) {
-            throw new AppError("Hotel owner not found", 404, ErrorCodes.NOT_FOUND);
-        }
-
         const profile = await this.ensureProfile(user);
-        user.isActive = true;
-        profile.is_business_verified = true;
-        if (!profile.business_name) {
-            profile.business_name = profile.username;
-        }
-
-        await this.userRepository.save(user);
-        await this.profileRepository.save(profile);
-        await this.listingRepository.update(
-            { vendor_id: user.id, type: ListingType.HOTEL },
-            { is_active: true, status: ListingStatus.ACTIVE },
-        );
-
-        logInfo(`Hotel owner approved: ${userId}`);
         return {
             id: user.id,
             userId: user.id,
@@ -240,26 +225,15 @@ export class UserService {
     }
 
     async suspendHotelOwner(userId: string): Promise<IVendorListItemDTO> {
-        const user = await this.userRepository.findOne({
-            where: { id: userId, userType: UserRole.VENDOR },
+        const business = await this.adminBusinessReviewService.reviewProfile(userId, {
+            status: BusinessOnboardingStatus.SUSPENDED,
+            note: "Suspended from legacy hotel owner workflow.",
+        });
+        const user = await this.userRepository.findOneOrFail({
+            where: { id: business.userId },
             relations: ["profile"],
         });
-
-        if (!user) {
-            throw new AppError("Hotel owner not found", 404, ErrorCodes.NOT_FOUND);
-        }
-
         const profile = await this.ensureProfile(user);
-        user.isActive = false;
-        profile.is_business_verified = false;
-        await this.userRepository.save(user);
-        await this.profileRepository.save(profile);
-        await this.listingRepository.update(
-            { vendor_id: user.id, type: ListingType.HOTEL },
-            { is_active: false, status: ListingStatus.INACTIVE },
-        );
-
-        logInfo(`Hotel owner suspended: ${userId}`);
         return {
             id: user.id,
             userId: user.id,

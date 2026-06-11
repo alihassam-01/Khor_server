@@ -14,6 +14,7 @@ export type BookingLifecycleTemplateInput = {
     reason?: string | null;
     counterpartyName?: string | null;
     counterpartyEmail?: string | null;
+    counterpartyPhone?: string | null;
 };
 
 function formatDate(date: string): string {
@@ -33,7 +34,7 @@ export function bookingLifecycleTemplate(input: BookingLifecycleTemplateInput): 
             <p class="detail-row"><strong>Check-out:</strong> ${formatDate(input.checkOutDate)}</p>
             <p class="detail-row"><strong>Guests:</strong> ${input.guestCount}</p>
             <p class="detail-row"><strong>Total:</strong> PKR ${Number(input.totalAmount).toLocaleString()}</p>
-            ${input.counterpartyName ? `<p class="detail-row"><strong>Contact:</strong> ${input.counterpartyName}${input.counterpartyEmail ? ` (${input.counterpartyEmail})` : ""}</p>` : ""}
+            ${input.counterpartyName ? `<p class="detail-row"><strong>Contact:</strong> ${input.counterpartyName}${input.counterpartyEmail ? ` (${input.counterpartyEmail})` : ""}${input.counterpartyPhone ? ` - ${input.counterpartyPhone}` : ""}</p>` : ""}
             ${input.reason ? `<p class="detail-row"><strong>Reason:</strong> ${input.reason}</p>` : ""}
         </div>
     `;

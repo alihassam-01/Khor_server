@@ -23,6 +23,9 @@ import { notificationRoutes } from "./notification.routes";
 import { reviewRoutes } from "./reviews.routes";
 import { payoutRoutes } from "./payout.routes";
 import { supportTicketRoutes } from "./support-ticket.routes";
+import partnerOnboardingRoutes from "./partner-onboarding.routes";
+import adminBusinessRoutes from "./admin-business.routes";
+import adminVendorPolicyRoutes from "./admin-vendor-policy.routes";
 
 
 // Core routes - always enabled
@@ -45,6 +48,9 @@ const routes = [
   notificationRoutes,
   reviewRoutes,
   analyticsRoutes,
+  partnerOnboardingRoutes,
+  adminBusinessRoutes,
+  adminVendorPolicyRoutes,
   flightsRoutes, // Google Flights price scraper
 ];
 

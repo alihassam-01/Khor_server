@@ -14,6 +14,30 @@ import {
 
 export class AdPaymentController {
     private paymentService = new AdPaymentService();
+    private getAuthUserId(req: FastifyRequest): string | null {
+        return (req.user as any)?.id || (req.user as any)?.userId || null;
+    }
+
+    async createVendorPayment(
+        req: FastifyRequest<{ Body: ICreateAdPaymentDTO }>,
+        reply: FastifyReply
+    ) {
+        try {
+            const vendorId = this.getAuthUserId(req);
+            if (!vendorId) {
+                reply.code(401).send({ message: "Authentication required" });
+                return;
+            }
+
+            const payment = await this.paymentService.createPaymentForVendor(vendorId, req.body);
+            reply.code(201).send(payment);
+        } catch (error: unknown) {
+            const err = error as Error;
+            reply
+                .code(400)
+                .send({ message: err.message || "Failed to create vendor payment" });
+        }
+    }
 
     async createPayment(
         req: FastifyRequest<{ Body: ICreateAdPaymentDTO }>, 
@@ -134,7 +158,7 @@ export class AdPaymentController {
 
     async getVendorPayments(req: FastifyRequest, reply: FastifyReply) {
         try {
-            const userId = (req.user as any)?.id || (req.user as any)?.userId;
+            const userId = this.getAuthUserId(req);
             if (!userId) {
                 reply.code(403).send({ message: "Vendor User ID not found" });
                 return;
@@ -146,6 +170,32 @@ export class AdPaymentController {
             reply
                 .code(500)
                 .send({ message: err.message || "Failed to fetch vendor payments" });
+        }
+    }
+
+    async getVendorPaymentsByAd(
+        req: FastifyRequest<{ Params: IGetPaymentsByAdParams }>,
+        reply: FastifyReply
+    ) {
+        try {
+            const userId = this.getAuthUserId(req);
+            if (!userId) {
+                reply.code(403).send({ message: "Vendor User ID not found" });
+                return;
+            }
+
+            const { adId, adType } = req.params;
+            const payments = await this.paymentService.getPaymentsByAdForVendor(
+                userId,
+                adId,
+                adType as PropertyType,
+            );
+            reply.send(payments);
+        } catch (error: unknown) {
+            const err = error as Error;
+            reply
+                .code(500)
+                .send({ message: err.message || "Failed to fetch vendor ad payments" });
         }
     }
 

@@ -1,5 +1,7 @@
 import { User } from "@modules/user/entity/user/user.entity";
 import { UserProfile } from "@modules/user/entity/user/user-profile.entity";
+import { BusinessCapability } from "@modules/user/entity/user/business-capability.entity";
+import { BusinessProfile } from "@modules/user/entity/user/business-profile.entity";
 import { Location } from "@modules/user/entity/location";
 import { HotelDetails, Listing, ListingContact } from "@modules/user/entity/listing";
 import { EntityManager, Repository } from "typeorm";
@@ -16,6 +18,11 @@ import { logError, logInfo } from "@lib/logger";
 import { OTP_LENGTH, OTP_EXPIRY_MINUTES } from "@modules/user/constant/otp.constant";
 import { LocationType } from "@common/enums/location.enums";
 import { ListingStatus, ListingType } from "@common/enums/listing.enums";
+import {
+    BusinessCapabilityStatus,
+    BusinessOnboardingStatus,
+    PartnerAccessStatus,
+} from "@common/enums/business.enums";
 import {
     ILoginResponseDto,
     IGoogleLoginResponseDto,
@@ -169,6 +176,34 @@ export class AuthService {
         });
     }
 
+    private async createOrUpdateVendorBusinessProfile(
+        em: EntityManager,
+        user: User,
+        ownerName: string,
+        businessName: string,
+        phone: string,
+        cityId: number,
+    ): Promise<void> {
+        const businessProfileRepo = em.getRepository(BusinessProfile);
+        let businessProfile = await businessProfileRepo.findOne({
+            where: { user_id: user.id },
+        });
+
+        if (!businessProfile) {
+            businessProfile = businessProfileRepo.create({
+                user_id: user.id,
+                onboarding_status: BusinessOnboardingStatus.DRAFT,
+            });
+        }
+
+        businessProfile.owner_legal_name = ownerName;
+        businessProfile.business_name = businessName;
+        businessProfile.phone_number = phone;
+        businessProfile.city_id = cityId;
+
+        await businessProfileRepo.save(businessProfile);
+    }
+
     async register(
         email: string,
         password: string,
@@ -176,12 +211,18 @@ export class AuthService {
         name: string,
         phone?: string,
         cityId?: number,
+        options?: {
+            ownerName?: string | null;
+            businessName?: string | null;
+        },
     ): Promise<void> {
         await this.userRepository.manager.transaction(async (em) => {
             await this.validateEmailAvailable(email);
             const normalizedPhone = userRole === UserRole.VENDOR
                 ? this.validatePhone(phone ?? "")
                 : (phone?.trim() || null);
+            const ownerName = options?.ownerName?.trim() || name;
+            const businessName = options?.businessName?.trim() || name;
 
             const hashedPassword = await this.hashPassword(password);
             const otp = this.generateOtp();
@@ -216,15 +257,15 @@ export class AuthService {
                 verificationToken: hashedOtp,
                 otpExpiresAt,
                 isVerified: false,
-                isActive: userRole === UserRole.VENDOR ? false : true,
+                isActive: true,
             });
             const savedUser = await em.save(User, user);
 
             const profile = this.profileRepository.create({
                 user_id: savedUser.id,
-                username: name,
+                username: ownerName,
                 phone_number: normalizedPhone,
-                business_name: userRole === UserRole.VENDOR ? name : null,
+                business_name: userRole === UserRole.VENDOR ? businessName : null,
                 is_business_verified: false,
                 profile_picture: this.randomProfileImage(),
             });
@@ -234,7 +275,15 @@ export class AuthService {
                 if (!cityId) {
                     throw new AppError("City is required for hotel owner registration.", 400, ErrorCodes.VALIDATION_ERROR);
                 }
-                await this.createDraftHotelForVendor(em, savedUser, name, normalizedPhone!, cityId);
+                await this.createOrUpdateVendorBusinessProfile(
+                    em,
+                    savedUser,
+                    ownerName,
+                    businessName,
+                    normalizedPhone!,
+                    cityId,
+                );
+                await this.createDraftHotelForVendor(em, savedUser, businessName, normalizedPhone!, cityId);
             }
 
             logInfo(`User registered successfully: ${email}, Role: ${userRole}`);
@@ -555,6 +604,39 @@ export class AuthService {
         }
 
         const username = this.profileUsername(user);
+        const businessProfileRepo = this.userRepository.manager.getRepository(BusinessProfile);
+        const capabilityRepo = this.userRepository.manager.getRepository(BusinessCapability);
+        const businessProfile = await businessProfileRepo.findOneBy({ user_id: userId });
+        const approvedCapabilities = businessProfile
+            ? await capabilityRepo.find({
+                where: {
+                    business_profile_id: businessProfile.id,
+                    status: BusinessCapabilityStatus.APPROVED,
+                },
+                order: { created_at: "ASC" },
+            })
+            : [];
+
+        let partnerAccessStatus: PartnerAccessStatus;
+        if (user.userType === UserRole.ADMIN) {
+            partnerAccessStatus = PartnerAccessStatus.ADMIN;
+        } else if (approvedCapabilities.length > 0 && user.isActive) {
+            partnerAccessStatus = PartnerAccessStatus.APPROVED;
+        } else if (businessProfile) {
+            const profileStatusMap: Record<BusinessOnboardingStatus, PartnerAccessStatus> = {
+                [BusinessOnboardingStatus.DRAFT]: PartnerAccessStatus.DRAFT,
+                [BusinessOnboardingStatus.SUBMITTED]: PartnerAccessStatus.SUBMITTED,
+                [BusinessOnboardingStatus.CHANGES_REQUESTED]: PartnerAccessStatus.CHANGES_REQUESTED,
+                [BusinessOnboardingStatus.APPROVED]: PartnerAccessStatus.APPROVED,
+                [BusinessOnboardingStatus.REJECTED]: PartnerAccessStatus.REJECTED,
+                [BusinessOnboardingStatus.SUSPENDED]: PartnerAccessStatus.SUSPENDED,
+            };
+            partnerAccessStatus = profileStatusMap[businessProfile.onboarding_status];
+        } else if (user.userType === UserRole.VENDOR && user.isActive) {
+            partnerAccessStatus = PartnerAccessStatus.LEGACY_VENDOR;
+        } else {
+            partnerAccessStatus = PartnerAccessStatus.CUSTOMER;
+        }
 
         return {
             userId: user.id,
@@ -562,6 +644,10 @@ export class AuthService {
             username,
             userType: user.userType,
             vendorId: user.userType === UserRole.VENDOR ? user.id : undefined,
+            businessProfileId: businessProfile?.id,
+            onboardingStatus: businessProfile?.onboarding_status,
+            partnerAccessStatus,
+            approvedCapabilities: approvedCapabilities.map((capability) => capability.type),
         };
     }
 }

@@ -45,6 +45,10 @@ export class RestaurantService {
         return this.listings.update(this.strategy, id, dto);
     }
 
+    updateRestaurantByVendor(id: string, vendorId: string, dto: IUpdateRestaurantDTO): Promise<IRestaurantDTO> {
+        return this.listings.updateByVendor(this.strategy, id, vendorId, dto);
+    }
+
     deleteRestaurant(id: string): Promise<void> {
         return this.listings.delete(this.strategy, id);
     }

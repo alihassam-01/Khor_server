@@ -1,10 +1,13 @@
 import { UserRole } from "@common/enums/user.enums";
+import { BusinessCapabilityType, BusinessOnboardingStatus, PartnerAccessStatus } from "@common/enums/business.enums";
 
 export interface IRegisterDto {
     email: string;
     password: string;
     userType?: UserRole;
     name: string;
+    ownerName?: string;
+    businessName?: string;
     phone?: string;
     cityId?: number;
 }
@@ -48,6 +51,10 @@ export interface ICurrentUserResponseDto {
     username: string;
     userType: UserRole;
     vendorId?: string;
+    businessProfileId?: string;
+    onboardingStatus?: BusinessOnboardingStatus;
+    partnerAccessStatus: PartnerAccessStatus;
+    approvedCapabilities: BusinessCapabilityType[];
 }
 
 export interface IAuthMessageResponseDto {

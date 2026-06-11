@@ -1496,6 +1496,10 @@ export class BookingService {
         return null;
     }
 
+    private getBookingChannel(source: BookingSource): "web" | "manual" {
+        return source === BookingSource.PARTNER_MANUAL ? "manual" : "web";
+    }
+
     private toDTO(booking: HotelBooking): IHotelBookingDTO {
         const latestPayFastPayment = this.getLatestPayFastPayment(booking);
         const paymentExpiresAt = this.getPaymentCheckoutExpiry(latestPayFastPayment);
@@ -1505,6 +1509,7 @@ export class BookingService {
             id: booking.id,
             booking_number: booking.booking_number,
             source: booking.source,
+            channel: this.getBookingChannel(booking.source),
             customer_user_id: booking.customer_user_id ?? null,
             guest: {
                 name: booking.guest_name,
@@ -1714,8 +1719,13 @@ export class BookingService {
 
         const vendorName = this.getUserDisplayName(booking.listing.vendor);
         const vendorEmail = booking.listing.vendor?.email ?? null;
+        const vendorPhone = booking.listing.contact?.phone
+            ?? booking.listing.contact?.whatsapp
+            ?? booking.listing.vendor?.profile?.phone_number
+            ?? null;
         const customerName = booking.guest_name;
         const customerEmail = booking.guest_email;
+        const customerPhone = booking.guest_phone ?? null;
 
         const config = {
             created: {
@@ -1803,6 +1813,7 @@ export class BookingService {
                 reason: reason ?? null,
                 counterpartyName: vendorName,
                 counterpartyEmail: vendorEmail,
+                counterpartyPhone: vendorPhone,
                 metadata: { bookingId: booking.id, event, recipient: "customer" },
             }));
         }
@@ -1824,6 +1835,7 @@ export class BookingService {
                 reason: reason ?? null,
                 counterpartyName: customerName,
                 counterpartyEmail: customerEmail,
+                counterpartyPhone: customerPhone,
                 metadata: { bookingId: booking.id, event, recipient: "vendor" },
             }));
         }

@@ -5,8 +5,11 @@ type BookingMessagePayload = {
     checkInDate: string;
     checkOutDate: string;
     guestCount: number;
+    amountPaid?: number;
     totalAmount: number;
     currency: string;
+    hotelPhone?: string | null;
+    hotelWhatsApp?: string | null;
     recipientName: string;
     eventLabel: string;
     eventMessage: string;
@@ -24,6 +27,13 @@ type OwnerDigestPayload = {
         guestCount: number;
         roomsCount: number;
     }>;
+};
+
+type PartnerApprovalPayload = {
+    ownerName: string;
+    businessName: string;
+    approvedCapabilities: string[];
+    partnerPortalUrl: string;
 };
 
 function clean(value: unknown): string {
@@ -51,10 +61,13 @@ export function renderWhatsAppMessage(
             `Check-in: ${clean(payload.checkInDate)}`,
             `Check-out: ${clean(payload.checkOutDate)}`,
             `Guests: ${Number(payload.guestCount)}`,
+            `Amount paid: ${formatMoney(Number(payload.amountPaid ?? 0), payload.currency)}`,
             `Total: ${formatMoney(payload.totalAmount, payload.currency)}`,
+            payload.hotelPhone ? `Hotel phone: ${clean(payload.hotelPhone)}` : "",
+            payload.hotelWhatsApp ? `Hotel WhatsApp: ${clean(payload.hotelWhatsApp)}` : "",
             "",
             clean(payload.eventMessage),
-        ].join("\n");
+        ].filter(Boolean).join("\n");
     }
 
     if (templateKey === "owner_daily_checkins_v1") {
@@ -70,6 +83,22 @@ export function renderWhatsAppMessage(
             `${payload.items.length} arrival${payload.items.length === 1 ? "" : "s"}`,
             "",
             ...items,
+        ].join("\n");
+    }
+
+    if (templateKey === "partner_approval_v1") {
+        const payload = rawPayload as unknown as PartnerApprovalPayload;
+        const capabilities = payload.approvedCapabilities.length > 0
+            ? payload.approvedCapabilities.map((item) => clean(item)).join(", ")
+            : "Partner access";
+        return [
+            "Khor: partner account approved",
+            "",
+            `Business: ${clean(payload.businessName)}`,
+            `Access enabled: ${capabilities}`,
+            "",
+            `Hi ${clean(payload.ownerName) || "there"}, your partner onboarding is approved.`,
+            `Sign in here: ${clean(payload.partnerPortalUrl)}`,
         ].join("\n");
     }
 

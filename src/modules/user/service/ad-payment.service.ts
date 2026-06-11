@@ -149,6 +149,25 @@ export class AdPaymentService {
         return this.toDTO(enriched!, listing);
     }
 
+    async createPaymentForVendor(
+        vendorId: string,
+        paymentData: ICreateAdPaymentDTO,
+    ): Promise<IAdPaymentDTO> {
+        const listing = await this.listingRepo.findOne({
+            where: { id: paymentData.ad_id, vendor_id: vendorId },
+        });
+
+        if (!listing) {
+            throw new AppError("Listing not found or access denied", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        return this.createPayment({
+            ...paymentData,
+            vendor_id: vendorId,
+            ad_type: paymentData.ad_type,
+        });
+    }
+
     async updatePaymentStatus(
         paymentId: string,
         updateData: IUpdateAdPaymentDTO,
@@ -245,6 +264,22 @@ export class AdPaymentService {
         return Promise.all(
             filtered.map((p) => this.toDTO(p, map.get(p.listing_id) ?? null)),
         );
+    }
+
+    async getPaymentsByAdForVendor(
+        vendorId: string,
+        adId: string,
+        adType: PropertyType,
+    ): Promise<IAdPaymentDTO[]> {
+        const listing = await this.listingRepo.findOne({
+            where: { id: adId, vendor_id: vendorId },
+        });
+
+        if (!listing) {
+            throw new AppError("Listing not found or access denied", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        return this.getPaymentsByAd(adId, adType);
     }
 
     async getPendingPayments(): Promise<IAdPaymentDTO[]> {

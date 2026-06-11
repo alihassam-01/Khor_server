@@ -19,6 +19,16 @@ export async function adPaymentRoutes(fastify: FastifyInstance) {
         { preHandler: authenticate },
         paymentController.getVendorPayments.bind(paymentController)
     );
+    fastify.get<{ Params: IGetPaymentsByAdParams }>(
+        "/vendor/payments/ad/:adId/:adType",
+        { preHandler: authenticate },
+        paymentController.getVendorPaymentsByAd.bind(paymentController)
+    );
+    fastify.post<{ Body: ICreateAdPaymentDTO }>(
+        "/vendor/payments",
+        { preHandler: authenticate },
+        paymentController.createVendorPayment.bind(paymentController)
+    );
 
     // Admin routes for payment management
     fastify.post<{ Body: ICreateAdPaymentDTO }>(
