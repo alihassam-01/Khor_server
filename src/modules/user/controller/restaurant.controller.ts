@@ -251,6 +251,20 @@ export class RestaurantController {
         reply.send(restaurant);
     }
 
+    async getPublicRestaurantById(
+        req: FastifyRequest<{ Params: IRestaurantIdParams }>,
+        reply: FastifyReply,
+    ) {
+        const { id } = req.params;
+        const restaurant = await this.restaurantService.getPublicRestaurantById(id);
+
+        if (!restaurant) {
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        reply.send(restaurant);
+    }
+
     async updateRestaurantByVendor(
         req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantDTO | any }>,
         reply: FastifyReply

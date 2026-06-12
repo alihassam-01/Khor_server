@@ -28,6 +28,10 @@ export class HotelService {
         return this.listings.findById(this.strategy, id);
     }
 
+    getPublicHotelById(id: string): Promise<IHotelDTO | null> {
+        return this.listings.findById(this.strategy, id, { requirePublicVisible: true });
+    }
+
     getAllHotels(params: {
         page?: number;
         limit?: number;
@@ -100,6 +104,7 @@ export class HotelService {
             page,
             limit: Math.min(limit, 200),
             onlyActive: false,
+            onlyPublicVisible: false,
         });
         return result.items;
     }

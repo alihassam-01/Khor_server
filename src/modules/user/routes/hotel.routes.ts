@@ -119,6 +119,6 @@ export async function hotelRoutes(fastify: FastifyInstance) {
 
     fastify.get<{ Params: IHotelIdParams }>(
         "/hotels/:id",
-        hotelController.getHotelById.bind(hotelController)
+        hotelController.getPublicHotelById.bind(hotelController)
     );
 }

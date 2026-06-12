@@ -25,6 +25,10 @@ export class RestaurantService {
         return this.listings.findById(this.strategy, id);
     }
 
+    getPublicRestaurantById(id: string): Promise<IRestaurantDTO | null> {
+        return this.listings.findById(this.strategy, id, { requirePublicVisible: true });
+    }
+
     getAllRestaurants(params: {
         page?: number;
         limit?: number;
@@ -97,6 +101,7 @@ export class RestaurantService {
             page,
             limit: Math.min(limit, 200),
             onlyActive: false,
+            onlyPublicVisible: false,
         });
         return result.items;
     }
