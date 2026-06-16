@@ -1,11 +1,15 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { authenticate } from "@middlewares/authenticate";
 import { authorizeAdmin } from "@middlewares/authorizeAdmin";
-import jwt from "jsonwebtoken";
-import { CONFIG } from "@config/config";
+import { RATE_LIMITS } from "@config/rate-limit.config";
 import { UserRole } from "@common/enums/user.enums";
 import { BookingController } from "@modules/user/controller/booking.controller";
-import { bookingRealtimeService, BookingRealtimeEvent } from "@modules/user/service/booking-realtime.service";
+import {
+    bookingRealtimeService,
+    BookingRealtimeEvent,
+    toPublicBookingRealtimeEvent,
+} from "@modules/user/service/booking-realtime.service";
+import { realtimeTicketService } from "@modules/user/service/realtime-ticket.service";
 import {
     ICreateHotelBookingHoldDTO,
     ICreateHotelBookingDTO,
@@ -24,40 +28,8 @@ import {
     IRefundProcessBody,
 } from "@modules/user/types";
 
-type StreamAuthQuery = { token?: string };
+type StreamAuthQuery = { ticket?: string };
 type HotelEventStreamParams = { id: string };
-
-const getStreamToken = (request: FastifyRequest<{ Querystring: StreamAuthQuery }>): string | null => {
-    const authHeader = request.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
-        return authHeader.split(" ")[1];
-    }
-    return request.query?.token ?? null;
-};
-
-const getStreamActor = (
-    request: FastifyRequest<{ Querystring: StreamAuthQuery }>,
-): { userId: string; userType: UserRole } | null => {
-    const token = getStreamToken(request);
-    if (!token) return null;
-
-    try {
-        const decoded = jwt.verify(token, CONFIG.jwt.secret as string) as {
-            userId?: string;
-            id?: string;
-            userType?: UserRole;
-        };
-
-        const userId = decoded.userId || decoded.id;
-        if (!userId || !decoded.userType) {
-            return null;
-        }
-
-        return { userId, userType: decoded.userType };
-    } catch {
-        return null;
-    }
-};
 
 const beginSse = (request: FastifyRequest, reply: FastifyReply) => {
     const origin = request.headers.origin ?? "*";
@@ -77,6 +49,11 @@ const beginSse = (request: FastifyRequest, reply: FastifyReply) => {
 const writeSseEvent = (reply: FastifyReply, event: BookingRealtimeEvent) => {
     reply.raw.write(`event: booking-event\n`);
     reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+};
+
+const writePublicSseEvent = (reply: FastifyReply, event: BookingRealtimeEvent) => {
+    reply.raw.write("event: booking-event\n");
+    reply.raw.write(`data: ${JSON.stringify(toPublicBookingRealtimeEvent(event))}\n\n`);
 };
 
 export async function bookingRoutes(fastify: FastifyInstance) {
@@ -282,6 +259,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
 
     fastify.get<{ Params: HotelEventStreamParams }>(
         "/hotels/:id/events/stream",
+        { config: { rateLimit: RATE_LIMITS.realtimeConnect } },
         async (request, reply) => {
             beginSse(request, reply);
             const heartbeat = setInterval(() => {
@@ -292,7 +270,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
                 id: `hotel:${request.params.id}:${Date.now()}:${Math.random()}`,
                 scope: "hotel",
                 hotelId: request.params.id,
-                send: (event) => writeSseEvent(reply, event),
+                send: (event) => writePublicSseEvent(reply, event),
             });
 
             request.raw.on("close", () => {
@@ -304,10 +282,11 @@ export async function bookingRoutes(fastify: FastifyInstance) {
 
     fastify.get<{ Querystring: StreamAuthQuery }>(
         "/vendor/booking-events/stream",
+        { config: { rateLimit: RATE_LIMITS.realtimeConnect } },
         async (request, reply) => {
-            const actor = getStreamActor(request);
-            if (!actor || actor.userType !== UserRole.VENDOR) {
-                reply.code(401).send({ message: "Invalid token" });
+            const actor = realtimeTicketService.consume(request.query.ticket, "booking", UserRole.VENDOR);
+            if (!actor) {
+                reply.code(401).send({ message: "Invalid realtime ticket" });
                 return;
             }
 
@@ -332,10 +311,11 @@ export async function bookingRoutes(fastify: FastifyInstance) {
 
     fastify.get<{ Querystring: StreamAuthQuery }>(
         "/admin/booking-events/stream",
+        { config: { rateLimit: RATE_LIMITS.realtimeConnect } },
         async (request, reply) => {
-            const actor = getStreamActor(request);
-            if (!actor || actor.userType !== UserRole.ADMIN) {
-                reply.code(401).send({ message: "Invalid token" });
+            const actor = realtimeTicketService.consume(request.query.ticket, "booking", UserRole.ADMIN);
+            if (!actor) {
+                reply.code(401).send({ message: "Invalid realtime ticket" });
                 return;
             }
 
@@ -360,10 +340,11 @@ export async function bookingRoutes(fastify: FastifyInstance) {
 
     fastify.get<{ Querystring: StreamAuthQuery }>(
         "/bookings/events/stream",
+        { config: { rateLimit: RATE_LIMITS.realtimeConnect } },
         async (request, reply) => {
-            const actor = getStreamActor(request);
-            if (!actor || actor.userType !== UserRole.CUSTOMER) {
-                reply.code(401).send({ message: "Invalid token" });
+            const actor = realtimeTicketService.consume(request.query.ticket, "booking", UserRole.CUSTOMER);
+            if (!actor) {
+                reply.code(401).send({ message: "Invalid realtime ticket" });
                 return;
             }
 

@@ -81,3 +81,13 @@ export const googleVerifySchema = {
         },
     },
 };
+
+export const refreshSessionSchema = {
+    tags: ["Auth"],
+    summary: "Rotate refresh token and issue a new access token",
+};
+
+export const logoutSchema = {
+    tags: ["Auth"],
+    summary: "Revoke current refresh token and clear the session cookie",
+};

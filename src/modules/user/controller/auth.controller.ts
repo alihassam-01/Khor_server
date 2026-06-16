@@ -11,10 +11,13 @@ import {
     IAuthMessageResponseDto,
     ILoginResponseDto,
     IGoogleLoginResponseDto,
-    ICurrentUserResponseDto
+    ICurrentUserResponseDto,
+    IRefreshSessionResponseDto,
 } from "@modules/user/dtos";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { REFRESH_TOKEN_COOKIE_NAME } from "@modules/user/constant/auth-token.constant";
+import { clearRefreshTokenCookie, setRefreshTokenCookie } from "@modules/user/service/auth-session.util";
 
 export class AuthController {
     constructor(private readonly authService: AuthService) {}
@@ -61,8 +64,13 @@ export class AuthController {
     }
 
     async login(req: FastifyRequest<{ Body: ILoginDto }>, reply: FastifyReply) {
-        const result: ILoginResponseDto = await this.authService.login(req.body.email, req.body.password);
-        reply.send(result);
+        const result = await this.authService.login(req.body.email, req.body.password, {
+            ip: req.ip,
+            userAgent: req.headers["user-agent"] || null,
+        });
+        setRefreshTokenCookie(reply, result.refreshToken);
+        const response: ILoginResponseDto = { token: result.token };
+        reply.send(response);
     }
 
     async resetPassword(req: FastifyRequest<{ Body: IResetPasswordDto }>, reply: FastifyReply) {
@@ -74,8 +82,35 @@ export class AuthController {
     async handleGoogleVerify(req: FastifyRequest<{ Body: IGoogleVerifyDto }>, reply: FastifyReply) {
         const { accessToken, userType } = req.body;
         const preferredRole = userType === "vendor" ? UserRole.VENDOR : UserRole.CUSTOMER;
-        const result: IGoogleLoginResponseDto = await this.authService.googleLoginOrRegister(accessToken, preferredRole);
-        reply.send(result);
+        const result = await this.authService.googleLoginOrRegister(accessToken, preferredRole, {
+            ip: req.ip,
+            userAgent: req.headers["user-agent"] || null,
+        });
+        setRefreshTokenCookie(reply, result.refreshToken);
+        const response: IGoogleLoginResponseDto = { token: result.token, isNewUser: result.isNewUser };
+        reply.send(response);
+    }
+
+    async refresh(req: FastifyRequest, reply: FastifyReply) {
+        const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
+        if (!refreshToken) {
+            throw new AppError("Refresh token is required", 401, ErrorCodes.UNAUTHORIZED);
+        }
+
+        const result = await this.authService.refreshSession(refreshToken, {
+            ip: req.ip,
+            userAgent: req.headers["user-agent"] || null,
+        });
+        setRefreshTokenCookie(reply, result.refreshToken);
+        const response: IRefreshSessionResponseDto = { token: result.token };
+        reply.send(response);
+    }
+
+    async logout(req: FastifyRequest, reply: FastifyReply) {
+        const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
+        await this.authService.logout(refreshToken);
+        clearRefreshTokenCookie(reply);
+        reply.code(204).send();
     }
 
     async me(req: FastifyRequest, reply: FastifyReply) {

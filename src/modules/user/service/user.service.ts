@@ -1,6 +1,7 @@
 import { Repository } from "typeorm";
 import { AppDataSource } from "@config/ormconfig";
 import { User } from "@modules/user/entity/user/user.entity";
+import { RefreshToken } from "@modules/user/entity/user/refresh-token.entity";
 import { UserProfile } from "@modules/user/entity/user/user-profile.entity";
 import {
     IPassData,
@@ -31,8 +32,9 @@ import { AuditLogService } from "./audit-log.service";
 export class UserService {
     private auditLogService = new AuditLogService();
     private userRepository: Repository<User> = AppDataSource.getRepository(User);
+    private refreshTokenRepository: Repository<RefreshToken> = AppDataSource.getRepository(RefreshToken);
     private profileRepository: Repository<UserProfile> = AppDataSource.getRepository(UserProfile);
-    private authService = new AuthService(this.userRepository, this.profileRepository);
+    private authService = new AuthService(this.userRepository, this.profileRepository, this.refreshTokenRepository);
     private adminBusinessReviewService = new AdminBusinessReviewService();
 
     private profileNameOf(user: User): string {

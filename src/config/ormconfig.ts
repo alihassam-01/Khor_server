@@ -49,6 +49,10 @@ export const AppDataSource = new DataSource(
       synchronize: shouldSynchronize,
       migrations: migrations,
       logging: false,
+      invalidWhereValuesBehavior: {
+        null: "throw",
+        undefined: "throw",
+      },
     }
     : {
       type: "postgres",
@@ -61,6 +65,10 @@ export const AppDataSource = new DataSource(
       synchronize: shouldSynchronize,
       migrations: migrations,
       logging: false,
+      invalidWhereValuesBehavior: {
+        null: "throw",
+        undefined: "throw",
+      },
     }
 );
 

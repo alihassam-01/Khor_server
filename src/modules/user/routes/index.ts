@@ -29,6 +29,7 @@ import adminVendorPolicyRoutes from "./admin-vendor-policy.routes";
 import adminListingsRoutes from "./admin-listings.routes";
 import adminPublicPolicyRoutes from "./admin-public-policy.routes";
 import publicPolicyRoutes from "./public-policy.routes";
+import { realtimeRoutes } from "./realtime.routes";
 
 
 // Core routes - always enabled
@@ -46,6 +47,7 @@ const routes = [
   paymentSettingRoutes, // Admin and public payment settings
   propertyRoutes, // Generic property routes
   bookingRoutes,
+  realtimeRoutes,
   payoutRoutes,
   supportTicketRoutes,
   notificationRoutes,

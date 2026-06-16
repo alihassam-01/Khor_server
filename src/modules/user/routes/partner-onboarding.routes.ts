@@ -9,6 +9,7 @@ import {
     IBusinessDocumentPresignRequestDto,
     ICompleteBusinessDocumentUploadDto,
 } from "@modules/user/types/business-documents.types";
+import { RATE_LIMITS } from "@config/rate-limit.config";
 
 export default async function partnerOnboardingRoutes(fastify: FastifyInstance) {
     const service = new PartnerOnboardingService();
@@ -33,12 +34,12 @@ export default async function partnerOnboardingRoutes(fastify: FastifyInstance) 
     );
     fastify.post<{ Body: IBusinessDocumentPresignRequestDto }>(
         "/partner/documents/presign",
-        { preHandler: [authenticate] },
+        { preHandler: [authenticate], config: { rateLimit: RATE_LIMITS.upload } },
         controller.createDocumentPresign.bind(controller),
     );
     fastify.post<{ Body: ICompleteBusinessDocumentUploadDto }>(
         "/partner/documents/complete",
-        { preHandler: [authenticate] },
+        { preHandler: [authenticate], config: { rateLimit: RATE_LIMITS.upload } },
         controller.completeDocumentUpload.bind(controller),
     );
 }

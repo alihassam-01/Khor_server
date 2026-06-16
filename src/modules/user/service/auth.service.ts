@@ -1,5 +1,6 @@
 import { User } from "@modules/user/entity/user/user.entity";
 import { UserProfile } from "@modules/user/entity/user/user-profile.entity";
+import { RefreshToken } from "@modules/user/entity/user/refresh-token.entity";
 import { BusinessCapability } from "@modules/user/entity/user/business-capability.entity";
 import { BusinessProfile } from "@modules/user/entity/user/business-profile.entity";
 import { Location } from "@modules/user/entity/location";
@@ -27,7 +28,34 @@ import {
     ILoginResponseDto,
     IGoogleLoginResponseDto,
     ICurrentUserResponseDto,
+    IRefreshSessionResponseDto,
 } from "@modules/user/dtos";
+import {
+    ACCESS_TOKEN_AUDIENCE,
+    ACCESS_TOKEN_ISSUER,
+    ACCESS_TOKEN_PURPOSE,
+    PASSWORD_RESET_TOKEN_AUDIENCE,
+    PASSWORD_RESET_TOKEN_ISSUER,
+    PASSWORD_RESET_TOKEN_PURPOSE,
+} from "@modules/user/constant/auth-token.constant";
+import { getRefreshCookieMaxAgeMs } from "./auth-session.util";
+
+type PasswordResetTokenPayload = jwt.JwtPayload & {
+    email: string;
+    purpose: typeof PASSWORD_RESET_TOKEN_PURPOSE;
+    sub: string;
+    jti: string;
+};
+
+type RefreshRequestMeta = {
+    ip?: string | null;
+    userAgent?: string | null;
+};
+
+type IssuedSession = {
+    accessToken: string;
+    refreshToken: string;
+};
 
 import {
     EMAIL_SUBJECTS,
@@ -43,6 +71,7 @@ export class AuthService {
     constructor(
         private userRepository: Repository<User>,
         private profileRepository: Repository<UserProfile>,
+        private refreshTokenRepository: Repository<RefreshToken>,
     ) {}
 
     private async validateEmailAvailable(email: string): Promise<void> {
@@ -176,6 +205,94 @@ export class AuthService {
         });
     }
 
+    private hashResetTokenId(jti: string): string {
+        return crypto.createHash("sha256").update(jti).digest("hex");
+    }
+
+    private hashRefreshTokenSecret(secret: string): string {
+        return crypto.createHash("sha256").update(secret).digest("hex");
+    }
+
+    private buildAccessToken(user: User): string {
+        if (!CONFIG.jwt.secret) {
+            throw new Error("JWT_SECRET is not configured");
+        }
+
+        return jwt.sign(
+            {
+                userId: user.id,
+                userType: user.userType,
+                name: this.profileUsername(user),
+                purpose: ACCESS_TOKEN_PURPOSE,
+                vendorId: user.userType === UserRole.VENDOR ? user.id : undefined,
+            },
+            CONFIG.jwt.secret as string,
+            {
+                algorithm: "HS256",
+                issuer: ACCESS_TOKEN_ISSUER,
+                audience: ACCESS_TOKEN_AUDIENCE,
+                expiresIn: CONFIG.jwt.expiresIn as any,
+            },
+        );
+    }
+
+    private createRefreshTokenExpiry(): Date {
+        return new Date(Date.now() + getRefreshCookieMaxAgeMs());
+    }
+
+    private async issueRefreshToken(
+        manager: EntityManager,
+        userId: string,
+        meta: RefreshRequestMeta,
+        familyId?: string,
+    ): Promise<{ token: string; entity: RefreshToken }> {
+        const secret = crypto.randomBytes(32).toString("base64url");
+        const effectiveFamilyId = familyId ?? crypto.randomUUID();
+        const entity = manager.getRepository(RefreshToken).create({
+            userId,
+            familyId: effectiveFamilyId,
+            tokenHash: this.hashRefreshTokenSecret(secret),
+            expiresAt: this.createRefreshTokenExpiry(),
+            createdByIp: meta.ip || null,
+            userAgent: meta.userAgent || null,
+            lastUsedAt: new Date(),
+        });
+        const saved = await manager.getRepository(RefreshToken).save(entity);
+        return {
+            token: `${saved.id}.${secret}`,
+            entity: saved,
+        };
+    }
+
+    private async issueSession(
+        user: User,
+        meta: RefreshRequestMeta,
+    ): Promise<IssuedSession> {
+        return this.userRepository.manager.transaction(async (manager) => {
+            const refresh = await this.issueRefreshToken(manager, user.id, meta);
+            return {
+                accessToken: this.buildAccessToken(user),
+                refreshToken: refresh.token,
+            };
+        });
+    }
+
+    private parseRefreshToken(rawToken: string): { id: string; secret: string } | null {
+        const parts = rawToken.split(".");
+        if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+        return { id: parts[0], secret: parts[1] };
+    }
+
+    private async revokeRefreshFamily(manager: EntityManager, familyId: string): Promise<void> {
+        await manager.getRepository(RefreshToken)
+            .createQueryBuilder()
+            .update(RefreshToken)
+            .set({ revokedAt: new Date() })
+            .where(`"family_id" = :familyId`, { familyId })
+            .andWhere(`"revoked_at" IS NULL`)
+            .execute();
+    }
+
     private async createOrUpdateVendorBusinessProfile(
         em: EntityManager,
         user: User,
@@ -232,7 +349,6 @@ export class AuthService {
             logInfo("Registration OTP generated", {
                 email,
                 role: userRole,
-                otp,
                 expiresAt: otpExpiresAt.toISOString(),
             });
 
@@ -313,18 +429,27 @@ export class AuthService {
             throw new AppError("Invalid OTP", 400, ErrorCodes.OTP_INVALID);
         }
 
+        const resetTokenId = crypto.randomBytes(32).toString("base64url");
         user.isVerified = true;
         user.verificationToken = undefined;
         user.otpExpiresAt = undefined;
+        user.passwordResetJtiHash = this.hashResetTokenId(resetTokenId);
         await this.userRepository.save(user);
 
         logInfo(`OTP verified successfully for user: ${email}`);
 
-        if (!CONFIG.jwt.secret) {
-            throw new Error("JWT_SECRET is not configured");
+        if (!CONFIG.jwt.resetSecret) {
+            throw new Error("JWT_RESET_SECRET is not configured");
         }
-        const resetToken = jwt.sign({ email }, CONFIG.jwt.secret as string, {
-            expiresIn: "10m",
+        const resetToken = jwt.sign({
+            email: user.email,
+            purpose: PASSWORD_RESET_TOKEN_PURPOSE,
+        }, CONFIG.jwt.resetSecret as string, {
+            jwtid: resetTokenId,
+            subject: user.id,
+            issuer: PASSWORD_RESET_TOKEN_ISSUER,
+            audience: PASSWORD_RESET_TOKEN_AUDIENCE,
+            expiresIn: CONFIG.jwt.resetExpiresIn as any,
         });
 
         return { success: true, resetToken };
@@ -350,7 +475,6 @@ export class AuthService {
 
         logInfo("Resend OTP generated", {
             email,
-            otp,
             expiresAt: otpExpiresAt.toISOString(),
         });
 
@@ -375,7 +499,7 @@ export class AuthService {
         );
     }
 
-    async login(email: string, password: string): Promise<ILoginResponseDto> {
+    async login(email: string, password: string, meta: RefreshRequestMeta): Promise<ILoginResponseDto & { refreshToken: string }> {
         const user = await this.userRepository.findOne({
             where: { email },
             relations: ["profile"],
@@ -418,29 +542,83 @@ export class AuthService {
             );
         }
 
-        if (!CONFIG.jwt.secret) {
-            throw new Error("JWT_SECRET is not configured");
-        }
-
-        const name = this.profileUsername(user);
-
-        // The legacy JWT carried `vendorId` so the frontend could distinguish
-        // a vendor-profile id from the user id. With the unified user_profiles
-        // table the profile id == user.id, so we keep the field for shape
-        // compatibility but mirror it onto user.id for vendors.
-        const token = jwt.sign(
-            {
-                userId: user.id,
-                userType: user.userType,
-                name,
-                vendorId: user.userType === UserRole.VENDOR ? user.id : undefined,
-            },
-            CONFIG.jwt.secret as string,
-            { expiresIn: CONFIG.jwt.expiresIn as any },
-        );
+        const session = await this.issueSession(user, meta);
 
         logInfo(`User logged in successfully: ${email}`);
-        return { token };
+        return { token: session.accessToken, refreshToken: session.refreshToken };
+    }
+
+    async refreshSession(rawRefreshToken: string, meta: RefreshRequestMeta): Promise<IRefreshSessionResponseDto & { refreshToken: string }> {
+        const parsed = this.parseRefreshToken(rawRefreshToken);
+        if (!parsed) {
+            throw new AppError("Invalid refresh token", 401, ErrorCodes.UNAUTHORIZED);
+        }
+
+        return this.userRepository.manager.transaction(async (manager) => {
+            const refreshRepo = manager.getRepository(RefreshToken);
+            const current = await refreshRepo.findOne({
+                where: { id: parsed.id },
+                relations: ["user", "user.profile"],
+            });
+
+            if (!current) {
+                throw new AppError("Invalid refresh token", 401, ErrorCodes.UNAUTHORIZED);
+            }
+
+            if (current.revokedAt) {
+                if (current.replacedByTokenId) {
+                    await this.revokeRefreshFamily(manager, current.familyId);
+                }
+                throw new AppError("Refresh token has been revoked", 401, ErrorCodes.UNAUTHORIZED);
+            }
+
+            if (current.expiresAt.getTime() <= Date.now()) {
+                current.revokedAt = new Date();
+                await refreshRepo.save(current);
+                throw new AppError("Refresh token has expired", 401, ErrorCodes.UNAUTHORIZED);
+            }
+
+            const expectedHash = this.hashRefreshTokenSecret(parsed.secret);
+            if (expectedHash !== current.tokenHash) {
+                await this.revokeRefreshFamily(manager, current.familyId);
+                throw new AppError("Refresh token reuse detected", 401, ErrorCodes.UNAUTHORIZED);
+            }
+
+            const user = current.user;
+            if (!user || !user.isActive) {
+                current.revokedAt = new Date();
+                await refreshRepo.save(current);
+                throw new AppError("User is inactive", 401, ErrorCodes.UNAUTHORIZED);
+            }
+
+            const replacement = await this.issueRefreshToken(manager, user.id, meta, current.familyId);
+            current.revokedAt = new Date();
+            current.replacedByTokenId = replacement.entity.id;
+            current.lastUsedAt = new Date();
+            await refreshRepo.save(current);
+
+            return {
+                token: this.buildAccessToken(user),
+                refreshToken: replacement.token,
+            };
+        });
+    }
+
+    async logout(rawRefreshToken?: string): Promise<void> {
+        if (!rawRefreshToken) return;
+        const parsed = this.parseRefreshToken(rawRefreshToken);
+        if (!parsed) return;
+
+        const refreshToken = await this.refreshTokenRepository.findOneBy({ id: parsed.id });
+        if (!refreshToken) return;
+
+        const expectedHash = this.hashRefreshTokenSecret(parsed.secret);
+        if (refreshToken.tokenHash !== expectedHash) return;
+
+        if (!refreshToken.revokedAt) {
+            refreshToken.revokedAt = new Date();
+            await this.refreshTokenRepository.save(refreshToken);
+        }
     }
 
     async resetPassword(
@@ -470,28 +648,58 @@ export class AuthService {
             );
         }
 
-        let email: string;
+        let payload: PasswordResetTokenPayload;
         try {
-            if (!CONFIG.jwt.secret) {
-                throw new Error("JWT secret is not configured");
+            if (!CONFIG.jwt.resetSecret) {
+                throw new Error("JWT reset secret is not configured");
             }
-            const payload = jwt.verify(token, CONFIG.jwt.secret as string) as { email: string };
-            email = payload.email;
+            const verified = jwt.verify(token, CONFIG.jwt.resetSecret as string, {
+                algorithms: ["HS256"],
+                issuer: PASSWORD_RESET_TOKEN_ISSUER,
+                audience: PASSWORD_RESET_TOKEN_AUDIENCE,
+            });
+            if (
+                typeof verified === "string"
+                || verified.purpose !== PASSWORD_RESET_TOKEN_PURPOSE
+                || typeof verified.email !== "string"
+                || !verified.email.trim()
+                || typeof verified.sub !== "string"
+                || !verified.sub.trim()
+                || typeof verified.jti !== "string"
+                || !verified.jti.trim()
+            ) {
+                throw new Error("Password reset token claims are invalid");
+            }
+            payload = verified as PasswordResetTokenPayload;
         } catch (err) {
             logError(err as Error, "Password reset - Invalid token");
             throw new AppError("Invalid or expired reset token", 400, ErrorCodes.BAD_REQUEST);
         }
 
-        const user = await this.userRepository.findOneBy({ email });
-        if (!user) {
-            logError(new Error(`User not found for password reset: ${email}`), "Password reset");
-            throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
+        const password = await this.hashPassword(newPassword);
+        const result = await this.userRepository.update(
+            {
+                id: payload.sub,
+                email: payload.email,
+                passwordResetJtiHash: this.hashResetTokenId(payload.jti),
+            },
+            {
+                password,
+                isVerified: true,
+                passwordResetJtiHash: null,
+            },
+        );
+        if (result.affected !== 1) {
+            throw new AppError("Invalid or already used reset token", 400, ErrorCodes.BAD_REQUEST);
         }
-
-        user.password = await this.hashPassword(newPassword);
-        user.isVerified = true;
-        await this.userRepository.save(user);
-        logInfo(`Password reset successfully for user: ${email}`);
+        await this.refreshTokenRepository
+            .createQueryBuilder()
+            .update(RefreshToken)
+            .set({ revokedAt: new Date() })
+            .where(`"user_id" = :userId`, { userId: payload.sub })
+            .andWhere(`"revoked_at" IS NULL`)
+            .execute();
+        logInfo(`Password reset successfully for user: ${payload.sub}`);
 
         return { success: true };
     }
@@ -499,7 +707,8 @@ export class AuthService {
     async googleLoginOrRegister(
         accessToken: string,
         preferredUserRole: UserRole = UserRole.VENDOR,
-    ): Promise<IGoogleLoginResponseDto> {
+        meta: RefreshRequestMeta,
+    ): Promise<IGoogleLoginResponseDto & { refreshToken: string }> {
         let googleUser: {
             sub: string;
             email: string;
@@ -573,24 +782,9 @@ export class AuthService {
             logInfo(`Google account linked for existing user: ${email}`);
         }
 
-        if (!CONFIG.jwt.secret) {
-            throw new Error("JWT_SECRET is not configured");
-        }
+        const session = await this.issueSession(existingUser, meta);
 
-        const name = this.profileUsername(existingUser, googleName);
-
-        const token = jwt.sign(
-            {
-                userId: existingUser.id,
-                userType: existingUser.userType,
-                name,
-                vendorId: existingUser.userType === UserRole.VENDOR ? existingUser.id : undefined,
-            },
-            CONFIG.jwt.secret as string,
-            { expiresIn: CONFIG.jwt.expiresIn as any },
-        );
-
-        return { token, isNewUser };
+        return { token: session.accessToken, refreshToken: session.refreshToken, isNewUser };
     }
 
     async getCurrentUser(userId: string): Promise<ICurrentUserResponseDto> {

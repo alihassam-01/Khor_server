@@ -13,9 +13,14 @@ import {
   IArticleDTO,
   IPaginatedArticlesResponse
 } from '@modules/user/dtos';
+import { UserRole } from '@common/enums';
 
 export class ArticleController {
   constructor(private readonly articleService: ArticleService) { }
+
+  private canIncludeUnpublished(req: FastifyRequest, requested: boolean): boolean {
+    return requested && (req.user as { userType?: UserRole } | undefined)?.userType === UserRole.ADMIN;
+  }
 
   async createArticle(
     req: FastifyRequest<{ Body: ICreateArticleDTO }>,
@@ -48,7 +53,7 @@ export class ArticleController {
     reply: FastifyReply
   ) {
     try {
-      const includeAll = req.query.all === 'true';
+      const includeAll = this.canIncludeUnpublished(req, req.query.all === 'true');
       const article = await this.articleService.getArticleById(Number(req.params.id), includeAll);
 
       if (!article) {
@@ -67,7 +72,7 @@ export class ArticleController {
     reply: FastifyReply
   ) {
     try {
-      const includeAll = req.query.all === 'true';
+      const includeAll = this.canIncludeUnpublished(req, req.query.all === 'true');
       const article = await this.articleService.getArticleBySlug(req.params.slug, includeAll);
       if (!article) {
         return reply.code(404).send({ message: 'Article not found' });
@@ -150,7 +155,7 @@ export class ArticleController {
     reply: FastifyReply
   ) {
     try {
-      const includeAll = req.query.all === 'true';
+      const includeAll = this.canIncludeUnpublished(req, req.query.all === 'true');
       const categoryId = req.query.categoryId ? Number(req.query.categoryId) : undefined;
       const articles: IArticleDTO[] = await this.articleService.getAllArticles(includeAll, categoryId);
       reply.send(articles);
@@ -165,7 +170,7 @@ export class ArticleController {
     reply: FastifyReply
   ) {
     try {
-      const includeAll = req.query.all === 'true';
+      const includeAll = this.canIncludeUnpublished(req, req.query.all === 'true');
       const articles: IArticleDTO[] = await this.articleService.searchArticles(req.query.term || '', includeAll);
       reply.send(articles);
     } catch (error: unknown) {

@@ -11,6 +11,7 @@ import {
     ISetFeaturedStatusBody 
 } from "@modules/user/types";
 import { ICreateHotelDTO, IUpdateHotelDTO } from "@modules/user/dtos";
+import { CONFIG } from "@config/config";
 
 export async function hotelRoutes(fastify: FastifyInstance) {
     const hotelController = new HotelController();
@@ -18,13 +19,13 @@ export async function hotelRoutes(fastify: FastifyInstance) {
     // Admin routes for hotel management - require authentication
     fastify.post<{ Body: ICreateHotelDTO | any }>(
         "/admin/hotels", 
-        { preHandler: [authenticate, authorizeAdmin] }, 
+        { preHandler: [authenticate, authorizeAdmin], bodyLimit: CONFIG.server.multipartBodyLimit },
         hotelController.createHotel.bind(hotelController)
     );
     
     fastify.get(
         "/admin/hotels", 
-        { preHandler: [authenticate, authorizeAdmin] }, 
+        { preHandler: [authenticate, authorizeAdmin], bodyLimit: CONFIG.server.multipartBodyLimit },
         hotelController.getAllHotelsAdmin.bind(hotelController)
     );
     
@@ -61,7 +62,7 @@ export async function hotelRoutes(fastify: FastifyInstance) {
 
     fastify.post<{ Params: IHotelIdParams; Body: IRenewAdBody }>(
         "/vendor/hotels/:id/renew", 
-        { preHandler: authenticate }, 
+        { preHandler: authenticate, bodyLimit: CONFIG.server.multipartBodyLimit },
         hotelController.renewAdByVendor.bind(hotelController)
     );
 

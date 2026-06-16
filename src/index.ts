@@ -2,13 +2,16 @@ import fastify from "fastify";
 import typeormPlugin from './app/plugins/typeorm';
 import swaggerPlugin from './app/plugins/swagger';
 import routes from './modules/user/routes';
-import { CONFIG } from './config/config';
+import { CONFIG, validateProductionConfig } from './config/config';
 import fastifyMultipart from "@fastify/multipart";
+import fastifyCookie from "@fastify/cookie";
 import { globalErrorHandler } from './common/errors/global-error-handler';
 import { logError, logInfo } from './lib/logger';
+import securityPlugin from "./app/plugins/security";
 import 'dotenv/config';
 
 async function startServer() {
+  validateProductionConfig();
   const allowedOrigins = new Set([
     CONFIG.web_domain.url as string,
     CONFIG.admin_domain.url as string,
@@ -30,7 +33,8 @@ async function startServer() {
   const app = fastify({
     pluginTimeout: 120000,
     logger: true,
-    bodyLimit: 50 * 1024 * 1024,
+    bodyLimit: CONFIG.server.bodyLimit,
+    trustProxy: ["127.0.0.1", "::1"],
   });
 
   await app.register(fastifyMultipart, {
@@ -43,6 +47,14 @@ async function startServer() {
     }
   });
   await app.register(import('@fastify/formbody'));
+  await app.register(fastifyCookie);
+  await app.register(import('@fastify/rate-limit'), {
+    global: true,
+    hook: "preHandler",
+    max: 300,
+    timeWindow: "1 minute",
+  });
+  await app.register(securityPlugin);
 
   await app.register(import('@fastify/cors'), {
     origin: (origin, callback) => {
@@ -74,7 +86,9 @@ async function startServer() {
   });
 
   try {
-    await app.register(swaggerPlugin);
+    if (CONFIG.env !== "production") {
+      await app.register(swaggerPlugin);
+    }
     await app.register(typeormPlugin, { timeout: 120000 });
 
     // Log enabled features

@@ -5,6 +5,7 @@ import {
     BusinessCapabilityType,
     BusinessOnboardingStatus,
 } from "@common/enums/business.enums";
+import { validateDocumentUpload } from "@common/utils/upload-policy.util";
 import { LocationType } from "@common/enums/location.enums";
 import { User } from "@modules/user/entity/user/user.entity";
 import { BusinessProfile } from "@modules/user/entity/user/business-profile.entity";
@@ -480,13 +481,27 @@ export class PartnerOnboardingService {
         if (!payload.fileName || !payload.mimeType || !payload.sizeBytes) {
             throw new AppError("fileName, mimeType, and sizeBytes are required.", 400, ErrorCodes.VALIDATION_ERROR);
         }
-        if (payload.sizeBytes > this.r2ClientService.getMaxFileSize()) {
-            throw new AppError("File exceeds maximum upload size.", 400, ErrorCodes.VALIDATION_ERROR);
+        let uploadPolicy: { mimeType: string; extension: string };
+        try {
+            uploadPolicy = validateDocumentUpload(
+                payload.fileName,
+                payload.mimeType,
+                payload.sizeBytes,
+                this.r2ClientService.getMaxFileSize(),
+            );
+        } catch (error) {
+            throw new AppError((error as Error).message, 400, ErrorCodes.VALIDATION_ERROR);
         }
 
         const profile = await this.ensureBusinessProfile(userId);
         const folder = `partner/businesses/${profile.id}/documents/${payload.documentType}`;
-        const presigned = await this.r2ClientService.generatePresignedUrl(payload.fileName, payload.mimeType, folder);
+        const presigned = await this.r2ClientService.generatePresignedUrl(
+            payload.fileName,
+            uploadPolicy.mimeType,
+            folder,
+            uploadPolicy.extension,
+            payload.sizeBytes,
+        );
 
         const existingSameType = await this.businessDocumentRepository.find({
             where: {
@@ -507,7 +522,7 @@ export class PartnerOnboardingService {
             original_file_name: payload.fileName,
             storage_key: presigned.key,
             public_url: presigned.publicUrl,
-            mime_type: payload.mimeType,
+            mime_type: uploadPolicy.mimeType,
             size_bytes: String(payload.sizeBytes),
             status: BusinessDocumentStatus.PENDING_UPLOAD,
         }));
@@ -535,6 +550,15 @@ export class PartnerOnboardingService {
         }
         if (document.storage_key !== payload.key || document.public_url !== payload.publicUrl) {
             throw new AppError("Upload completion payload does not match the generated document target.", 400, ErrorCodes.VALIDATION_ERROR);
+        }
+        try {
+            await this.r2ClientService.verifyUploadedObject(
+                document.storage_key,
+                document.mime_type,
+                Number(document.size_bytes),
+            );
+        } catch {
+            throw new AppError("Uploaded document could not be verified.", 400, ErrorCodes.VALIDATION_ERROR);
         }
         document.status = BusinessDocumentStatus.UPLOADED;
         document.uploaded_at = new Date();

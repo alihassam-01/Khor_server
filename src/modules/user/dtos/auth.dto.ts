@@ -45,6 +45,8 @@ export interface IGoogleLoginResponseDto extends ILoginResponseDto {
     isNewUser: boolean;
 }
 
+export interface IRefreshSessionResponseDto extends ILoginResponseDto {}
+
 export interface ICurrentUserResponseDto {
     userId: string;
     email: string;

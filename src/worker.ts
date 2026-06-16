@@ -1,10 +1,11 @@
 import "dotenv/config";
 import { AppDataSource } from "@config/ormconfig";
-import { CONFIG } from "@config/config";
+import { CONFIG, validateProductionConfig } from "@config/config";
 import { logError, logInfo } from "@lib/logger";
 import { initJobs } from "@modules/user/jobs";
 
 async function startWorker(): Promise<void> {
+    validateProductionConfig();
     if (CONFIG.notifications.processRole !== "worker"
         && CONFIG.notifications.processRole !== "all") {
         throw new Error("Notification worker requires PROCESS_ROLE=worker or PROCESS_ROLE=all");
