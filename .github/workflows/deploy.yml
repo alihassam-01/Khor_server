@@ -31,6 +31,9 @@ jobs:
             PROD_DIR="/var/www/server"
             STAGING_DIR="/var/www/server-staging"
 
+            git config --global --add safe.directory "$PROD_DIR"
+            git config --global --add safe.directory "$STAGING_DIR"
+
             if [ "$BRANCH" = "main" ]; then
               cd "$PROD_DIR"
               git fetch origin main
