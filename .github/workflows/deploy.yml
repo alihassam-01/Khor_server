@@ -32,32 +32,36 @@ jobs:
 
             git config --global --add safe.directory "$PROD_DIR"
             git config --global --add safe.directory "$STAGING_DIR"
+            sudo -n git config --global --add safe.directory "$PROD_DIR"
+            sudo -n git config --global --add safe.directory "$STAGING_DIR"
 
             if [ "$BRANCH" = "main" ]; then
+              sudo -n git -C "$PROD_DIR" fetch origin main
+              sudo -n git -C "$PROD_DIR" checkout main
+              sudo -n git -C "$PROD_DIR" reset --hard origin/main
               sudo -n chown -R khorops:khorops "$PROD_DIR"
               cd "$PROD_DIR"
-              git fetch origin main
-              git checkout main
-              git reset --hard origin/main
               npm ci
               npm run build
               sudo -n systemctl restart gokhor-api gokhor-worker
               exit 0
             fi
 
-            REPO_URL="$(git -C "$PROD_DIR" config --get remote.origin.url)"
+            REPO_URL="$(sudo -n git -C "$PROD_DIR" config --get remote.origin.url)"
 
             if [ ! -d "$STAGING_DIR/.git" ]; then
-              git clone --branch development "$REPO_URL" "$STAGING_DIR"
-            else
+              sudo -n git clone --branch development "$REPO_URL" "$STAGING_DIR"
               sudo -n chown -R khorops:khorops "$STAGING_DIR"
-              git -C "$STAGING_DIR" fetch origin development
-              git -C "$STAGING_DIR" checkout development
-              git -C "$STAGING_DIR" reset --hard origin/development
+            else
+              sudo -n git -C "$STAGING_DIR" fetch origin development
+              sudo -n git -C "$STAGING_DIR" checkout development
+              sudo -n git -C "$STAGING_DIR" reset --hard origin/development
+              sudo -n chown -R khorops:khorops "$STAGING_DIR"
             fi
 
             if [ ! -f "$STAGING_DIR/.env.staging" ]; then
-              cp "$PROD_DIR/.env.staging" "$STAGING_DIR/.env.staging"
+              sudo -n cp "$PROD_DIR/.env.staging" "$STAGING_DIR/.env.staging"
+              sudo -n chown khorops:khorops "$STAGING_DIR/.env.staging"
             fi
 
             cd "$STAGING_DIR"
