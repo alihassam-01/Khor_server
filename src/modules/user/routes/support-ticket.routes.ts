@@ -1,8 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { authenticate } from "@middlewares/authenticate";
 import { authorizeAdmin } from "@middlewares/authorizeAdmin";
-import jwt from "jsonwebtoken";
-import { CONFIG } from "@config/config";
+import { RATE_LIMITS } from "@config/rate-limit.config";
 import { UserRole } from "@common/enums";
 import { SupportTicketController } from "@modules/user/controller/support-ticket.controller";
 import {
@@ -13,44 +12,12 @@ import {
 } from "@modules/user/dtos";
 import { ISupportTicketIdParams } from "@modules/user/types";
 import {
-    isTicketStreamRole,
     ticketRealtimeService,
     TicketRealtimeEvent,
 } from "@modules/user/service/ticket-realtime.service";
+import { realtimeTicketService } from "@modules/user/service/realtime-ticket.service";
 
-type StreamAuthQuery = { token?: string };
-
-const getStreamToken = (request: FastifyRequest<{ Querystring: StreamAuthQuery }>): string | null => {
-    const authHeader = request.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
-        return authHeader.split(" ")[1];
-    }
-    return request.query?.token ?? null;
-};
-
-const getStreamActor = (
-    request: FastifyRequest<{ Querystring: StreamAuthQuery }>,
-): { userId: string; userType: UserRole } | null => {
-    const token = getStreamToken(request);
-    if (!token) return null;
-
-    try {
-        const decoded = jwt.verify(token, CONFIG.jwt.secret as string) as {
-            userId?: string;
-            id?: string;
-            userType?: UserRole;
-        };
-
-        const userId = decoded.userId || decoded.id;
-        if (!userId || !isTicketStreamRole(decoded.userType)) {
-            return null;
-        }
-
-        return { userId, userType: decoded.userType };
-    } catch {
-        return null;
-    }
-};
+type StreamAuthQuery = { ticket?: string };
 
 const beginSse = (request: FastifyRequest, reply: FastifyReply) => {
     const origin = request.headers.origin ?? "*";
@@ -83,10 +50,11 @@ export async function supportTicketRoutes(fastify: FastifyInstance) {
     fastify.get("/support/tickets/me", { preHandler: authenticate }, controller.listCustomerTickets.bind(controller));
     fastify.get<{ Querystring: StreamAuthQuery }>(
         "/support/tickets/stream",
+        { config: { rateLimit: RATE_LIMITS.realtimeConnect } },
         async (request, reply) => {
-            const actor = getStreamActor(request);
-            if (!actor || actor.userType !== UserRole.CUSTOMER) {
-                reply.code(401).send({ message: "Invalid token" });
+            const actor = realtimeTicketService.consume(request.query.ticket, "support", UserRole.CUSTOMER);
+            if (!actor) {
+                reply.code(401).send({ message: "Invalid realtime ticket" });
                 return;
             }
 
@@ -126,10 +94,11 @@ export async function supportTicketRoutes(fastify: FastifyInstance) {
     );
     fastify.get<{ Querystring: StreamAuthQuery }>(
         "/admin/support/tickets/stream",
+        { config: { rateLimit: RATE_LIMITS.realtimeConnect } },
         async (request, reply) => {
-            const actor = getStreamActor(request);
-            if (!actor || actor.userType !== UserRole.ADMIN) {
-                reply.code(401).send({ message: "Invalid token" });
+            const actor = realtimeTicketService.consume(request.query.ticket, "support", UserRole.ADMIN);
+            if (!actor) {
+                reply.code(401).send({ message: "Invalid realtime ticket" });
                 return;
             }
 
@@ -175,10 +144,11 @@ export async function supportTicketRoutes(fastify: FastifyInstance) {
     fastify.get("/vendor/support/tickets", { preHandler: authenticate }, controller.listVendorTickets.bind(controller));
     fastify.get<{ Querystring: StreamAuthQuery }>(
         "/vendor/support/tickets/stream",
+        { config: { rateLimit: RATE_LIMITS.realtimeConnect } },
         async (request, reply) => {
-            const actor = getStreamActor(request);
-            if (!actor || actor.userType !== UserRole.VENDOR) {
-                reply.code(401).send({ message: "Invalid token" });
+            const actor = realtimeTicketService.consume(request.query.ticket, "support", UserRole.VENDOR);
+            if (!actor) {
+                reply.code(401).send({ message: "Invalid realtime ticket" });
                 return;
             }
 

@@ -64,6 +64,12 @@ export class Listing {
     @Column({ type: "boolean", default: false })
     is_active!: boolean;
 
+    @Column({ type: "boolean", default: true })
+    is_public_visible!: boolean;
+
+    @Column({ type: "text", nullable: true })
+    visibility_note!: string | null;
+
     @Column({ type: "boolean", default: false })
     is_featured!: boolean;
 

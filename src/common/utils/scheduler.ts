@@ -7,6 +7,7 @@ type ScheduledTask = {
     task: Task;
     hour?: number;
     minute?: number;
+    timezone?: string;
     lastRun?: Date;
 };
 
@@ -27,9 +28,11 @@ export class SimpleScheduler {
         }
     }
 
-    static scheduleDailyAt(hour: number, minute: number, task: Task) {
-        this.tasks.push({ pattern: SchedulePattern.DAILY, task, hour, minute });
-        logInfo(`Task scheduled daily at ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
+    static scheduleDailyAt(hour: number, minute: number, task: Task, timezone?: string) {
+        this.tasks.push({ pattern: SchedulePattern.DAILY, task, hour, minute, timezone });
+        logInfo(
+            `Task scheduled daily at ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}${timezone ? ` (${timezone})` : ""}`,
+        );
 
         if (!this.interval) {
             this.start();
@@ -51,36 +54,36 @@ export class SimpleScheduler {
 
         for (const item of this.tasks) {
             let shouldRun = false;
+            let runKey: string | null = null;
 
             if (item.pattern === SchedulePattern.MINUTELY) {
                 shouldRun = true;
+                runKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${hour}-${minute}`;
             } else if (item.pattern === SchedulePattern.DAILY) {
                 const targetHour = item.hour ?? 1;
                 const targetMinute = item.minute ?? 0;
-                if (hour === targetHour && minute === targetMinute) {
+                const current = item.timezone
+                    ? this.getCurrentTimePartsInTimezone(item.timezone, now)
+                    : { year: now.getFullYear(), month: now.getMonth(), date: now.getDate(), hour, minute };
+                if (current.hour === targetHour && current.minute === targetMinute) {
                     shouldRun = true;
+                    runKey = `${current.year}-${current.month}-${current.date}`;
                 }
             } else if (item.pattern === SchedulePattern.WEEKLY) {
                 // Run on Monday (1) between 00:00 and 01:00
                 if (day === 1 && hour === 0 && minute === 0) {
                     shouldRun = true;
+                    runKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${day}`;
                 }
             } else if (item.pattern === SchedulePattern.MONTHLY) {
                 // Run on 1st of month between 00:00 and 01:00
                 if (date === 1 && hour === 0 && minute === 0) {
                     shouldRun = true;
+                    runKey = `${now.getFullYear()}-${now.getMonth()}-1`;
                 }
             }
 
             if (shouldRun) {
-                const runKey = item.pattern === SchedulePattern.MINUTELY
-                    ? `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${hour}-${minute}`
-                    : item.pattern === SchedulePattern.DAILY
-                        ? `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`
-                        : item.pattern === SchedulePattern.WEEKLY
-                            ? `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${day}`
-                            : `${now.getFullYear()}-${now.getMonth()}-1`;
-
                 const lastRunKey = item.lastRun
                     ? item.pattern === SchedulePattern.MINUTELY
                         ? `${item.lastRun.getFullYear()}-${item.lastRun.getMonth()}-${item.lastRun.getDate()}-${item.lastRun.getHours()}-${item.lastRun.getMinutes()}`
@@ -102,5 +105,25 @@ export class SimpleScheduler {
                 }
             }
         }
+    }
+
+    private static getCurrentTimePartsInTimezone(timezone: string, now: Date) {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        }).formatToParts(now);
+        const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+        return {
+            year: Number(values.year),
+            month: Number(values.month),
+            date: Number(values.day),
+            hour: Number(values.hour),
+            minute: Number(values.minute),
+        };
     }
 }

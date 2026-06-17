@@ -26,7 +26,7 @@ npm install
 
 # 2. Configure environment
 cp .env.example .env
-# fill in DB_*, JWT_SECRET, R2_*, EMAIL_*, etc.
+# fill in DB_*, distinct 32+ character JWT_SECRET/JWT_RESET_SECRET, R2_*, EMAIL_*, etc.
 
 # 3. Apply schema
 npm run migration:run

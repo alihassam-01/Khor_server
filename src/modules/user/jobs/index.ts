@@ -7,6 +7,7 @@ import { SubscriptionJobService } from "../service/subscription-job.service";
 import { logInfo } from "@lib/logger";
 import { NotificationOutboxWorkerService } from "../service/notification-outbox-worker.service";
 import { BookingDailyWhatsAppJobService } from "../service/booking-daily-whatsapp-job.service";
+import { CONFIG } from "@config/config";
 
 export const initJobs = () => {
     logInfo("Initializing background jobs...");
@@ -31,10 +32,10 @@ export const initJobs = () => {
     SimpleScheduler.schedule(SchedulePattern.DAILY, () => subscriptionJob.checkExpirations());
 
     // Schedule hotel owner arrival digests
-    SimpleScheduler.scheduleDailyAt(6, 0, async () => {
+    SimpleScheduler.scheduleDailyAt(8, 0, async () => {
         await bookingDailyEmailJob.sendTodayOwnerCheckInDigests();
         await bookingDailyWhatsAppJob.enqueueTodayOwnerCheckInDigests();
-    });
+    }, CONFIG.notifications.timezone);
 
     logInfo("Background jobs initialized.");
 };

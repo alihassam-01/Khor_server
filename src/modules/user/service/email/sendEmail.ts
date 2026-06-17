@@ -3,7 +3,9 @@ import { AuditLogStatus, AuditLogEventType, EMAIL_SUBJECTS } from "@modules/user
 import { AuditLogService } from "@modules/user/service/audit-log.service";
 import { bookingLifecycleTemplate, type BookingLifecycleTemplateInput } from "./templates/bookingLifecycle";
 import { ownerDailyCheckInsTemplate, type OwnerDailyCheckInItem } from "./templates/ownerDailyCheckIns";
+import { partnerApprovalTemplate, type PartnerApprovalTemplateInput } from "./templates/partnerApproval";
 import { ticketActivityTemplate, type TicketActivityTemplateInput } from "./templates/ticketActivity";
+import { vendorPolicyUpdateTemplate, type VendorPolicyUpdateTemplateInput } from "./templates/vendorPolicyUpdate";
 
 export class SendEmail {
   private auditLogService = new AuditLogService();
@@ -56,6 +58,7 @@ export class SendEmail {
     reason?: string | null;
     counterpartyName?: string | null;
     counterpartyEmail?: string | null;
+    counterpartyPhone?: string | null;
     metadata?: Record<string, unknown>;
   }) {
     const html = bookingLifecycleTemplate(input as BookingLifecycleTemplateInput);
@@ -259,6 +262,44 @@ export class SendEmail {
       AuditLogEventType.OWNER_DAILY_CHECKINS,
       input.to,
       `Today's check-ins: ${input.dateLabel}`,
+      html,
+      input.metadata,
+    );
+  }
+
+  async sendPartnerApprovalEmail(input: {
+    to: string;
+    recipientName?: string | null;
+    businessName?: string | null;
+    approvedCapabilities: string[];
+    partnerPortalUrl: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    const html = partnerApprovalTemplate(input as PartnerApprovalTemplateInput);
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.PARTNER_APPROVAL,
+      input.to,
+      EMAIL_SUBJECTS.PARTNER_APPROVAL,
+      html,
+      input.metadata,
+    );
+  }
+
+  async sendVendorPolicyUpdateEmail(input: {
+    to: string;
+    recipientName?: string | null;
+    title: string;
+    content: string;
+    partnerPortalUrl: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    const html = vendorPolicyUpdateTemplate(input as VendorPolicyUpdateTemplateInput);
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.VENDOR_POLICY_UPDATE,
+      input.to,
+      EMAIL_SUBJECTS.VENDOR_POLICY_UPDATE,
       html,
       input.metadata,
     );

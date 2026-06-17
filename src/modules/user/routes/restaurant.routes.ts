@@ -12,6 +12,7 @@ import {
     IVendorIdParams
 } from "@modules/user/types";
 import { ICreateRestaurantDTO, IUpdateRestaurantDTO } from "@modules/user/dtos";
+import { CONFIG } from "@config/config";
 
 export async function restaurantRoutes(fastify: FastifyInstance) {
     const restaurantController = new RestaurantController();
@@ -19,13 +20,13 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
     // Admin routes for restaurant management
     fastify.post<{ Body: ICreateRestaurantDTO | any }>(
         "/admin/restaurants",
-        { preHandler: [authenticate, authorizeAdmin] },
+        { preHandler: [authenticate, authorizeAdmin], bodyLimit: CONFIG.server.multipartBodyLimit },
         restaurantController.createRestaurant.bind(restaurantController)
     );
     
     fastify.get(
         "/admin/restaurants",
-        { preHandler: [authenticate, authorizeAdmin] },
+        { preHandler: [authenticate, authorizeAdmin], bodyLimit: CONFIG.server.multipartBodyLimit },
         restaurantController.getAllRestaurantsAdmin.bind(restaurantController)
     );
     
@@ -64,6 +65,24 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
         "/vendor/restaurants/:id/renew", 
         { preHandler: authenticate }, 
         restaurantController.renewAdByVendor.bind(restaurantController)
+    );
+
+    fastify.post<{ Body: ICreateRestaurantDTO | any }>(
+        "/vendor/restaurants",
+        { preHandler: authenticate, bodyLimit: CONFIG.server.multipartBodyLimit },
+        restaurantController.createRestaurant.bind(restaurantController)
+    );
+
+    fastify.put<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantDTO | any }>(
+        "/vendor/restaurants/:id",
+        { preHandler: authenticate, bodyLimit: CONFIG.server.multipartBodyLimit },
+        restaurantController.updateRestaurantByVendor.bind(restaurantController)
+    );
+
+    fastify.get(
+        "/vendor/restaurants",
+        { preHandler: authenticate },
+        restaurantController.getVendorRestaurants.bind(restaurantController)
     );
     
     fastify.get(

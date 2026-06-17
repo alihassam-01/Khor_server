@@ -2,6 +2,9 @@ import * as dotenv from "dotenv";
 
 dotenv.config();  // Load environment variables from .env
 
+const isProduction = process.env.NODE_ENV === "production";
+const developmentDefault = (value: string): string => isProduction ? "" : value;
+
 export const CONFIG = {
   env: process.env.NODE_ENV || 'development',
   db: {
@@ -10,14 +13,17 @@ export const CONFIG = {
     host: process.env.DB_HOST || "localhost",
     port: Number(process.env.DB_PORT) || 5432,
     username: process.env.DB_USERNAME || "postgres",
-    password: process.env.DB_PASSWORD || "pass123",
+    password: process.env.DB_PASSWORD || developmentDefault("pass123"),
     database: process.env.DB_NAME || "khor_server",
   },
   jwt: {
-    secret: process.env.JWT_SECRET || "defaultsecretkey",
-    salt: process.env.SALT || "defaultsalt",
-    expiresIn: process.env.JWT_EXPIRES_IN || "1d",
-    resetExpiresIn: process.env.JWT_RESET_EXPIRES_IN || "24h"
+    secret: process.env.JWT_SECRET || developmentDefault("defaultsecretkey"),
+    resetSecret: process.env.JWT_RESET_SECRET
+      || (!isProduction ? process.env.JWT_SECRET : "")
+      || developmentDefault("defaultsecretkey"),
+    expiresIn: process.env.JWT_EXPIRES_IN || "15m",
+    refreshExpiresInDays: Number(process.env.JWT_REFRESH_EXPIRES_IN_DAYS) || 30,
+    resetExpiresIn: process.env.JWT_RESET_EXPIRES_IN || "10m"
   },
   smtp: {
     server: process.env.SMTP_SERVER || "",
@@ -62,6 +68,8 @@ export const CONFIG = {
   server: {
     port: Number(process.env.PORT) || 5000,
     host: process.env.SERVER_HOST || "localhost",
+    bodyLimit: Number(process.env.HTTP_BODY_LIMIT) || 1024 * 1024,
+    multipartBodyLimit: Number(process.env.HTTP_MULTIPART_BODY_LIMIT) || 50 * 1024 * 1024,
   },
   r2: {
     accountId: process.env.R2_ACCOUNT_ID || "",
@@ -88,4 +96,43 @@ export const CONFIG = {
     workerBatchSize: Number(process.env.NOTIFICATION_WORKER_BATCH_SIZE) || 20,
     workerMaxAttempts: Number(process.env.NOTIFICATION_WORKER_MAX_ATTEMPTS) || 5,
   },
+};
+
+const requireStrongSecret = (name: string, value: string, errors: string[]): void => {
+  if (!value || value.length < 32) {
+    errors.push(`${name} must be configured with at least 32 characters`);
+  }
+};
+
+export const validateProductionConfig = (): void => {
+  if (CONFIG.env !== "production") return;
+
+  const errors: string[] = [];
+  requireStrongSecret("JWT_SECRET", CONFIG.jwt.secret, errors);
+  requireStrongSecret("JWT_RESET_SECRET", CONFIG.jwt.resetSecret, errors);
+
+  if (CONFIG.jwt.secret && CONFIG.jwt.secret === CONFIG.jwt.resetSecret) {
+    errors.push("JWT_RESET_SECRET must be different from JWT_SECRET");
+  }
+  if (!CONFIG.db.url && !CONFIG.db.password) {
+    errors.push("DATABASE_URL or DB_PASSWORD must be configured");
+  }
+  if (!CONFIG.web_domain.url) {
+    errors.push("WEB_DOMAIN must be configured");
+  }
+
+  const requiredR2Values = [
+    ["R2_ACCOUNT_ID", CONFIG.r2.accountId],
+    ["R2_ACCESS_KEY_ID", CONFIG.r2.accessKeyId],
+    ["R2_SECRET_ACCESS_KEY", CONFIG.r2.secretAccessKey],
+    ["R2_BUCKET_NAME", CONFIG.r2.bucketName],
+    ["R2_PUBLIC_URL", CONFIG.r2.publicUrl],
+  ] as const;
+  for (const [name, value] of requiredR2Values) {
+    if (!value) errors.push(`${name} must be configured`);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Invalid production configuration:\n- ${errors.join("\n- ")}`);
+  }
 };

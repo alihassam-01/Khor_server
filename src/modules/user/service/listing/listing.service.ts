@@ -58,6 +58,7 @@ export interface IListingQueryParams {
     priceMax?: number;
     isFeatured?: boolean;
     onlyActive?: boolean;
+    onlyPublicVisible?: boolean;
 }
 
 /**
@@ -253,10 +254,12 @@ export class ListingService {
     async findById<TDTO>(
         strategy: IListingStrategy<any, any, TDTO>,
         id: string,
+        options?: { requirePublicVisible?: boolean },
     ): Promise<TDTO | null> {
         try {
             const view = await this.loadView(id, strategy);
             if (view.listing.type !== strategy.type) return null;
+            if (options?.requirePublicVisible && !view.listing.is_public_visible) return null;
             return strategy.toDTO(view);
         } catch (err) {
             if (err instanceof AppError && err.statusCode === 404) return null;
@@ -271,6 +274,9 @@ export class ListingService {
         qb.andWhere("listing.type = :type", { type: params.type });
         if (params.onlyActive !== false) {
             qb.andWhere("listing.is_active = :active", { active: true });
+        }
+        if (params.onlyPublicVisible !== false) {
+            qb.andWhere("listing.is_public_visible = :publicVisible", { publicVisible: true });
         }
         if (params.searchQuery && params.searchQuery.trim() !== "") {
             qb.andWhere(

@@ -3,6 +3,7 @@ export enum AuditLogEventType {
     RESEND_OTP = "resend_otp_email",
     FORGOT_PASSWORD_OTP = "forgot_password_otp_email",
     BOOKING_UPDATE = "booking_update_email",
+    WHATSAPP_NOTIFICATION = "whatsapp_notification",
     ANALYTICS_REPORT = "analytics_report_email",
     CONTACT_US_FORWARD = "contact_us_forward",
     AD_ACTIVATION = "ad_activation_email",
@@ -10,6 +11,8 @@ export enum AuditLogEventType {
     AD_EXPIRED = "ad_expired_email",
     TICKET_ACTIVITY = "ticket_activity_email",
     OWNER_DAILY_CHECKINS = "owner_daily_checkins_email",
+    PARTNER_APPROVAL = "partner_approval_email",
+    VENDOR_POLICY_UPDATE = "vendor_policy_update_email",
 }
 
 export enum AuditLogStatus {
@@ -27,4 +30,6 @@ export const EMAIL_SUBJECTS: Record<string, string> = {
     AD_EXPIRATION_WARNING: "Your Ad is About to Expire",
     AD_EXPIRED: "Your Ad has Expired",
     TICKET_ACTIVITY: "Ticket Update",
+    PARTNER_APPROVAL: "Your Partner Account is Approved",
+    VENDOR_POLICY_UPDATE: "Vendor Policy Updated",
 };

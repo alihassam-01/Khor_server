@@ -7,6 +7,8 @@ import { PropertyType } from "@common/enums/property.enums";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { logError } from "@lib/logger";
+import { In } from "typeorm";
+import { UserRole } from "@common/enums/user.enums";
 
 /**
  * Externally we still accept `adType` as the legacy `PropertyType` string
@@ -22,6 +24,10 @@ export interface AnalyticsBatchItem {
     timestamp: number;
 }
 
+const MAX_ANALYTICS_BATCH_SIZE = 50;
+const MAX_EVENT_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
 const propertyTypeToListingType: Partial<Record<PropertyType, ListingType>> = {
     [PropertyType.HOTEL]: ListingType.HOTEL,
     [PropertyType.RESTAURANT]: ListingType.RESTAURANT,
@@ -36,6 +42,13 @@ export class AnalyticsService {
 
     async saveBatch(events: AnalyticsBatchItem[], ipHash?: string): Promise<void> {
         if (!events || events.length === 0) return;
+        if (events.length > MAX_ANALYTICS_BATCH_SIZE) {
+            throw new AppError(
+                `Analytics batches are limited to ${MAX_ANALYTICS_BATCH_SIZE} events`,
+                400,
+                ErrorCodes.BAD_REQUEST,
+            );
+        }
 
         let analyticsEntities: Array<{
             listing_id: string;
@@ -45,10 +58,47 @@ export class AnalyticsService {
             created_at: Date;
         }> = [];
         try {
-            analyticsEntities = events.map((event) => ({
+            const now = Date.now();
+            const normalizedEvents = events.map((event) => {
+                const listingType = propertyTypeToListingType[event.adType];
+                if (
+                    !event.adId ||
+                    !listingType ||
+                    !Object.values(AnalyticsEventType).includes(event.type) ||
+                    !Number.isFinite(event.timestamp) ||
+                    event.timestamp < now - MAX_EVENT_AGE_MS ||
+                    event.timestamp > now + MAX_FUTURE_SKEW_MS
+                ) {
+                    throw new AppError("Invalid analytics event", 400, ErrorCodes.BAD_REQUEST);
+                }
+                return { ...event, listingType };
+            });
+
+            const listingIds = Array.from(new Set(normalizedEvents.map((event) => event.adId)));
+            const listings = await this.listingRepository.find({
+                where: {
+                    id: In(listingIds),
+                    is_active: true,
+                    is_public_visible: true,
+                },
+            });
+            const listingTypes = new Map(listings.map((listing) => [listing.id, listing.type]));
+            const uniqueEvents = new Map<string, typeof normalizedEvents[number]>();
+            for (const event of normalizedEvents) {
+                if (listingTypes.get(event.adId) !== event.listingType) {
+                    throw new AppError(
+                        "Analytics listing is invalid or unavailable",
+                        400,
+                        ErrorCodes.BAD_REQUEST,
+                    );
+                }
+                const dedupeKey = `${event.adId}:${event.listingType}:${event.type}:${event.timestamp}`;
+                uniqueEvents.set(dedupeKey, event);
+            }
+
+            analyticsEntities = Array.from(uniqueEvents.values()).map((event) => ({
                 listing_id: event.adId,
-                listing_type:
-                    propertyTypeToListingType[event.adType] ?? ListingType.HOTEL,
+                listing_type: event.listingType,
                 event_type: event.type,
                 ip_hash: ipHash,
                 created_at: new Date(event.timestamp),
@@ -56,6 +106,7 @@ export class AnalyticsService {
 
             await this.analyticsRepository.insert(analyticsEntities as any);
         } catch (error) {
+            if (error instanceof AppError) throw error;
             logError(
                 error as Error,
                 `Analytics batch save failed. Data: ${JSON.stringify(analyticsEntities)}`,
@@ -68,8 +119,23 @@ export class AnalyticsService {
         }
     }
 
-    async getAdStats(adId: string) {
+    async getAdStats(
+        adId: string,
+        actor: { userId: string; userType: UserRole },
+    ) {
         try {
+            const listing = await this.listingRepository.findOne({ where: { id: adId } });
+            if (!listing) {
+                throw new AppError("Listing not found", 404, ErrorCodes.NOT_FOUND);
+            }
+            if (actor.userType !== UserRole.ADMIN && listing.vendor_id !== actor.userId) {
+                throw new AppError(
+                    "You cannot access this listing's analytics",
+                    403,
+                    ErrorCodes.FORBIDDEN,
+                );
+            }
+
             const stats = await this.analyticsRepository
                 .createQueryBuilder("analytics")
                 .select("analytics.event_type", "type")
@@ -97,6 +163,7 @@ export class AnalyticsService {
                 unique_visitors: parseInt(uniqueVisitors?.count || "0"),
             };
         } catch (error) {
+            if (error instanceof AppError) throw error;
             logError(error as Error, "Failed to fetch ad stats");
             throw new AppError(
                 "Failed to retrieve analytics data",
@@ -111,10 +178,39 @@ export class AnalyticsService {
         startDate?: string,
         endDate?: string,
         timezone?: string,
+        listingType?: ListingType,
     ) {
         try {
+            let rangeStart: Date | undefined;
+            let rangeEnd: Date | undefined;
+            if (startDate) {
+                rangeStart = new Date(startDate);
+                if (Number.isNaN(rangeStart.getTime())) {
+                    throw new AppError("Invalid analytics start date", 400, ErrorCodes.BAD_REQUEST);
+                }
+            }
+            if (endDate) {
+                rangeEnd = new Date(endDate);
+                if (Number.isNaN(rangeEnd.getTime())) {
+                    throw new AppError("Invalid analytics end date", 400, ErrorCodes.BAD_REQUEST);
+                }
+                rangeEnd.setUTCHours(23, 59, 59, 999);
+            }
+            if (rangeStart && rangeEnd) {
+                if (rangeStart > rangeEnd) {
+                    throw new AppError("Analytics start date must be before end date", 400, ErrorCodes.BAD_REQUEST);
+                }
+                const maxRangeMs = 366 * 24 * 60 * 60 * 1000;
+                if (rangeEnd.getTime() - rangeStart.getTime() > maxRangeMs) {
+                    throw new AppError("Analytics date range cannot exceed 366 days", 400, ErrorCodes.BAD_REQUEST);
+                }
+            }
+
             const ads = await this.listingRepository.find({
-                where: { vendor_id: vendorId },
+                where: {
+                    vendor_id: vendorId,
+                    ...(listingType ? { type: listingType } : {}),
+                },
                 relations: ["subscriptions"],
             });
 
@@ -148,15 +244,13 @@ export class AnalyticsService {
                 .createQueryBuilder("analytics")
                 .where("analytics.listing_id IN (:...adIds)", { adIds });
 
-            if (startDate) {
+            if (rangeStart) {
                 queryBuilder.andWhere("analytics.created_at >= :startDate", {
-                    startDate: new Date(startDate),
+                    startDate: rangeStart,
                 });
             }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setUTCHours(23, 59, 59, 999);
-                queryBuilder.andWhere("analytics.created_at <= :endDate", { endDate: end });
+            if (rangeEnd) {
+                queryBuilder.andWhere("analytics.created_at <= :endDate", { endDate: rangeEnd });
             }
 
             const totalsQuery = queryBuilder
@@ -250,6 +344,7 @@ export class AnalyticsService {
                 ads: adsWithStats,
             };
         } catch (error) {
+            if (error instanceof AppError) throw error;
             logError(error as Error, "Failed to fetch vendor analytics");
             throw new AppError(
                 "Failed to retrieve vendor analytics",

@@ -140,6 +140,7 @@ export interface IHotelBookingDTO {
     id: string;
     booking_number: string;
     source: BookingSource;
+    channel: "web" | "manual";
     customer_user_id?: string | null;
     guest: IBookingGuestDTO;
     listing: IBookingListingSummaryDTO;

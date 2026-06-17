@@ -41,6 +41,9 @@ export class User {
     @Column({ nullable: true, type: "timestamptz" })
     otpExpiresAt?: Date;
 
+    @Column({ name: "password_reset_jti_hash", type: "varchar", length: 64, nullable: true })
+    passwordResetJtiHash?: string | null;
+
     @Column({ default: false })
     isVerified: boolean = false;
 

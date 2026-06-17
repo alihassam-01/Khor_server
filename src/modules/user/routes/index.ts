@@ -23,6 +23,13 @@ import { notificationRoutes } from "./notification.routes";
 import { reviewRoutes } from "./reviews.routes";
 import { payoutRoutes } from "./payout.routes";
 import { supportTicketRoutes } from "./support-ticket.routes";
+import partnerOnboardingRoutes from "./partner-onboarding.routes";
+import adminBusinessRoutes from "./admin-business.routes";
+import adminVendorPolicyRoutes from "./admin-vendor-policy.routes";
+import adminListingsRoutes from "./admin-listings.routes";
+import adminPublicPolicyRoutes from "./admin-public-policy.routes";
+import publicPolicyRoutes from "./public-policy.routes";
+import { realtimeRoutes } from "./realtime.routes";
 
 
 // Core routes - always enabled
@@ -40,11 +47,18 @@ const routes = [
   paymentSettingRoutes, // Admin and public payment settings
   propertyRoutes, // Generic property routes
   bookingRoutes,
+  realtimeRoutes,
   payoutRoutes,
   supportTicketRoutes,
   notificationRoutes,
   reviewRoutes,
   analyticsRoutes,
+  partnerOnboardingRoutes,
+  adminBusinessRoutes,
+  adminVendorPolicyRoutes,
+  adminListingsRoutes,
+  adminPublicPolicyRoutes,
+  publicPolicyRoutes,
   flightsRoutes, // Google Flights price scraper
 ];
 

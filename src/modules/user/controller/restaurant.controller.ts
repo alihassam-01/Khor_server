@@ -27,14 +27,19 @@ export class RestaurantController {
     private restaurantService = new RestaurantService();
     private r2Client = new R2ClientService();
 
-    async createRestaurant(
-        req: FastifyRequest<{ Body: ICreateRestaurantDTO | any }>,
-        reply: FastifyReply
-    ) {
+    private getAuthUserId(req: FastifyRequest): string {
         const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
         if (!authUserId) {
             throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
         }
+        return authUserId;
+    }
+
+    async createRestaurant(
+        req: FastifyRequest<{ Body: ICreateRestaurantDTO | any }>,
+        reply: FastifyReply
+    ) {
+        const authUserId = this.getAuthUserId(req);
         if (!isValidUuid(authUserId)) {
             logWarn(`Invalid authUserId (non-UUID) in RestaurantController: "${authUserId}"`);
             throw new AppError(`Invalid user identity format. Please re-login.`, 400, ErrorCodes.VALIDATION_ERROR);
@@ -246,6 +251,31 @@ export class RestaurantController {
         reply.send(restaurant);
     }
 
+    async getPublicRestaurantById(
+        req: FastifyRequest<{ Params: IRestaurantIdParams }>,
+        reply: FastifyReply,
+    ) {
+        const { id } = req.params;
+        const restaurant = await this.restaurantService.getPublicRestaurantById(id);
+
+        if (!restaurant) {
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        reply.send(restaurant);
+    }
+
+    async updateRestaurantByVendor(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantDTO | any }>,
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const authUserId = this.getAuthUserId(req);
+        const restaurantData = req.body as IUpdateRestaurantDTO;
+        const restaurant = await this.restaurantService.updateRestaurantByVendor(id, authUserId, restaurantData);
+        reply.send(restaurant);
+    }
+
     async deleteRestaurant(
         req: FastifyRequest<{ Params: IRestaurantIdParams }>,
         reply: FastifyReply
@@ -282,10 +312,7 @@ export class RestaurantController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
-        if (!authUserId) {
-            throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
-        }
+        const authUserId = this.getAuthUserId(req);
 
         const { subscription_type, plan_id } = req.body;
         const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
@@ -305,6 +332,12 @@ export class RestaurantController {
         const authUserId = (req.user as any)?.id || (req.user as any)?.userId;
         const effectiveVendorId = authUserId || vendorId;
         const restaurants = await this.restaurantService.getAdsByVendor(effectiveVendorId);
+        reply.send(restaurants);
+    }
+
+    async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
+        const authUserId = this.getAuthUserId(req);
+        const restaurants = await this.restaurantService.getAdsByVendor(authUserId);
         reply.send(restaurants);
     }
 

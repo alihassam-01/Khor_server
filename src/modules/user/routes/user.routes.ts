@@ -3,6 +3,8 @@ import { UserController } from "@modules/user/controller/user.controller";
 import { UserService } from "@modules/user/service/user.service";
 import { authenticate } from "@middlewares/authenticate";
 import { authorizeAdmin } from "@middlewares/authorizeAdmin";
+import { authorizeSelfOrAdmin } from "@middlewares/authorizeSelfOrAdmin";
+import { RATE_LIMITS } from "@config/rate-limit.config";
 import { 
     IUserIdParams, 
     IChangeRoleBody, 
@@ -14,9 +16,21 @@ export default async function userRoutes(fastify: FastifyInstance) {
   const userService = new UserService();
   const userController = new UserController(userService);
 
-  fastify.get("/users", userController.getUsers.bind(userController));
-  fastify.get("/vendors", userController.getVendors.bind(userController));
-  fastify.get("/customers", userController.getCustomers.bind(userController));
+  fastify.get(
+    "/users",
+    { preHandler: [authenticate, authorizeAdmin] },
+    userController.getUsers.bind(userController)
+  );
+  fastify.get(
+    "/vendors",
+    { preHandler: [authenticate, authorizeAdmin] },
+    userController.getVendors.bind(userController)
+  );
+  fastify.get(
+    "/customers",
+    { preHandler: [authenticate, authorizeAdmin] },
+    userController.getCustomers.bind(userController)
+  );
 
   fastify.get(
     "/admin/hotel-owners",
@@ -38,7 +52,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   
   fastify.post<{ Params: IUserIdParams; Body: IUpdateUserBody }>(
     "/users/:id",
-    { preHandler: authenticate },
+    { preHandler: [authenticate, authorizeSelfOrAdmin] },
     userController.update.bind(userController)
   );
   
@@ -55,7 +69,11 @@ export default async function userRoutes(fastify: FastifyInstance) {
     userController.changeRole.bind(userController)
   );
 
-  fastify.get("/users/:id", userController.getUserById.bind(userController));
+  fastify.get<{ Params: IUserIdParams }>(
+    "/users/:id",
+    { preHandler: [authenticate, authorizeSelfOrAdmin] },
+    userController.getUserById.bind(userController)
+  );
   
   fastify.post<{ Body: any }>( // Password data is complex enough to keep as is or define if needed
     "/users/password",
@@ -65,6 +83,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Body: IForgotPasswordBody }>(
     "/users/forgot-password",
+    { config: { rateLimit: RATE_LIMITS.otpResend } },
     userController.forgotPassword.bind(userController)
   );
 }

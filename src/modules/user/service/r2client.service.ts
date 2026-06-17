@@ -1,5 +1,6 @@
 import {
   DeleteObjectsCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -12,6 +13,11 @@ import { AppDataSource } from "@config/ormconfig";
 import { In, Repository } from "typeorm";
 import { IPresignedUrlResponseDTO } from "@modules/user/dtos/r2-presigned.dto";
 import * as crypto from 'crypto';
+import {
+  sanitizeUploadFolder,
+  UploadPolicyError,
+  validateImageUpload,
+} from "@common/utils/upload-policy.util";
 
 export class R2ClientService {
   private r2Client = new S3Client({
@@ -62,8 +68,15 @@ export class R2ClientService {
     mimetype: string,
     folder: string = "uploads"
   ): Promise<{ url: string; key: string; s3_image_id: string }> => {
+    const imagePolicy = validateImageUpload(
+      originalName,
+      mimetype,
+      fileBuffer.length,
+      this.getMaxFileSize(),
+    );
     const isDev = CONFIG.env === 'development';
-    const uploadFolder = isDev ? `development/${folder}` : folder;
+    const safeFolder = sanitizeUploadFolder(folder);
+    const uploadFolder = isDev ? `development/${safeFolder}` : safeFolder;
     
     const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
     const existing = await this.s3Image.findOne({ where: { hash, isDeleted: false } });
@@ -74,8 +87,8 @@ export class R2ClientService {
 
     // If image, process to WebP and resize; otherwise upload as-is
     let outBuffer = fileBuffer;
-    let outMimetype = mimetype;
-    let extension = path.extname(originalName) || '';
+    let outMimetype = imagePolicy.mimeType;
+    let extension = imagePolicy.extension;
 
     if (mimetype && mimetype.startsWith('image/')) {
       try {
@@ -88,6 +101,7 @@ export class R2ClientService {
         outMimetype = 'image/webp';
         extension = '.webp';
       } catch (err: unknown) {
+        throw new UploadPolicyError("The uploaded file is not a valid image.");
         console.warn('[R2] Image processing failed or sharp not installed — uploading original', err);
         outBuffer = fileBuffer;
         outMimetype = mimetype;
@@ -159,18 +173,22 @@ export class R2ClientService {
   generatePresignedUrl = async (
     fileName: string,
     mimeType: string,
-    folder: string = "uploads"
+    folder: string = "uploads",
+    canonicalExtension?: string,
+    contentLength?: number,
   ): Promise<IPresignedUrlResponseDTO> => {
     const isDev = CONFIG.env === 'development';
-    const uploadFolder = isDev ? `development/${folder}` : folder;
+    const safeFolder = sanitizeUploadFolder(folder);
+    const uploadFolder = isDev ? `development/${safeFolder}` : safeFolder;
     
-    const extension = path.extname(fileName) || "";
+    const extension = canonicalExtension || path.extname(fileName) || "";
     const key = `${uploadFolder}/${uuidv4()}${extension}`;
 
     const command = new PutObjectCommand({
       Bucket: this.getBucketName(),
       Key: key,
       ContentType: mimeType,
+      ContentLength: contentLength,
     });
 
     const uploadUrl = await getSignedUrl(this.r2Client, command, {
@@ -179,29 +197,80 @@ export class R2ClientService {
 
     const publicUrl = `${this.getBucketUrl()}/${key}`;
 
-    const imageEntity = this.s3Image.create({
-      key,
-      url: publicUrl,
-      dateUploaded: new Date(),
-      isDeleted: false,
-    });
-    await this.s3Image.save(imageEntity);
-
     return { uploadUrl, key, publicUrl };
+  };
+
+  verifyUploadedObject = async (
+    key: string,
+    mimeType: string,
+    contentLength: number,
+  ): Promise<void> => {
+    let result;
+    try {
+      result = await this.r2Client.send(new HeadObjectCommand({
+        Bucket: this.getBucketName(),
+        Key: key,
+      }));
+    } catch {
+      throw new UploadPolicyError("Uploaded object could not be found.");
+    }
+    if (
+      result.ContentLength !== contentLength
+      || (result.ContentType || "").toLowerCase() !== mimeType.toLowerCase()
+    ) {
+      throw new UploadPolicyError("Uploaded object metadata does not match the signed request.");
+    }
+  };
+
+  completePresignedUpload = async (
+    key: string,
+    publicUrl: string,
+    mimeType: string,
+    contentLength: number,
+    allowedPrefix: string,
+  ): Promise<{ key: string; url: string; s3_image_id: string }> => {
+    if (!key.startsWith(`${allowedPrefix}/`)) {
+      throw new UploadPolicyError("Upload key does not belong to the authenticated user.");
+    }
+    const expectedUrl = `${this.getBucketUrl().replace(/\/+$/, "")}/${key}`;
+    if (publicUrl !== expectedUrl) {
+      throw new UploadPolicyError("Upload URL does not match the generated object key.");
+    }
+
+    await this.verifyUploadedObject(key, mimeType, contentLength);
+
+    let image = await this.s3Image.findOne({ where: { key, isDeleted: false } });
+    if (!image) {
+      image = await this.s3Image.save(this.s3Image.create({
+        key,
+        url: expectedUrl,
+        dateUploaded: new Date(),
+        isDeleted: false,
+      }));
+    }
+    return { key, url: image.url, s3_image_id: image.id };
   };
 
   /**
    * Generate multiple presigned URLs for batch upload
    */
   generatePresignedUrls = async (
-    files: Array<{ fileName: string; mimeType: string; folder?: string }>
+    files: Array<{
+      fileName: string;
+      mimeType: string;
+      folder?: string;
+      canonicalExtension?: string;
+      contentLength?: number;
+    }>
   ): Promise<IPresignedUrlResponseDTO[]> => {
     const results: IPresignedUrlResponseDTO[] = [];
     for (const file of files) {
       const result = await this.generatePresignedUrl(
         file.fileName,
         file.mimeType,
-        file.folder || "uploads"
+        file.folder || "uploads",
+        file.canonicalExtension,
+        file.contentLength,
       );
       results.push(result);
     }

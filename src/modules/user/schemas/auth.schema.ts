@@ -8,6 +8,8 @@ export const registerSchema = {
             email: { type: 'string', format: 'email' },
             password: { type: 'string', minLength: 6 },
             name: { type: 'string', minLength: 2 },
+            ownerName: { type: 'string', minLength: 2 },
+            businessName: { type: 'string', minLength: 2 },
             phone: { type: 'string', minLength: 7 },
             cityId: { type: 'integer', minimum: 1 },
             userType: { type: 'string', enum: ['customer', 'vendor'] },
@@ -78,4 +80,14 @@ export const googleVerifySchema = {
             userType: { type: 'string', enum: ['vendor', 'customer'] },
         },
     },
+};
+
+export const refreshSessionSchema = {
+    tags: ["Auth"],
+    summary: "Rotate refresh token and issue a new access token",
+};
+
+export const logoutSchema = {
+    tags: ["Auth"],
+    summary: "Revoke current refresh token and clear the session cookie",
 };

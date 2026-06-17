@@ -1,4 +1,4 @@
-name: Deploy to VPS
+name: Deploy Server to VPS
 
 on:
   push:
@@ -20,10 +20,11 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
+          username: khorops
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
+            sudo -n bash <<'EOF'
             set -euo pipefail
 
             BRANCH="${{ github.ref_name }}"
@@ -37,7 +38,7 @@ jobs:
               git reset --hard origin/main
               npm ci
               npm run build
-              pm2 reload gokhor-api
+              systemctl restart gokhor-api gokhor-worker
               exit 0
             fi
 
@@ -57,7 +58,8 @@ jobs:
 
             cd "$STAGING_DIR"
             MIGRATION_CMD="const dsModule=require('./dist/config/ormconfig.js'); const ds=dsModule.default || dsModule.AppDataSource; (async()=>{ await ds.initialize(); const results=await ds.runMigrations(); console.log(results.map(m => m.name)); await ds.destroy(); })().catch(async(err)=>{ console.error(err); try { if (ds && ds.isInitialized) await ds.destroy(); } catch {} process.exit(1); });"
-            docker compose -f docker-compose.backend.yml --profile staging build server-staging
+            docker compose -f docker-compose.backend.yml --profile staging build server-staging worker-staging
             docker compose -f docker-compose.backend.yml --profile staging run --rm --no-deps server-staging node -e "$MIGRATION_CMD"
-            docker rm -f khor-server-staging || true
-            docker compose -f docker-compose.backend.yml --profile staging up -d server-staging
+            docker rm -f khor-server-staging khor-worker-staging || true
+            docker compose -f docker-compose.backend.yml --profile staging up -d server-staging worker-staging
+            EOF

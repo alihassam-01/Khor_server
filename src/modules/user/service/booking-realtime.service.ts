@@ -11,6 +11,18 @@ type BookingRealtimeEvent = {
     occurred_at: string;
 };
 
+export type PublicBookingRealtimeEvent = {
+    type: "inventory_changed";
+    occurred_at: string;
+};
+
+export const toPublicBookingRealtimeEvent = (
+    event: BookingRealtimeEvent,
+): PublicBookingRealtimeEvent => ({
+    type: "inventory_changed",
+    occurred_at: event.occurred_at,
+});
+
 type Subscriber =
     | {
         id: string;

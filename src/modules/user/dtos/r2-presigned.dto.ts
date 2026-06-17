@@ -1,6 +1,7 @@
 export interface IPresignedUrlRequestDTO {
   fileName: string;
   mimeType: string;
+  fileSize: number;
   folder?: string;
 }
 
@@ -16,4 +17,15 @@ export interface IBatchPresignedUrlRequestDTO {
 
 export interface IBatchPresignedUrlResponseDTO {
   urls: IPresignedUrlResponseDTO[];
+}
+
+export interface ICompletePresignedUploadDTO {
+  key: string;
+  publicUrl: string;
+  mimeType: string;
+  fileSize: number;
+}
+
+export interface ICompletePresignedUploadsDTO {
+  files: ICompletePresignedUploadDTO[];
 }

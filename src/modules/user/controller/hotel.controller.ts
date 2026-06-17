@@ -204,6 +204,20 @@ export class HotelController {
         reply.send(hotel);
     }
 
+    async getPublicHotelById(
+        req: FastifyRequest<{ Params: IHotelIdParams }>,
+        reply: FastifyReply,
+    ) {
+        const { id } = req.params;
+        const hotel = await this.hotelService.getPublicHotelById(id);
+
+        if (!hotel) {
+            throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        reply.send(hotel);
+    }
+
     async getAllHotels(
         req: FastifyRequest<{ Querystring: IGetAllHotelsQuery }>, 
         reply: FastifyReply

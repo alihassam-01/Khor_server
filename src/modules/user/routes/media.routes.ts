@@ -1,6 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { MediaController } from "@modules/user/controller/media.controller";
 import { authenticate } from "@middlewares/authenticate";
+import { RATE_LIMITS } from "@config/rate-limit.config";
+import { CONFIG } from "@config/config";
 
 export const mediaRoutes = async (fastify: FastifyInstance) => {
     const mediaController = new MediaController();
@@ -14,7 +16,11 @@ export const mediaRoutes = async (fastify: FastifyInstance) => {
      */
     fastify.post(
         "/media/upload",
-        { preHandler: authenticate },
+        {
+            preHandler: authenticate,
+            bodyLimit: CONFIG.server.multipartBodyLimit,
+            config: { rateLimit: RATE_LIMITS.upload },
+        },
         mediaController.uploadImages.bind(mediaController)
     );
 };
