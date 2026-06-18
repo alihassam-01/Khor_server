@@ -781,7 +781,11 @@ export class BookingService {
             });
         }
 
-        if (booking.listing.vendor_id) {
+        const shouldNotifyVendor =
+            booking.source !== BookingSource.CUSTOMER_WEB
+            || booking.payment_status === BookingPaymentStatus.PAID;
+
+        if (booking.listing.vendor_id && shouldNotifyVendor) {
             entries.push({
                 recipient_user_id: booking.listing.vendor_id,
                 category: messageSet.category,
@@ -1325,7 +1329,7 @@ export class BookingService {
 
             return this.getBookingById(savedBooking.id, actor, source === BookingSource.CUSTOMER_WEB ? "customer" : "vendor", manager);
         });
-        if (!this.isDeferredPayFastCheckout(dto, source)) {
+        if (booking.payment_status === BookingPaymentStatus.PAID) {
             await this.notifyBookingLifecycle(
                 booking.id,
                 booking.booking_status === HotelBookingStatus.CONFIRMED ? "confirmed" : "created",
@@ -1709,6 +1713,30 @@ export class BookingService {
             }) | null>;
     }
 
+    private async releaseCheckoutHoldIfPresent(
+        manager: EntityManager,
+        booking: HotelBooking,
+    ): Promise<void> {
+        const payment = this.getLatestPayFastPayment(booking);
+        const holdId = String((payment?.metadata as Record<string, unknown> | null)?.hold_id ?? "");
+        if (!holdId || !isValidUuid(holdId)) {
+            return;
+        }
+
+        const hold = await manager.getRepository(BookingRoomHold).findOne({
+            where: { id: holdId },
+            relations: ["listing"],
+        });
+
+        if (!hold || hold.status !== BookingHoldStatus.ACTIVE) {
+            return;
+        }
+
+        hold.status = BookingHoldStatus.RELEASED;
+        hold.released_at = new Date();
+        await manager.getRepository(BookingRoomHold).save(hold);
+    }
+
     private async notifyBookingLifecycle(
         bookingId: string,
         event: "created" | "confirmed" | "cancelled" | "checked_in" | "completed" | "cancellation_requested" | "refund_requested" | "payment_recorded",
@@ -2017,6 +2045,12 @@ export class BookingService {
             return this.getBookingById(saved.id, actor, scope, manager);
         });
 
+        const shouldSendLifecycleNotification = updatedBooking.payment_status === BookingPaymentStatus.PAID;
+
+        if (!shouldSendLifecycleNotification) {
+            return updatedBooking;
+        }
+
         if (nextStatus === HotelBookingStatus.CONFIRMED) {
             await this.notifyBookingLifecycle(updatedBooking.id, "confirmed", reason ?? null);
         } else if (nextStatus === HotelBookingStatus.CANCELLED) {
@@ -2302,6 +2336,7 @@ export class BookingService {
             booking.cancellation_status = BookingCancellationStatus.CANCELLED;
             booking.cancelled_by_user_id = actor.userId;
             booking.cancelled_at = new Date();
+            await this.releaseCheckoutHoldIfPresent(manager, booking);
 
             let refundRequested = false;
 
@@ -2477,8 +2512,10 @@ export class BookingService {
                 refundAmount,
             };
         });
-        await this.notifyBookingLifecycle(booking.id, "cancelled", reason ?? null);
-        if (refundRequested) {
+        if (booking.payment_status === BookingPaymentStatus.PAID) {
+            await this.notifyBookingLifecycle(booking.id, "cancelled", reason ?? null);
+        }
+        if (refundRequested && booking.payment_status === BookingPaymentStatus.PAID) {
             await this.notifyBookingLifecycle(booking.id, "refund_requested", reason ?? null);
         }
         return booking;
@@ -2498,6 +2535,7 @@ export class BookingService {
             throw new AppError("amount must be greater than zero", 400, ErrorCodes.VALIDATION_ERROR);
         }
 
+        let shouldNotifyLifecycle = false;
         const refund = await AppDataSource.transaction(async (manager) => {
             const booking = await this.loadBookingForActor(input.booking_id, actor, "customer", manager);
             await this.assertRefundRequestAllowed(manager, booking);
@@ -2573,6 +2611,7 @@ export class BookingService {
                 booking.cancellation_status = BookingCancellationStatus.CANCELLED;
                 booking.cancelled_by_user_id = actor.userId;
                 booking.cancelled_at = new Date();
+                await this.releaseCheckoutHoldIfPresent(manager, booking);
             }
             await manager.getRepository(HotelBooking).save(booking);
 
@@ -2630,9 +2669,13 @@ export class BookingService {
                 manager,
             );
 
+            shouldNotifyLifecycle = booking.payment_status === BookingPaymentStatus.PAID;
+
             return this.getRefundById(savedRefund.id, actor, "customer", manager);
         });
-        await this.notifyBookingLifecycle(input.booking_id, "refund_requested", input.reason ?? null);
+        if (shouldNotifyLifecycle) {
+            await this.notifyBookingLifecycle(input.booking_id, "refund_requested", input.reason ?? null);
+        }
         return refund;
     }
 
