@@ -9,7 +9,8 @@ import {
     IRenewRestaurantAdBody, 
     ISetRestaurantFeaturedStatusBody,
     IHotelLocationParams,
-    IVendorIdParams
+    IVendorIdParams,
+    IUpdateRestaurantSubscriptionBillingBody,
 } from "@modules/user/types";
 import { ICreateRestaurantDTO, IUpdateRestaurantDTO } from "@modules/user/dtos";
 import { CONFIG } from "@config/config";
@@ -59,6 +60,12 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
         "/admin/restaurants/:id/renew", 
         { preHandler: [authenticate, authorizeAdmin] }, 
         restaurantController.renewAd.bind(restaurantController)
+    );
+
+    fastify.patch<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantSubscriptionBillingBody }>(
+        "/admin/restaurants/:id/subscription-billing",
+        { preHandler: [authenticate, authorizeAdmin] },
+        restaurantController.updateSubscriptionBilling.bind(restaurantController)
     );
     
     fastify.post<{ Params: IRestaurantIdParams; Body: IRenewRestaurantAdBody }>(

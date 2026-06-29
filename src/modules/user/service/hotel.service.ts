@@ -87,6 +87,17 @@ export class HotelService {
         });
     }
 
+    updateSubscriptionBilling(
+        id: string,
+        opts: {
+            paid_at?: string;
+            next_due_date?: string;
+            grace_period_days?: number;
+        },
+    ): Promise<IHotelDTO> {
+        return this.listings.updateSubscriptionBillingByAdmin(this.strategy, id, opts);
+    }
+
     getExpiredAds(): Promise<IHotelDTO[]> {
         return this.listings.findExpired(this.strategy);
     }

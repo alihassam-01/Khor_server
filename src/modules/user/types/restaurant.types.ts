@@ -27,3 +27,9 @@ export interface IRenewRestaurantAdBody {
 export interface ISetRestaurantFeaturedStatusBody {
     is_featured: boolean;
 }
+
+export interface IUpdateRestaurantSubscriptionBillingBody {
+    paid_at?: string;
+    next_due_date?: string;
+    grace_period_days?: number;
+}

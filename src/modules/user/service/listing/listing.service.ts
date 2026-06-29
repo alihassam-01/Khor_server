@@ -769,4 +769,25 @@ export class ListingService {
             return strategy.toDTO(view);
         });
     }
+
+    async updateSubscriptionBillingByAdmin<TDTO>(
+        strategy: IListingStrategy<any, any, TDTO>,
+        id: string,
+        opts: {
+            paid_at?: string;
+            next_due_date?: string;
+            grace_period_days?: number;
+        },
+    ): Promise<TDTO> {
+        return AppDataSource.transaction(async (em) => {
+            const listing = await em.getRepository(Listing).findOne({ where: { id } });
+            if (!listing || listing.type !== strategy.type) {
+                throw new AppError(`${strategy.type} not found`, 404, ErrorCodes.NOT_FOUND);
+            }
+
+            await this.subscriptionService.markPaid(em, listing, opts);
+            const view = await this.loadView(listing.id, strategy, em);
+            return strategy.toDTO(view);
+        });
+    }
 }
