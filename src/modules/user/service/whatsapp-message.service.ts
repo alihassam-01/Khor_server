@@ -1,4 +1,4 @@
-type BookingMessagePayload = {
+﻿type BookingMessagePayload = {
     bookingNumber: string;
     hotelName: string;
     roomName: string;
@@ -26,6 +26,19 @@ type OwnerDigestPayload = {
         guestPhone: string;
         guestCount: number;
         roomsCount: number;
+    }>;
+};
+
+type BookingBillDailyDigestPayload = {
+    recipientName: string;
+    bookingNumber: string;
+    hotelName: string;
+    dateLabel: string;
+    currency: string;
+    totalAmount: number;
+    items: Array<{
+        itemName: string;
+        amount: number;
     }>;
 };
 
@@ -86,6 +99,25 @@ export function renderWhatsAppMessage(
         ].join("\n");
     }
 
+    if (templateKey === "booking_bill_daily_digest_v1") {
+        const payload = rawPayload as unknown as BookingBillDailyDigestPayload;
+        const items = payload.items.flatMap((item, index) => [
+            `${index + 1}. ${clean(item.itemName)}: ${formatMoney(item.amount, payload.currency)}`,
+        ]);
+        return [
+            `Khor: your bill today`,
+            "",
+            `Hotel: ${clean(payload.hotelName)}`,
+            `Booking: ${clean(payload.bookingNumber)}`,
+            `Date: ${clean(payload.dateLabel)}`,
+            "",
+            `Your Bill today:`,
+            ...items,
+            "",
+            `Total: ${formatMoney(payload.totalAmount, payload.currency)}`,
+        ].join("\n");
+    }
+
     if (templateKey === "partner_approval_v1") {
         const payload = rawPayload as unknown as PartnerApprovalPayload;
         const capabilities = payload.approvedCapabilities.length > 0
@@ -104,4 +136,3 @@ export function renderWhatsAppMessage(
 
     throw new Error(`Unsupported WhatsApp template: ${templateKey}`);
 }
-
