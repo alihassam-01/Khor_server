@@ -1,4 +1,4 @@
-export enum BookingSource {
+﻿export enum BookingSource {
     CUSTOMER_WEB = "customer_web",
     PARTNER_MANUAL = "partner_manual",
 }
@@ -63,4 +63,9 @@ export enum BookingHoldStatus {
     CONSUMED = "consumed",
     RELEASED = "released",
     EXPIRED = "expired",
+}
+export enum BookingBillStatus {
+    UNPAID = "unpaid",
+    PARTIALLY_PAID = "partially_paid",
+    PAID = "paid",
 }

@@ -299,7 +299,12 @@ export class ReviewService {
             review.title = input.title ?? null;
             review.content = input.content;
             review.is_verified_booking = isVerifiedBooking;
-            review.status = isVerifiedBooking ? ReviewStatus.PUBLISHED : ReviewStatus.PENDING;
+            review.status = (
+                input.target_type === ReviewTargetType.LISTING
+                || input.target_type === ReviewTargetType.ROOM_TYPE
+            )
+                ? (isVerifiedBooking ? ReviewStatus.PUBLISHED : ReviewStatus.PENDING)
+                : ReviewStatus.PUBLISHED;
             const saved = await em.getRepository(Review).save(review);
 
             await this.recomputeAggregates(em, input.target_type, input.target_id);

@@ -4,10 +4,10 @@ import {
     NotificationChannel,
     NotificationOutboxStatus,
 } from "@common/enums/notification.enums";
+import { BookingPaymentStatus, BookingSource } from "@common/enums/booking.enums";
 import { normalizePhoneToE164 } from "@common/utils/phone.util";
 import { HotelBooking } from "@modules/user/entity/booking";
 import { NotificationOutbox } from "@modules/user/entity/user";
-import { BookingPaymentStatus } from "@common/enums/booking.enums";
 
 type LifecycleConfig = {
     eventType: string;
@@ -100,6 +100,13 @@ export class NotificationOutboxService {
             .where("booking.id = :bookingId", { bookingId })
             .getOne();
         if (!booking) return;
+
+        if (
+            booking.source === BookingSource.CUSTOMER_WEB
+            && booking.payment_status !== BookingPaymentStatus.PAID
+        ) {
+            return;
+        }
 
         const effectiveEvent = action === "booking_created"
             && booking.booking_status === "confirmed"

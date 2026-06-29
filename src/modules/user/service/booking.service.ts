@@ -31,6 +31,7 @@ import {
     IBookingHoldDTO,
     IBookingTimelineEventDTO,
     IVendorBookingHoldDTO,
+    ICreateHotelBookingRoomAllocationDTO,
     ICreateHotelBookingHoldDTO,
     ICreateHotelBookingDTO,
     IHotelAvailabilityDTO,
@@ -90,6 +91,11 @@ type RefundEligibilityResult = {
     refundCutoffHours: number | null;
     cancellationPolicy: string | null;
     source: "snapshot" | "current";
+};
+
+type NormalizedBookingAllocation = {
+    room_type_id: string;
+    rooms_count: number;
 };
 
 export class BookingService {
@@ -244,11 +250,44 @@ export class BookingService {
         );
     }
 
+    private normalizeBookingAllocations(dto: ICreateHotelBookingDTO): NormalizedBookingAllocation[] {
+        const rawAllocations = Array.isArray(dto.room_allocations) && dto.room_allocations.length > 0
+            ? dto.room_allocations
+            : [{ room_type_id: dto.room_type_id, rooms_count: dto.rooms_count }];
+
+        const merged = new Map<string, number>();
+        for (const allocation of rawAllocations as ICreateHotelBookingRoomAllocationDTO[]) {
+            const roomTypeId = allocation.room_type_id;
+            const roomsCount = Number(allocation.rooms_count);
+            this.assertUuid(roomTypeId, "room_allocations.room_type_id");
+            if (!Number.isInteger(roomsCount) || roomsCount <= 0) {
+                throw new AppError(
+                    "room_allocations.rooms_count must be a positive integer",
+                    400,
+                    ErrorCodes.VALIDATION_ERROR,
+                );
+            }
+            merged.set(roomTypeId, (merged.get(roomTypeId) ?? 0) + roomsCount);
+        }
+
+        return Array.from(merged.entries()).map(([room_type_id, rooms_count]) => ({
+            room_type_id,
+            rooms_count,
+        }));
+    }
+
     private validateCreateInput(dto: ICreateHotelBookingDTO): void {
         this.assertUuid(dto.listing_id, "listing_id");
         this.assertUuid(dto.room_type_id, "room_type_id");
         if (dto.hold_id) {
             this.assertUuid(dto.hold_id, "hold_id");
+        }
+        for (const holdId of dto.hold_ids ?? []) {
+            this.assertUuid(holdId, "hold_ids");
+        }
+        const allocations = this.normalizeBookingAllocations(dto);
+        if (allocations.length === 0) {
+            throw new AppError("At least one room allocation is required", 400, ErrorCodes.VALIDATION_ERROR);
         }
 
         if (!dto.guest_name?.trim()) {
@@ -471,7 +510,7 @@ export class BookingService {
         roomTypeId: string,
         checkInDate: string,
         checkOutDate: string,
-        excludeHoldId?: string,
+        excludeHoldId?: string | string[],
     ): Promise<number> {
         const qb = manager.getRepository(BookingRoomHold)
             .createQueryBuilder("hold")
@@ -482,8 +521,13 @@ export class BookingService {
             .andWhere("hold.check_in_date < :checkOutDate", { checkOutDate })
             .andWhere("hold.check_out_date > :checkInDate", { checkInDate });
 
-        if (excludeHoldId) {
-            qb.andWhere("hold.id != :excludeHoldId", { excludeHoldId });
+        const excludeHoldIds = Array.isArray(excludeHoldId)
+            ? excludeHoldId.filter(Boolean)
+            : excludeHoldId
+                ? [excludeHoldId]
+                : [];
+        if (excludeHoldIds.length > 0) {
+            qb.andWhere("hold.id NOT IN (:...excludeHoldIds)", { excludeHoldIds });
         }
 
         const raw = await qb.getRawOne<{ held_rooms: string }>();
@@ -781,7 +825,11 @@ export class BookingService {
             });
         }
 
-        if (booking.listing.vendor_id) {
+        const shouldNotifyVendor =
+            booking.source !== BookingSource.CUSTOMER_WEB
+            || booking.payment_status === BookingPaymentStatus.PAID;
+
+        if (booking.listing.vendor_id && shouldNotifyVendor) {
             entries.push({
                 recipient_user_id: booking.listing.vendor_id,
                 category: messageSet.category,
@@ -993,22 +1041,37 @@ export class BookingService {
 
         const booking = await AppDataSource.transaction(async (manager) => {
             await this.expireStaleHolds(manager);
-            const roomType = await this.loadLockedRoomType(manager, dto.room_type_id);
-
-            if (roomType.listing_id !== dto.listing_id) {
-                throw new AppError(
-                    "The selected room type does not belong to the requested hotel",
-                    400,
-                    ErrorCodes.VALIDATION_ERROR,
+            const allocations = this.normalizeBookingAllocations(dto);
+            const primaryAllocation = allocations[0];
+            const lockedRoomTypes = new Map<string, HotelRoomType & { listing: Listing }>();
+            for (const allocation of [...allocations].sort((a, b) => a.room_type_id.localeCompare(b.room_type_id))) {
+                lockedRoomTypes.set(
+                    allocation.room_type_id,
+                    await this.loadLockedRoomType(manager, allocation.room_type_id),
                 );
             }
+            const roomType = lockedRoomTypes.get(primaryAllocation.room_type_id);
+            if (!roomType) {
+                throw new AppError("Room type not found", 404, ErrorCodes.NOT_FOUND);
+            }
 
-            if (!roomType.is_active) {
-                throw new AppError(
-                    "This room type is currently in maintenance",
-                    409,
-                    ErrorCodes.CONFLICT,
-                );
+            for (const allocation of allocations) {
+                const allocatedRoomType = lockedRoomTypes.get(allocation.room_type_id);
+                if (!allocatedRoomType || allocatedRoomType.listing_id !== dto.listing_id) {
+                    throw new AppError(
+                        "All selected room types must belong to the requested hotel",
+                        400,
+                        ErrorCodes.VALIDATION_ERROR,
+                    );
+                }
+
+                if (!allocatedRoomType.is_active) {
+                    throw new AppError(
+                        `${allocatedRoomType.name} is currently in maintenance`,
+                        409,
+                        ErrorCodes.CONFLICT,
+                    );
+                }
             }
 
             if (source === BookingSource.CUSTOMER_WEB && !roomType.listing.is_active) {
@@ -1023,7 +1086,13 @@ export class BookingService {
                 await this.ensureVendorOwnsListing(manager, actor.userId, dto.listing_id);
             }
 
-            if (dto.guest_count > roomType.capacity * dto.rooms_count) {
+            const totalRoomsCount = allocations.reduce((sum, allocation) => sum + allocation.rooms_count, 0);
+            const totalGuestCapacity = allocations.reduce((sum, allocation) => {
+                const allocatedRoomType = lockedRoomTypes.get(allocation.room_type_id);
+                return sum + Number(allocatedRoomType?.capacity ?? 0) * allocation.rooms_count;
+            }, 0);
+
+            if (dto.guest_count > totalGuestCapacity) {
                 throw new AppError(
                     "Guest count exceeds the selected room capacity",
                     400,
@@ -1031,17 +1100,12 @@ export class BookingService {
                 );
             }
 
-            const reservedRooms = await this.getReservedRoomCount(
-                manager,
-                dto.room_type_id,
-                dto.check_in_date,
-                dto.check_out_date,
-            );
-            let hold: BookingRoomHold | null = null;
-            let heldRooms = 0;
+            const holds: BookingRoomHold[] = [];
+            const holdIds = Array.from(new Set([...(dto.hold_ids ?? []), dto.hold_id].filter(Boolean) as string[]));
+            const holdsByRoomTypeId = new Map<string, BookingRoomHold[]>();
 
             if (source === BookingSource.CUSTOMER_WEB) {
-                if (!dto.hold_id) {
+                if (holdIds.length === 0) {
                     throw new AppError(
                         "A valid room hold is required before completing checkout",
                         409,
@@ -1049,16 +1113,23 @@ export class BookingService {
                     );
                 }
 
-                hold = await this.loadLockedActiveHold(manager, dto.hold_id, actor.userId);
+                for (const holdId of holdIds) {
+                    const hold = await this.loadLockedActiveHold(manager, holdId, actor.userId);
+                    holds.push(hold);
+                    holdsByRoomTypeId.set(hold.room_type_id, [...(holdsByRoomTypeId.get(hold.room_type_id) ?? []), hold]);
+                }
 
-                const mismatchedHold = hold.listing_id !== dto.listing_id
-                    || hold.room_type_id !== dto.room_type_id
-                    || hold.rooms_count !== dto.rooms_count
-                    || hold.guest_count !== dto.guest_count
-                    || hold.check_in_date !== dto.check_in_date
-                    || hold.check_out_date !== dto.check_out_date;
+                const allHoldsMatch = allocations.every((allocation) => {
+                    const allocationHolds = holdsByRoomTypeId.get(allocation.room_type_id) ?? [];
+                    const heldRoomsCount = allocationHolds.reduce((sum, hold) => sum + hold.rooms_count, 0);
+                    return allocationHolds.length > 0
+                        && heldRoomsCount === allocation.rooms_count
+                        && allocationHolds.every((hold) => hold.listing_id === dto.listing_id
+                            && hold.check_in_date === dto.check_in_date
+                            && hold.check_out_date === dto.check_out_date);
+                });
 
-                if (mismatchedHold) {
+                if (!allHoldsMatch) {
                     throw new AppError(
                         "The booking details do not match the active room hold",
                         409,
@@ -1067,35 +1138,56 @@ export class BookingService {
                 }
             }
 
-            heldRooms = await this.getActiveHoldRoomCount(
-                manager,
-                dto.room_type_id,
-                dto.check_in_date,
-                dto.check_out_date,
-                hold?.id,
-            );
-
-            const availableRooms = roomType.total_rooms - reservedRooms - heldRooms;
-
-            if (dto.rooms_count > availableRooms) {
-                throw new AppError(
-                    `Only ${Math.max(availableRooms, 0)} room(s) are available for the selected dates`,
-                    409,
-                    ErrorCodes.CONFLICT,
+            for (const allocation of allocations) {
+                const allocatedRoomType = lockedRoomTypes.get(allocation.room_type_id);
+                const reservedRooms = await this.getReservedRoomCount(
+                    manager,
+                    allocation.room_type_id,
+                    dto.check_in_date,
+                    dto.check_out_date,
                 );
+                const heldRooms = await this.getActiveHoldRoomCount(
+                    manager,
+                    allocation.room_type_id,
+                    dto.check_in_date,
+                    dto.check_out_date,
+                    (holdsByRoomTypeId.get(allocation.room_type_id) ?? []).map((hold) => hold.id),
+                );
+                const availableRooms = Number(allocatedRoomType?.total_rooms ?? 0) - reservedRooms - heldRooms;
+
+                if (allocation.rooms_count > availableRooms) {
+                    throw new AppError(
+                        `Only ${Math.max(availableRooms, 0)} ${allocatedRoomType?.name ?? "room"} room(s) are available for the selected dates`,
+                        409,
+                        ErrorCodes.CONFLICT,
+                    );
+                }
             }
 
             const nights = this.calculateNights(dto.check_in_date, dto.check_out_date);
-            const baseNightlyRate = Number(roomType.price);
             const refundPolicySnapshot = await this.getHotelRefundPolicySnapshot(manager, dto.listing_id);
-            const activePromotion = await this.getActivePromotionForRoomType(
-                manager,
-                dto.listing_id,
-                roomType,
-            );
-            const nightlyRate = this.roundAmount(activePromotion?.discounted_price ?? baseNightlyRate);
-            const subtotal = this.roundAmount(baseNightlyRate * dto.rooms_count * nights);
-            const discountAmount = this.roundAmount((baseNightlyRate - nightlyRate) * dto.rooms_count * nights);
+            let subtotal = 0;
+            let discountAmount = 0;
+            let nightlyRateSnapshot = 0;
+            const promotionIds = new Set<string>();
+            for (const allocation of allocations) {
+                const allocatedRoomType = lockedRoomTypes.get(allocation.room_type_id) as HotelRoomType;
+                const baseNightlyRate = Number(allocatedRoomType.price);
+                const activePromotion = await this.getActivePromotionForRoomType(
+                    manager,
+                    dto.listing_id,
+                    allocatedRoomType,
+                );
+                const nightlyRate = this.roundAmount(activePromotion?.discounted_price ?? baseNightlyRate);
+                if (allocation.room_type_id === primaryAllocation.room_type_id) {
+                    nightlyRateSnapshot = nightlyRate;
+                }
+                subtotal += baseNightlyRate * allocation.rooms_count * nights;
+                discountAmount += (baseNightlyRate - nightlyRate) * allocation.rooms_count * nights;
+                if (activePromotion?.id) promotionIds.add(activePromotion.id);
+            }
+            subtotal = this.roundAmount(subtotal);
+            discountAmount = this.roundAmount(discountAmount);
             const totalAmount = this.roundAmount(subtotal - discountAmount);
             const requestedDevelopmentDirectCheckout = source === BookingSource.CUSTOMER_WEB
                 && this.isDevelopmentEnv()
@@ -1155,14 +1247,14 @@ export class BookingService {
                 guest_email: dto.guest_email.trim().toLowerCase(),
                 guest_phone: dto.guest_phone.trim(),
                 listing_id: dto.listing_id,
-                room_type_id: dto.room_type_id,
-                rooms_count: dto.rooms_count,
+                room_type_id: primaryAllocation.room_type_id,
+                rooms_count: totalRoomsCount,
                 guest_count: dto.guest_count,
                 check_in_date: dto.check_in_date,
                 check_out_date: dto.check_out_date,
                 nights,
                 currency: "PKR",
-                nightly_rate_snapshot: nightlyRate,
+                nightly_rate_snapshot: nightlyRateSnapshot,
                 subtotal_amount: subtotal,
                 discount_amount: discountAmount,
                 tax_amount: 0,
@@ -1188,18 +1280,18 @@ export class BookingService {
 
             const savedBooking = await manager.getRepository(HotelBooking).save(booking);
             if (!isDeferredPayFastCheckout) {
-                const allocation = manager.getRepository(HotelBookingAllocation).create({
+                const bookingAllocations = allocations.map((allocation) => manager.getRepository(HotelBookingAllocation).create({
                     booking_id: savedBooking.id,
                     listing_id: dto.listing_id,
-                    room_type_id: dto.room_type_id,
-                    quantity_reserved: dto.rooms_count,
-                });
-                await manager.getRepository(HotelBookingAllocation).save(allocation);
+                    room_type_id: allocation.room_type_id,
+                    quantity_reserved: allocation.rooms_count,
+                }));
+                await manager.getRepository(HotelBookingAllocation).save(bookingAllocations);
             }
 
-            if (activePromotion?.id) {
+            for (const promotionId of promotionIds) {
                 await manager.getRepository(HotelPromotion).increment(
-                    { id: activePromotion.id },
+                    { id: promotionId },
                     "usage_count",
                     1,
                 );
@@ -1237,7 +1329,9 @@ export class BookingService {
                     notes: dto.payment_notes?.trim() || "Pending PayFast checkout",
                     metadata: {
                         checkout_mode: "payfast_redirect",
-                        hold_id: hold?.id ?? null,
+                        hold_id: holdIds[0] ?? null,
+                        hold_ids: holdIds,
+                        room_allocations: allocations,
                     },
                     created_by_user_id: actor.userId,
                 });
@@ -1254,7 +1348,8 @@ export class BookingService {
             );
             await manager.getRepository(HotelBooking).save(savedBooking);
 
-            if (hold && !isDeferredPayFastCheckout) {
+            if (holds.length > 0 && !isDeferredPayFastCheckout) {
+                for (const hold of holds) {
                 hold.status = BookingHoldStatus.CONSUMED;
                 hold.consumed_at = new Date();
                 await manager.getRepository(BookingRoomHold).save(hold);
@@ -1266,6 +1361,7 @@ export class BookingService {
                     "hold_consumed",
                     manager,
                 );
+                }
             }
 
             await this.statusHistoryService.record({
@@ -1300,8 +1396,9 @@ export class BookingService {
                 },
                 metadata: {
                     listing_id: dto.listing_id,
-                    room_type_id: dto.room_type_id,
-                    rooms_count: dto.rooms_count,
+                    room_type_id: primaryAllocation.room_type_id,
+                    rooms_count: totalRoomsCount,
+                    room_allocations: allocations,
                     guest_count: dto.guest_count,
                     payment_amount: initialPaymentAmount,
                     payment_mode: isDeferredPayFastCheckout
@@ -1309,7 +1406,7 @@ export class BookingService {
                         : isDevelopmentDirectCheckout
                             ? "development_direct_bypass"
                             : "direct_capture",
-                    hold_id: hold?.id ?? null,
+                    hold_id: holdIds[0] ?? null,
                 },
             }, manager);
 
@@ -1325,7 +1422,7 @@ export class BookingService {
 
             return this.getBookingById(savedBooking.id, actor, source === BookingSource.CUSTOMER_WEB ? "customer" : "vendor", manager);
         });
-        if (!this.isDeferredPayFastCheckout(dto, source)) {
+        if (booking.payment_status === BookingPaymentStatus.PAID) {
             await this.notifyBookingLifecycle(
                 booking.id,
                 booking.booking_status === HotelBookingStatus.CONFIRMED ? "confirmed" : "created",
@@ -1351,6 +1448,8 @@ export class BookingService {
             .leftJoinAndSelect("listing.media", "listing_media")
             .leftJoinAndSelect("listing.vendor", "listing_vendor")
             .leftJoinAndSelect("booking.room_type", "room_type")
+            .leftJoinAndSelect("booking.allocations", "allocations")
+            .leftJoinAndSelect("allocations.room_type", "allocation_room_type")
             .leftJoinAndSelect("booking.payments", "payments")
             .leftJoinAndSelect("booking.refunds", "refunds")
             .where("booking.id = :bookingId", { bookingId });
@@ -1390,6 +1489,8 @@ export class BookingService {
             .leftJoinAndSelect("listing.media", "listing_media")
             .leftJoinAndSelect("listing.vendor", "listing_vendor")
             .leftJoinAndSelect("booking.room_type", "room_type")
+            .leftJoinAndSelect("booking.allocations", "allocations")
+            .leftJoinAndSelect("allocations.room_type", "allocation_room_type")
             .leftJoinAndSelect("booking.payments", "payments")
             .leftJoinAndSelect("booking.refunds", "refunds")
             .where("booking.id = :bookingId", { bookingId })
@@ -1504,6 +1605,19 @@ export class BookingService {
         const latestPayFastPayment = this.getLatestPayFastPayment(booking);
         const paymentExpiresAt = this.getPaymentCheckoutExpiry(latestPayFastPayment);
         const isExpired = this.isCheckoutExpiredForBooking(booking, latestPayFastPayment);
+        const roomAllocations = (booking.allocations?.length ? booking.allocations : [{
+            room_type: booking.room_type,
+            quantity_reserved: booking.rooms_count,
+        } as HotelBookingAllocation]).map((allocation) => ({
+            room_type: {
+                id: allocation.room_type.id,
+                name: allocation.room_type.name,
+                total_rooms: allocation.room_type.total_rooms,
+                capacity: allocation.room_type.capacity,
+            },
+            rooms_count: Number(allocation.quantity_reserved),
+            nightly_rate: Number(allocation.room_type.price ?? booking.nightly_rate_snapshot),
+        }));
 
         return {
             id: booking.id,
@@ -1546,6 +1660,7 @@ export class BookingService {
                 total_rooms: booking.room_type.total_rooms,
                 capacity: booking.room_type.capacity,
             },
+            room_allocations: roomAllocations,
             rooms_count: booking.rooms_count,
             guest_count: booking.guest_count,
             check_in_date: booking.check_in_date,
@@ -1707,6 +1822,36 @@ export class BookingService {
                 listing: Listing & { vendor?: { id: string; email: string; userType: UserRole; profile?: { username?: string | null } | null } | null };
                 room_type: HotelRoomType;
             }) | null>;
+    }
+
+    private async releaseCheckoutHoldIfPresent(
+        manager: EntityManager,
+        booking: HotelBooking,
+    ): Promise<void> {
+        const payment = this.getLatestPayFastPayment(booking);
+        const metadata = (payment?.metadata as Record<string, unknown> | null) ?? {};
+        const holdIds = Array.isArray(metadata.hold_ids)
+            ? (metadata.hold_ids as unknown[]).map((value) => String(value)).filter((value) => isValidUuid(value))
+            : [];
+        const holdId = String(metadata.hold_id ?? "");
+        if (holdId && isValidUuid(holdId) && !holdIds.includes(holdId)) {
+            holdIds.push(holdId);
+        }
+        if (holdIds.length === 0) {
+            return;
+        }
+
+        const holds = await manager.getRepository(BookingRoomHold).find({
+            where: holdIds.map((id) => ({ id })),
+            relations: ["listing"],
+        });
+
+        for (const hold of holds) {
+            if (hold.status !== BookingHoldStatus.ACTIVE) continue;
+            hold.status = BookingHoldStatus.RELEASED;
+            hold.released_at = new Date();
+            await manager.getRepository(BookingRoomHold).save(hold);
+        }
     }
 
     private async notifyBookingLifecycle(
@@ -1893,6 +2038,8 @@ export class BookingService {
             .leftJoinAndSelect("listing.media", "listing_media")
             .leftJoinAndSelect("listing.vendor", "listing_vendor")
             .leftJoinAndSelect("booking.room_type", "room_type")
+            .leftJoinAndSelect("booking.allocations", "allocations")
+            .leftJoinAndSelect("allocations.room_type", "allocation_room_type")
             .leftJoinAndSelect("booking.payments", "payments");
         qb.leftJoinAndSelect("booking.refunds", "refunds");
 
@@ -2017,6 +2164,12 @@ export class BookingService {
             return this.getBookingById(saved.id, actor, scope, manager);
         });
 
+        const shouldSendLifecycleNotification = updatedBooking.payment_status === BookingPaymentStatus.PAID;
+
+        if (!shouldSendLifecycleNotification) {
+            return updatedBooking;
+        }
+
         if (nextStatus === HotelBookingStatus.CONFIRMED) {
             await this.notifyBookingLifecycle(updatedBooking.id, "confirmed", reason ?? null);
         } else if (nextStatus === HotelBookingStatus.CANCELLED) {
@@ -2075,12 +2228,24 @@ export class BookingService {
             }
 
             const paymentMetadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+            const holdIds = Array.isArray(paymentMetadata.hold_ids)
+                ? (paymentMetadata.hold_ids as unknown[]).map((value) => String(value)).filter((value) => isValidUuid(value))
+                : [];
             const holdId = String(paymentMetadata.hold_id ?? dto.hold_id ?? "");
+            if (holdId && isValidUuid(holdId) && !holdIds.includes(holdId)) {
+                holdIds.push(holdId);
+            }
             let expiresAt = new Date();
 
-            if (holdId && isValidUuid(holdId)) {
-                const hold = await this.loadLockedActiveHold(manager, holdId, actor.userId);
-                expiresAt = hold.expires_at;
+            if (holdIds.length > 0) {
+                const holds = [];
+                for (const id of holdIds) {
+                    holds.push(await this.loadLockedActiveHold(manager, id, actor.userId));
+                }
+                expiresAt = holds.reduce(
+                    (earliest, hold) => hold.expires_at < earliest ? hold.expires_at : earliest,
+                    holds[0].expires_at,
+                );
             }
 
             const checkout = await this.payFastService.createCheckoutSession({
@@ -2161,14 +2326,26 @@ export class BookingService {
             }
 
             const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+            const holdIds = Array.isArray(metadata.hold_ids)
+                ? (metadata.hold_ids as unknown[]).map((value) => String(value)).filter((value) => isValidUuid(value))
+                : [];
             const holdId = String(metadata.hold_id ?? "");
+            if (holdId && isValidUuid(holdId) && !holdIds.includes(holdId)) {
+                holdIds.push(holdId);
+            }
 
-            if (!holdId || !isValidUuid(holdId)) {
+            if (holdIds.length === 0) {
                 throw new AppError("This booking is missing its room hold and cannot be resumed.", 409, ErrorCodes.CONFLICT);
             }
 
-            const hold = await this.loadLockedActiveHold(manager, holdId, actor.userId);
-            const expiresAt = hold.expires_at;
+            const holds = [];
+            for (const id of holdIds) {
+                holds.push(await this.loadLockedActiveHold(manager, id, actor.userId));
+            }
+            const expiresAt = holds.reduce(
+                (earliest, hold) => hold.expires_at < earliest ? hold.expires_at : earliest,
+                holds[0].expires_at,
+            );
 
             const checkout = await this.payFastService.createCheckoutSession({
                 basketId: booking.booking_number,
@@ -2302,6 +2479,7 @@ export class BookingService {
             booking.cancellation_status = BookingCancellationStatus.CANCELLED;
             booking.cancelled_by_user_id = actor.userId;
             booking.cancelled_at = new Date();
+            await this.releaseCheckoutHoldIfPresent(manager, booking);
 
             let refundRequested = false;
 
@@ -2477,8 +2655,10 @@ export class BookingService {
                 refundAmount,
             };
         });
-        await this.notifyBookingLifecycle(booking.id, "cancelled", reason ?? null);
-        if (refundRequested) {
+        if (booking.payment_status === BookingPaymentStatus.PAID) {
+            await this.notifyBookingLifecycle(booking.id, "cancelled", reason ?? null);
+        }
+        if (refundRequested && booking.payment_status === BookingPaymentStatus.PAID) {
             await this.notifyBookingLifecycle(booking.id, "refund_requested", reason ?? null);
         }
         return booking;
@@ -2498,6 +2678,7 @@ export class BookingService {
             throw new AppError("amount must be greater than zero", 400, ErrorCodes.VALIDATION_ERROR);
         }
 
+        let shouldNotifyLifecycle = false;
         const refund = await AppDataSource.transaction(async (manager) => {
             const booking = await this.loadBookingForActor(input.booking_id, actor, "customer", manager);
             await this.assertRefundRequestAllowed(manager, booking);
@@ -2573,6 +2754,7 @@ export class BookingService {
                 booking.cancellation_status = BookingCancellationStatus.CANCELLED;
                 booking.cancelled_by_user_id = actor.userId;
                 booking.cancelled_at = new Date();
+                await this.releaseCheckoutHoldIfPresent(manager, booking);
             }
             await manager.getRepository(HotelBooking).save(booking);
 
@@ -2630,9 +2812,13 @@ export class BookingService {
                 manager,
             );
 
+            shouldNotifyLifecycle = booking.payment_status === BookingPaymentStatus.PAID;
+
             return this.getRefundById(savedRefund.id, actor, "customer", manager);
         });
-        await this.notifyBookingLifecycle(input.booking_id, "refund_requested", input.reason ?? null);
+        if (shouldNotifyLifecycle) {
+            await this.notifyBookingLifecycle(input.booking_id, "refund_requested", input.reason ?? null);
+        }
         return refund;
     }
 
@@ -3149,25 +3335,56 @@ export class BookingService {
         }
 
         const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
+        const holdIds = Array.isArray(metadata.hold_ids)
+            ? (metadata.hold_ids as unknown[]).map((value) => String(value)).filter((value) => isValidUuid(value))
+            : [];
         const holdId = String(metadata.hold_id ?? "");
+        if (holdId && isValidUuid(holdId) && !holdIds.includes(holdId)) {
+            holdIds.push(holdId);
+        }
+        const rawAllocations = Array.isArray(metadata.room_allocations)
+            ? metadata.room_allocations as Array<{ room_type_id?: unknown; rooms_count?: unknown }>
+            : [];
+        const allocations = rawAllocations.length > 0
+            ? rawAllocations
+                .map((allocation) => ({
+                    room_type_id: String(allocation.room_type_id ?? ""),
+                    rooms_count: Number(allocation.rooms_count ?? 0),
+                }))
+                .filter((allocation) => isValidUuid(allocation.room_type_id) && Number.isInteger(allocation.rooms_count) && allocation.rooms_count > 0)
+            : [{ room_type_id: booking.room_type_id, rooms_count: booking.rooms_count }];
+        const holds = holdIds.length > 0
+            ? await manager.getRepository(BookingRoomHold).find({ where: holdIds.map((id) => ({ id })), relations: ["listing"] })
+            : [];
+        const holdIdsByRoomTypeId = holds.reduce((map, hold) => {
+            map.set(hold.room_type_id, [...(map.get(hold.room_type_id) ?? []), hold.id]);
+            return map;
+        }, new Map<string, string[]>());
 
-        const roomType = await this.loadLockedRoomType(manager, booking.room_type_id);
-        const reservedRooms = await this.getReservedRoomCount(
-            manager,
-            booking.room_type_id,
-            booking.check_in_date,
-            booking.check_out_date,
-        );
-        const heldRooms = await this.getActiveHoldRoomCount(
-            manager,
-            booking.room_type_id,
-            booking.check_in_date,
-            booking.check_out_date,
-            holdId && isValidUuid(holdId) ? holdId : undefined,
-        );
-        const availableRooms = roomType.total_rooms - reservedRooms - heldRooms;
+        let inventoryUnavailable = false;
+        for (const allocation of allocations) {
+            const roomType = await this.loadLockedRoomType(manager, allocation.room_type_id);
+            const reservedRooms = await this.getReservedRoomCount(
+                manager,
+                allocation.room_type_id,
+                booking.check_in_date,
+                booking.check_out_date,
+            );
+            const heldRooms = await this.getActiveHoldRoomCount(
+                manager,
+                allocation.room_type_id,
+                booking.check_in_date,
+                booking.check_out_date,
+                holdIdsByRoomTypeId.get(allocation.room_type_id) ?? [],
+            );
+            const availableRooms = roomType.total_rooms - reservedRooms - heldRooms;
+            if (allocation.rooms_count > availableRooms) {
+                inventoryUnavailable = true;
+                break;
+            }
+        }
 
-        if (booking.rooms_count > availableRooms) {
+        if (inventoryUnavailable) {
             const previousPaymentStatus = booking.payment_status;
             booking.payment_status = BookingPaymentStatus.PAID;
             payment.payment_status = BookingPaymentStatus.PAID;
@@ -3227,20 +3444,16 @@ export class BookingService {
             where: { booking_id: booking.id },
         });
         if (!existingAllocation) {
-            const allocation = allocationRepo.create({
+            const bookingAllocations = allocations.map((allocation) => allocationRepo.create({
                 booking_id: booking.id,
                 listing_id: booking.listing_id,
-                room_type_id: booking.room_type_id,
-                quantity_reserved: booking.rooms_count,
-            });
-            await allocationRepo.save(allocation);
+                room_type_id: allocation.room_type_id,
+                quantity_reserved: allocation.rooms_count,
+            }));
+            await allocationRepo.save(bookingAllocations);
         }
 
-        if (holdId && isValidUuid(holdId)) {
-            const hold = await manager.getRepository(BookingRoomHold).findOne({
-                where: { id: holdId },
-                relations: ["listing"],
-            });
+        for (const hold of holds) {
             if (hold && hold.status === BookingHoldStatus.ACTIVE) {
                 hold.status = BookingHoldStatus.CONSUMED;
                 hold.consumed_at = new Date();
@@ -3664,34 +3877,6 @@ export class BookingService {
                     409,
                     ErrorCodes.CONFLICT,
                 );
-            }
-
-            const existingActiveHolds = await manager.getRepository(BookingRoomHold)
-                .createQueryBuilder("hold")
-                .innerJoinAndSelect("hold.listing", "listing")
-                .where("hold.customer_user_id = :customerUserId", { customerUserId: actor.userId })
-                .andWhere("hold.status = :status", { status: BookingHoldStatus.ACTIVE })
-                .andWhere("hold.expires_at > NOW()")
-                .getMany();
-
-            if (existingActiveHolds.length > 0) {
-                await manager.getRepository(BookingRoomHold)
-                    .createQueryBuilder()
-                    .update(BookingRoomHold)
-                    .set({
-                        status: BookingHoldStatus.RELEASED,
-                        released_at: () => "NOW()",
-                    })
-                    .where("id IN (:...ids)", { ids: existingActiveHolds.map((hold) => hold.id) })
-                    .execute();
-
-                for (const hold of existingActiveHolds) {
-                    await this.publishHoldEvent(
-                        hold as BookingRoomHold & { listing: Listing },
-                        "hold_released_by_new_hold",
-                        manager,
-                    );
-                }
             }
 
             const hold = manager.getRepository(BookingRoomHold).create({

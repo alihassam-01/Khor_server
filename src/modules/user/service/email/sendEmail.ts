@@ -1,6 +1,7 @@
-import { sendEmail } from "./index";
+﻿import { sendEmail } from "./index";
 import { AuditLogStatus, AuditLogEventType, EMAIL_SUBJECTS } from "@modules/user/constant/audit.constant";
 import { AuditLogService } from "@modules/user/service/audit-log.service";
+import { bookingBillDailyDigestTemplate, type BookingBillDailyDigestItem } from "./templates/bookingBillDailyDigest";
 import { bookingLifecycleTemplate, type BookingLifecycleTemplateInput } from "./templates/bookingLifecycle";
 import { ownerDailyCheckInsTemplate, type OwnerDailyCheckInItem } from "./templates/ownerDailyCheckIns";
 import { partnerApprovalTemplate, type PartnerApprovalTemplateInput } from "./templates/partnerApproval";
@@ -67,6 +68,36 @@ export class SendEmail {
       AuditLogEventType.BOOKING_UPDATE,
       input.to,
       input.subject,
+      html,
+      input.metadata,
+    );
+  }
+
+  async sendBookingBillDailyDigestEmail(input: {
+    to: string;
+    customerName: string;
+    hotelName: string;
+    bookingNumber: string;
+    dateLabel: string;
+    currency: string;
+    items: BookingBillDailyDigestItem[];
+    totalAmount: number;
+    metadata?: Record<string, unknown>;
+  }) {
+    const html = bookingBillDailyDigestTemplate({
+      customerName: input.customerName,
+      hotelName: input.hotelName,
+      bookingNumber: input.bookingNumber,
+      dateLabel: input.dateLabel,
+      currency: input.currency,
+      items: input.items,
+      totalAmount: input.totalAmount,
+    });
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.BOOKING_UPDATE,
+      input.to,
+      `Your bill today: ${input.dateLabel}`,
       html,
       input.metadata,
     );

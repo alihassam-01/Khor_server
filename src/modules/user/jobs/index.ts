@@ -1,6 +1,7 @@
-import { SimpleScheduler } from "@common/utils/scheduler";
+﻿import { SimpleScheduler } from "@common/utils/scheduler";
 import { SchedulePattern } from "@common/enums/scheduler.enum";
 import { AnalyticsJobService } from "../service/analytics-job.service";
+import { BookingBillDailyDigestJobService } from "../service/booking-bill-daily-digest-job.service";
 import { BookingHoldJobService } from "../service/booking-hold-job.service";
 import { BookingDailyEmailJobService } from "../service/booking-daily-email-job.service";
 import { SubscriptionJobService } from "../service/subscription-job.service";
@@ -14,6 +15,7 @@ export const initJobs = () => {
 
     const analyticsJob = new AnalyticsJobService();
     const bookingHoldJob = new BookingHoldJobService();
+    const bookingBillDailyDigestJob = new BookingBillDailyDigestJobService();
     const bookingDailyEmailJob = new BookingDailyEmailJobService();
     const subscriptionJob = new SubscriptionJobService();
     const notificationWorker = new NotificationOutboxWorkerService();
@@ -35,6 +37,11 @@ export const initJobs = () => {
     SimpleScheduler.scheduleDailyAt(8, 0, async () => {
         await bookingDailyEmailJob.sendTodayOwnerCheckInDigests();
         await bookingDailyWhatsAppJob.enqueueTodayOwnerCheckInDigests();
+    }, CONFIG.notifications.timezone);
+
+    // Schedule customer extra-bill digests shortly after local midnight.
+    SimpleScheduler.scheduleDailyAt(0, 5, async () => {
+        await bookingBillDailyDigestJob.sendPendingCustomerBillDigests();
     }, CONFIG.notifications.timezone);
 
     logInfo("Background jobs initialized.");

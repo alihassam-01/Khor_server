@@ -1,11 +1,15 @@
-import { FastifyReply, FastifyRequest } from "fastify";
+﻿import { FastifyReply, FastifyRequest } from "fastify";
 import { UserRole } from "@common/enums/user.enums";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { BookingBillService } from "@modules/user/service/booking-bill.service";
 import { BookingService } from "@modules/user/service/booking.service";
 import {
+    ICreateBookingBillItemDTO,
     ICreateHotelBookingHoldDTO,
     ICreateHotelBookingDTO,
+    IMarkBookingBillPaidDTO,
+    IRecordBookingBillPaymentDTO,
     IRecordBookingPaymentDTO,
     IRefundRequestDTO,
 } from "@modules/user/dtos";
@@ -31,6 +35,7 @@ type AuthUser = {
 
 export class BookingController {
     private readonly bookingService = new BookingService();
+    private readonly bookingBillService = new BookingBillService();
 
     private getActor(req: FastifyRequest): { userId: string; userType: UserRole } {
         const user = (req.user ?? {}) as AuthUser;
@@ -234,6 +239,50 @@ export class BookingController {
             req.body,
         );
         reply.send(booking);
+    }
+
+    async getVendorBookingBill(
+        req: FastifyRequest<{ Params: IBookingIdParams }>,
+        reply: FastifyReply,
+    ) {
+        const bill = await this.bookingBillService.getVendorBookingBill(req.params.id, this.getActor(req));
+        reply.send(bill);
+    }
+
+    async addVendorBookingBillItem(
+        req: FastifyRequest<{ Params: IBookingIdParams; Body: ICreateBookingBillItemDTO }>,
+        reply: FastifyReply,
+    ) {
+        const bill = await this.bookingBillService.addVendorBookingBillItem(
+            req.params.id,
+            this.getActor(req),
+            req.body,
+        );
+        reply.code(201).send(bill);
+    }
+
+    async recordVendorBookingBillPayment(
+        req: FastifyRequest<{ Params: IBookingIdParams; Body: IRecordBookingBillPaymentDTO }>,
+        reply: FastifyReply,
+    ) {
+        const bill = await this.bookingBillService.recordVendorBookingBillPayment(
+            req.params.id,
+            this.getActor(req),
+            req.body,
+        );
+        reply.send(bill);
+    }
+
+    async markVendorBookingBillPaid(
+        req: FastifyRequest<{ Params: IBookingIdParams; Body: IMarkBookingBillPaidDTO }>,
+        reply: FastifyReply,
+    ) {
+        const bill = await this.bookingBillService.markVendorBookingBillPaid(
+            req.params.id,
+            this.getActor(req),
+            req.body,
+        );
+        reply.send(bill);
     }
 
     async listAdminBookings(
