@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+﻿import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { authenticate } from "@middlewares/authenticate";
 import { authorizeAdmin } from "@middlewares/authorizeAdmin";
 import { RATE_LIMITS } from "@config/rate-limit.config";
@@ -11,8 +11,11 @@ import {
 } from "@modules/user/service/booking-realtime.service";
 import { realtimeTicketService } from "@modules/user/service/realtime-ticket.service";
 import {
+    ICreateBookingBillItemDTO,
     ICreateHotelBookingHoldDTO,
     ICreateHotelBookingDTO,
+    IMarkBookingBillPaidDTO,
+    IRecordBookingBillPaymentDTO,
     IRecordBookingPaymentDTO,
     IRefundRequestDTO,
 } from "@modules/user/dtos";
@@ -174,6 +177,30 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         "/vendor/bookings/:id/payments",
         { preHandler: authenticate },
         bookingController.recordVendorPayment.bind(bookingController),
+    );
+
+    fastify.get<{ Params: IBookingIdParams }>(
+        "/vendor/bookings/:id/bill",
+        { preHandler: authenticate },
+        bookingController.getVendorBookingBill.bind(bookingController),
+    );
+
+    fastify.post<{ Params: IBookingIdParams; Body: ICreateBookingBillItemDTO }>(
+        "/vendor/bookings/:id/bill/items",
+        { preHandler: authenticate },
+        bookingController.addVendorBookingBillItem.bind(bookingController),
+    );
+
+    fastify.post<{ Params: IBookingIdParams; Body: IRecordBookingBillPaymentDTO }>(
+        "/vendor/bookings/:id/bill/payments",
+        { preHandler: authenticate },
+        bookingController.recordVendorBookingBillPayment.bind(bookingController),
+    );
+
+    fastify.patch<{ Params: IBookingIdParams; Body: IMarkBookingBillPaidDTO }>(
+        "/vendor/bookings/:id/bill/mark-paid",
+        { preHandler: authenticate },
+        bookingController.markVendorBookingBillPaid.bind(bookingController),
     );
 
     fastify.get<{ Querystring: IBookingListQuery }>(

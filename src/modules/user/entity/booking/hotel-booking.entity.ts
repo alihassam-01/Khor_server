@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+﻿import { randomBytes } from "crypto";
 import {
     BeforeInsert,
     Column,
@@ -8,6 +8,7 @@ import {
     JoinColumn,
     ManyToOne,
     OneToMany,
+    OneToOne,
     PrimaryGeneratedColumn,
     UpdateDateColumn,
 } from "typeorm";
@@ -26,6 +27,7 @@ import { BookingPayment } from "./booking-payment.entity";
 import { BookingRefund } from "./booking-refund.entity";
 import { BookingAuditLog } from "./booking-audit-log.entity";
 import { BookingStatusHistory } from "./booking-status-history.entity";
+import { BookingBill } from "./booking-bill.entity";
 
 @Entity("hotel_bookings")
 @Index("idx_hotel_bookings_customer", ["customer_user_id"])
@@ -186,6 +188,9 @@ export class HotelBooking {
 
     @OneToMany(() => BookingStatusHistory, (statusHistory) => statusHistory.booking)
     status_history!: BookingStatusHistory[];
+
+    @OneToOne(() => BookingBill, (bill) => bill.booking)
+    bill?: BookingBill | null;
 
     @CreateDateColumn({ type: "timestamptz" })
     created_at!: Date;

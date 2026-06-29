@@ -1,4 +1,5 @@
-import {
+﻿import {
+    BookingBillStatus,
     BookingCancellationStatus,
     BookingPaymentStatus,
     BookingRefundType,
@@ -13,7 +14,9 @@ export interface ICreateHotelBookingDTO {
     listing_id: string;
     room_type_id: string;
     hold_id?: string;
+    hold_ids?: string[];
     rooms_count: number;
+    room_allocations?: ICreateHotelBookingRoomAllocationDTO[];
     guest_count: number;
     check_in_date: string;
     check_out_date: string;
@@ -26,6 +29,11 @@ export interface ICreateHotelBookingDTO {
     payment_notes?: string;
     payment_provider?: string;
     transaction_id?: string;
+}
+
+export interface ICreateHotelBookingRoomAllocationDTO {
+    room_type_id: string;
+    rooms_count: number;
 }
 
 export interface IHotelBookingCheckoutResponseDTO {
@@ -79,6 +87,12 @@ export interface IBookingRoomTypeSummaryDTO {
     capacity: number;
 }
 
+export interface IBookingRoomAllocationDTO {
+    room_type: IBookingRoomTypeSummaryDTO;
+    rooms_count: number;
+    nightly_rate: number;
+}
+
 export interface IBookingPaymentSummaryDTO {
     id: string;
     amount: number;
@@ -90,6 +104,57 @@ export interface IBookingPaymentSummaryDTO {
     transaction_id?: string | null;
     notes?: string | null;
     created_at: Date;
+}
+
+export interface IBookingBillItemSummaryDTO {
+    id: string;
+    item_name: string;
+    amount: number;
+    notes?: string | null;
+    created_at: Date;
+}
+
+export interface IBookingBillPaymentSummaryDTO {
+    id: string;
+    amount: number;
+    currency: string;
+    payment_method?: string | null;
+    transaction_id?: string | null;
+    notes?: string | null;
+    created_at: Date;
+}
+
+export interface IBookingBillDTO {
+    id: string;
+    booking_id: string;
+    currency: string;
+    total_amount: number;
+    total_paid_amount: number;
+    outstanding_amount: number;
+    status: BookingBillStatus;
+    items: IBookingBillItemSummaryDTO[];
+    payments: IBookingBillPaymentSummaryDTO[];
+    created_at: Date;
+    updated_at: Date;
+}
+
+export interface ICreateBookingBillItemDTO {
+    item_name: string;
+    amount: number;
+    notes?: string;
+}
+
+export interface IRecordBookingBillPaymentDTO {
+    amount: number;
+    payment_method?: PaymentMethod;
+    notes?: string;
+    transaction_id?: string;
+}
+
+export interface IMarkBookingBillPaidDTO {
+    payment_method?: PaymentMethod;
+    notes?: string;
+    transaction_id?: string;
 }
 
 export interface IBookingRefundSummaryDTO {
@@ -145,6 +210,7 @@ export interface IHotelBookingDTO {
     guest: IBookingGuestDTO;
     listing: IBookingListingSummaryDTO;
     room_type: IBookingRoomTypeSummaryDTO;
+    room_allocations: IBookingRoomAllocationDTO[];
     rooms_count: number;
     guest_count: number;
     check_in_date: string;
