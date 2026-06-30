@@ -8,7 +8,8 @@ import {
     IVendorIdParams, 
     IToggleAdStatusBody, 
     IRenewAdBody, 
-    ISetFeaturedStatusBody 
+    ISetFeaturedStatusBody,
+    IUpdateHotelSubscriptionBillingBody,
 } from "@modules/user/types";
 import { ICreateHotelDTO, IUpdateHotelDTO } from "@modules/user/dtos";
 import { CONFIG } from "@config/config";
@@ -58,6 +59,12 @@ export async function hotelRoutes(fastify: FastifyInstance) {
         "/admin/hotels/:id/renew", 
         { preHandler: [authenticate, authorizeAdmin] }, 
         hotelController.renewAd.bind(hotelController)
+    );
+
+    fastify.patch<{ Params: IHotelIdParams; Body: IUpdateHotelSubscriptionBillingBody }>(
+        "/admin/hotels/:id/subscription-billing",
+        { preHandler: [authenticate, authorizeAdmin] },
+        hotelController.updateSubscriptionBilling.bind(hotelController)
     );
 
     fastify.post<{ Params: IHotelIdParams; Body: IRenewAdBody }>(

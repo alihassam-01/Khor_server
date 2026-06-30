@@ -87,6 +87,9 @@ export interface IHotelDTO {
     promotions?: IHotelPromotionDTO[];
     vendor_id?: string;
     expires_at?: Date;
+    paid_at?: Date;
+    next_due_date?: Date;
+    grace_period_days?: number;
     subscription_type?: SubscriptionType;
     plan_id?: string;
     is_paid?: boolean;

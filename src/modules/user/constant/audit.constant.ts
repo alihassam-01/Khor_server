@@ -13,6 +13,7 @@ export enum AuditLogEventType {
     OWNER_DAILY_CHECKINS = "owner_daily_checkins_email",
     PARTNER_APPROVAL = "partner_approval_email",
     VENDOR_POLICY_UPDATE = "vendor_policy_update_email",
+    SUBSCRIPTION_PAYMENT_REMINDER = "subscription_payment_reminder_email",
 }
 
 export enum AuditLogStatus {
@@ -32,4 +33,5 @@ export const EMAIL_SUBJECTS: Record<string, string> = {
     TICKET_ACTIVITY: "Ticket Update",
     PARTNER_APPROVAL: "Your Partner Account is Approved",
     VENDOR_POLICY_UPDATE: "Vendor Policy Updated",
+    SUBSCRIPTION_PAYMENT_REMINDER: "Payment Reminder",
 };

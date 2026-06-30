@@ -69,6 +69,15 @@ export class ListingSubscription {
     started_at?: Date | null;
 
     @Column({ type: "timestamptz", nullable: true })
+    paid_at?: Date | null;
+
+    @Column({ type: "timestamptz", nullable: true })
+    next_due_date?: Date | null;
+
+    @Column({ type: "int", default: 7 })
+    grace_period_days!: number;
+
+    @Column({ type: "timestamptz", nullable: true })
     expires_at?: Date | null;
 
     @CreateDateColumn({ type: "timestamptz" })
