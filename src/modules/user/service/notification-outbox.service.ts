@@ -311,5 +311,49 @@ export class NotificationOutboxService {
             .orIgnore()
             .execute();
     }
+
+    async enqueueSubscriptionPaymentReminder(input: {
+        manager: EntityManager;
+        userId: string;
+        listingId: string;
+        phoneNumber: string | null | undefined;
+        ownerName: string;
+        businessName: string;
+        dueMonth: string;
+        dueDate: string;
+        dueKey: string;
+    }): Promise<void> {
+        if (!CONFIG.notifications.whatsappEnabled) {
+            return;
+        }
+
+        const destination = normalizePhoneToE164(input.phoneNumber);
+        if (!destination) return;
+
+        await input.manager.createQueryBuilder()
+            .insert()
+            .into(NotificationOutbox)
+            .values({
+                event_key: `subscription-reminder:${input.listingId}:${input.dueKey}:whatsapp`,
+                channel: NotificationChannel.WHATSAPP,
+                event_type: "subscription.payment_reminder",
+                recipient_type: "owner",
+                recipient_user_id: input.userId,
+                listing_id: input.listingId,
+                destination,
+                template_key: "subscription_payment_reminder_v1",
+                payload: {
+                    ownerName: input.ownerName,
+                    businessName: input.businessName,
+                    dueMonth: input.dueMonth,
+                    dueDate: input.dueDate,
+                },
+                status: NotificationOutboxStatus.PENDING,
+                attempt_count: 0,
+                next_attempt_at: new Date(),
+            })
+            .orIgnore()
+            .execute();
+    }
 }
 

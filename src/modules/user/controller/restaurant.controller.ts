@@ -20,7 +20,8 @@ import {
     IRenewRestaurantAdBody,
     ISetRestaurantFeaturedStatusBody,
     IHotelLocationParams,
-    IVendorIdParams
+    IVendorIdParams,
+    IUpdateRestaurantSubscriptionBillingBody,
 } from "@modules/user/types";
 
 export class RestaurantController {
@@ -316,6 +317,15 @@ export class RestaurantController {
 
         const { subscription_type, plan_id } = req.body;
         const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
+        reply.send(restaurant);
+    }
+
+    async updateSubscriptionBilling(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IUpdateRestaurantSubscriptionBillingBody }>,
+        reply: FastifyReply,
+    ) {
+        const { id } = req.params;
+        const restaurant = await this.restaurantService.updateSubscriptionBilling(id, req.body ?? {});
         reply.send(restaurant);
     }
 

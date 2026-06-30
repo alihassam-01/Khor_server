@@ -35,3 +35,9 @@ export interface IRenewAdBody {
 export interface ISetFeaturedStatusBody {
     is_featured: boolean;
 }
+
+export interface IUpdateHotelSubscriptionBillingBody {
+    paid_at?: string;
+    next_due_date?: string;
+    grace_period_days?: number;
+}

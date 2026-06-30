@@ -335,4 +335,33 @@ export class SendEmail {
       input.metadata,
     );
   }
+
+  async sendSubscriptionPaymentReminderEmail(input: {
+    to: string;
+    recipientName?: string | null;
+    businessName: string;
+    dueMonth: string;
+    dueDateLabel: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    const recipientName = input.recipientName?.trim() || "there";
+    const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#1f2937;">
+        <h2 style="margin-bottom:16px;">Payment Reminder</h2>
+        <p>Hi ${recipientName},</p>
+        <p>Your due for the month <strong>${input.dueMonth}</strong> is due by <strong>${input.dueDateLabel}</strong>.</p>
+        <p>Please make sure to make it.</p>
+        <p>Thank you for being with Khor.</p>
+        <p style="margin-top:20px;color:#6b7280;">Business: ${input.businessName}</p>
+      </div>
+    `;
+
+    return this.sendAuditedEmail(
+      AuditLogEventType.SUBSCRIPTION_PAYMENT_REMINDER,
+      input.to,
+      EMAIL_SUBJECTS.SUBSCRIPTION_PAYMENT_REMINDER,
+      html,
+      input.metadata,
+    );
+  }
 }

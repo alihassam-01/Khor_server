@@ -16,7 +16,8 @@ import {
     IRenewAdBody, 
     ISetFeaturedStatusBody, 
     IHotelLocationParams,
-    IVendorIdParams
+    IVendorIdParams,
+    IUpdateHotelSubscriptionBillingBody,
 } from "@modules/user/types";
 
 export class HotelController {
@@ -375,7 +376,7 @@ export class HotelController {
     }
 
     async renewAdByVendor(
-        req: FastifyRequest<{ Params: IHotelIdParams; Body: IRenewAdBody }>, 
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: IRenewAdBody }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
@@ -386,6 +387,15 @@ export class HotelController {
 
         const { subscription_type, plan_id } = req.body;
         const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
+        reply.send(hotel);
+    }
+
+    async updateSubscriptionBilling(
+        req: FastifyRequest<{ Params: IHotelIdParams; Body: IUpdateHotelSubscriptionBillingBody }>,
+        reply: FastifyReply,
+    ) {
+        const { id } = req.params;
+        const hotel = await this.hotelService.updateSubscriptionBilling(id, req.body ?? {});
         reply.send(hotel);
     }
 

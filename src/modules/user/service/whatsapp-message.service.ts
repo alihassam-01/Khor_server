@@ -49,6 +49,13 @@ type PartnerApprovalPayload = {
     partnerPortalUrl: string;
 };
 
+type SubscriptionPaymentReminderPayload = {
+    ownerName: string;
+    businessName: string;
+    dueMonth: string;
+    dueDate: string;
+};
+
 function clean(value: unknown): string {
     return String(value ?? "").replace(/[\r\n]+/g, " ").trim();
 }
@@ -131,6 +138,19 @@ export function renderWhatsAppMessage(
             "",
             `Hi ${clean(payload.ownerName) || "there"}, your partner onboarding is approved.`,
             `Sign in here: ${clean(payload.partnerPortalUrl)}`,
+        ].join("\n");
+    }
+
+    if (templateKey === "subscription_payment_reminder_v1") {
+        const payload = rawPayload as unknown as SubscriptionPaymentReminderPayload;
+        return [
+            "Khor: Payment Reminder",
+            "",
+            `Business: ${clean(payload.businessName)}`,
+            "",
+            `Your due for the month ${clean(payload.dueMonth)} is due by ${clean(payload.dueDate)}.`,
+            "Please make sure to make it.",
+            "Thank you for being with Khor.",
         ].join("\n");
     }
 

@@ -12,6 +12,8 @@ import {
     PaymentStatus,
 } from "@common/enums/payment.enums";
 import { SubscriptionType } from "@common/enums/subscription.enums";
+import { AppError } from "@common/errors/AppError";
+import { ErrorCodes } from "@common/errors/error-codes";
 import {
     FEATURED_AD_PRICE,
     SUBSCRIPTION_DURATION_DAYS,
@@ -37,6 +39,39 @@ export interface IPlanResolution {
  * that used to live on the Hotel and Restaurant entities.
  */
 export class ListingSubscriptionService {
+    private parseDateInput(value?: string | Date | null): Date | null {
+        if (!value) return null;
+        const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    private advanceCycle(
+        date: Date,
+        type?: SubscriptionType | string | null,
+        explicitDurationDays?: number,
+    ): Date {
+        const next = new Date(date.getTime());
+        if (explicitDurationDays && (type == null || String(type).toLowerCase() === SubscriptionType.FREE)) {
+            next.setDate(next.getDate() + explicitDurationDays);
+            return next;
+        }
+        switch (String(type ?? SubscriptionType.MONTHLY).toLowerCase()) {
+            case SubscriptionType.YEARLY:
+                next.setFullYear(next.getFullYear() + 1);
+                return next;
+            case SubscriptionType.QUARTERLY:
+                next.setMonth(next.getMonth() + 3);
+                return next;
+            case SubscriptionType.FREE:
+                next.setDate(next.getDate() + this.daysFor(type));
+                return next;
+            case SubscriptionType.MONTHLY:
+            default:
+                next.setMonth(next.getMonth() + 1);
+                return next;
+        }
+    }
+
     /** Most-recent subscription row for a listing, regardless of status. */
     async getCurrent(
         em: EntityManager,
@@ -148,14 +183,20 @@ export class ListingSubscriptionService {
         sub.amount = resolution.total_amount;
 
         if (isFreeOrZero) {
+            const startedAt = new Date();
+            const nextDueDate = this.advanceCycle(startedAt, resolution.type, resolution.duration_days);
             sub.status = ListingSubscriptionStatus.ACTIVE;
             sub.is_paid = true;
-            sub.started_at = new Date();
-            sub.expires_at = new Date(Date.now() + resolution.duration_days * DAY_MS);
+            sub.started_at = startedAt;
+            sub.paid_at = startedAt;
+            sub.next_due_date = nextDueDate;
+            sub.expires_at = nextDueDate;
         } else {
             sub.status = ListingSubscriptionStatus.PENDING;
             sub.is_paid = false;
             sub.started_at = null;
+            sub.paid_at = null;
+            sub.next_due_date = null;
             sub.expires_at = null;
         }
 
@@ -222,8 +263,15 @@ export class ListingSubscriptionService {
         }
 
         const baseDate = sub.expires_at && sub.expires_at > now ? sub.expires_at : now;
-        sub.expires_at = new Date(baseDate.getTime() + durationDays * DAY_MS);
+        const nextDueDate = this.advanceCycle(
+            baseDate,
+            opts.subscription_type ?? sub.subscription_type,
+            durationDays,
+        );
+        sub.expires_at = nextDueDate;
         sub.started_at = sub.started_at ?? now;
+        sub.paid_at = now;
+        sub.next_due_date = nextDueDate;
         sub.status = ListingSubscriptionStatus.ACTIVE;
         sub.is_paid = true;
         if (opts.plan_id) sub.plan_id = opts.plan_id;
@@ -251,6 +299,63 @@ export class ListingSubscriptionService {
         listing.status = ListingStatus.INACTIVE;
         listing.is_active = false;
         await em.getRepository(Listing).save(listing);
+    }
+
+    async markPaid(
+        em: EntityManager,
+        listing: Listing,
+        opts: {
+            paid_at?: string | Date | null;
+            next_due_date?: string | Date | null;
+            grace_period_days?: number;
+        } = {},
+    ): Promise<ListingSubscription> {
+        const subRepo = em.getRepository(ListingSubscription);
+        const now = new Date();
+        const current = await this.getCurrent(em, listing.id);
+
+        const sub = current ?? new ListingSubscription();
+        if (!current) {
+            sub.listing_id = listing.id;
+            sub.subscription_type = SubscriptionType.MONTHLY;
+            sub.status = ListingSubscriptionStatus.PENDING;
+            sub.is_paid = false;
+            sub.amount = 0;
+            sub.is_featured = listing.is_featured;
+        }
+
+        const paidAt = this.parseDateInput(opts.paid_at) ?? now;
+        const overrideDueDate = this.parseDateInput(opts.next_due_date);
+        const currentDueDate = this.parseDateInput(sub.next_due_date ?? sub.expires_at ?? null) ?? paidAt;
+        const nextDueDate = overrideDueDate ?? this.advanceCycle(currentDueDate, sub.subscription_type);
+
+        if (opts.grace_period_days !== undefined) {
+            if (!Number.isInteger(opts.grace_period_days) || opts.grace_period_days < 0) {
+                throw new AppError(
+                    "grace_period_days must be a non-negative integer",
+                    400,
+                    ErrorCodes.VALIDATION_ERROR,
+                );
+            }
+            sub.grace_period_days = opts.grace_period_days;
+        } else if (!sub.grace_period_days && sub.grace_period_days !== 0) {
+            sub.grace_period_days = 7;
+        }
+
+        sub.started_at = sub.started_at ?? paidAt;
+        sub.paid_at = paidAt;
+        sub.next_due_date = nextDueDate;
+        sub.expires_at = nextDueDate;
+        sub.status = ListingSubscriptionStatus.ACTIVE;
+        sub.is_paid = true;
+
+        const saved = await subRepo.save(sub);
+
+        listing.status = ListingStatus.ACTIVE;
+        listing.is_active = true;
+        await em.getRepository(Listing).save(listing);
+
+        return saved;
     }
 
     /**
