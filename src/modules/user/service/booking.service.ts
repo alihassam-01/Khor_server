@@ -311,9 +311,9 @@ export class BookingService {
 
         const checkIn = this.parseDate(dto.check_in_date, "check_in_date");
         const checkOut = this.parseDate(dto.check_out_date, "check_out_date");
-        if (checkOut < checkIn) {
+        if (checkOut <= checkIn) {
             throw new AppError(
-                "check_out_date must be on or after check_in_date",
+                "check_out_date must be after check_in_date",
                 400,
                 ErrorCodes.VALIDATION_ERROR,
             );
@@ -339,9 +339,9 @@ export class BookingService {
 
         const checkIn = this.parseDate(dto.check_in_date, "check_in_date");
         const checkOut = this.parseDate(dto.check_out_date, "check_out_date");
-        if (checkOut < checkIn) {
+        if (checkOut <= checkIn) {
             throw new AppError(
-                "check_out_date must be on or after check_in_date",
+                "check_out_date must be after check_in_date",
                 400,
                 ErrorCodes.VALIDATION_ERROR,
             );
@@ -352,7 +352,7 @@ export class BookingService {
         const checkIn = this.parseDate(checkInDate, "check_in_date");
         const checkOut = this.parseDate(checkOutDate, "check_out_date");
         const diffMs = checkOut.getTime() - checkIn.getTime();
-        return Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+        return Math.round(diffMs / (1000 * 60 * 60 * 24));
     }
 
     private roundAmount(value: number): number {
@@ -498,8 +498,8 @@ export class BookingService {
             .andWhere("booking.booking_status IN (:...activeStatuses)", {
                 activeStatuses: ACTIVE_BOOKING_STATUSES,
             })
-            .andWhere("booking.check_in_date <= :checkOutDate", { checkOutDate })
-            .andWhere("booking.check_out_date >= :checkInDate", { checkInDate })
+            .andWhere("booking.check_in_date < :checkOutDate", { checkOutDate })
+            .andWhere("booking.check_out_date > :checkInDate", { checkInDate })
             .getRawOne<{ reserved_rooms: string }>();
 
         return Number(raw?.reserved_rooms ?? 0);
@@ -518,8 +518,8 @@ export class BookingService {
             .where("hold.room_type_id = :roomTypeId", { roomTypeId })
             .andWhere("hold.status = :status", { status: BookingHoldStatus.ACTIVE })
             .andWhere("hold.expires_at > NOW()")
-            .andWhere("hold.check_in_date <= :checkOutDate", { checkOutDate })
-            .andWhere("hold.check_out_date >= :checkInDate", { checkInDate });
+            .andWhere("hold.check_in_date < :checkOutDate", { checkOutDate })
+            .andWhere("hold.check_out_date > :checkInDate", { checkInDate });
 
         const excludeHoldIds = Array.isArray(excludeHoldId)
             ? excludeHoldId.filter(Boolean)
@@ -3921,7 +3921,7 @@ export class BookingService {
             .andWhere("booking.booking_status IN (:...activeStatuses)", {
                 activeStatuses: ACTIVE_BOOKING_STATUSES,
             })
-            .andWhere("booking.check_out_date >= CURRENT_DATE")
+            .andWhere("booking.check_out_date > CURRENT_DATE")
             .orderBy("booking.check_in_date", "ASC")
             .getMany();
 
