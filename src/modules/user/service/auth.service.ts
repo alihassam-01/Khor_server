@@ -20,10 +20,12 @@ import { OTP_LENGTH, OTP_EXPIRY_MINUTES } from "@modules/user/constant/otp.const
 import { LocationType } from "@common/enums/location.enums";
 import { ListingStatus, ListingType } from "@common/enums/listing.enums";
 import {
+    BusinessCapabilityType,
     BusinessCapabilityStatus,
     BusinessOnboardingStatus,
     PartnerAccessStatus,
 } from "@common/enums/business.enums";
+import { SubscriptionType } from "@common/enums/subscription.enums";
 import {
     ILoginResponseDto,
     IGoogleLoginResponseDto,
@@ -64,9 +66,11 @@ import {
 } from "@modules/user/constant/audit.constant";
 import { AuditLogService } from "./audit-log.service";
 import { PROFILE_IMAGES } from "@modules/user/constant/user.constant";
+import { ListingSubscriptionService } from "./listing/listing-subscription.service";
 
 export class AuthService {
     private auditLogService = new AuditLogService();
+    private listingSubscriptionService = new ListingSubscriptionService();
 
     constructor(
         private userRepository: Repository<User>,
@@ -160,9 +164,10 @@ export class AuthService {
             name,
             description: this.buildDraftHotelDescription(name),
             price_from: 0,
-            status: ListingStatus.PENDING,
-            is_active: false,
+            status: ListingStatus.ACTIVE,
+            is_active: true,
             is_featured: false,
+            is_public_visible: false,
             is_verified: false,
             rating_avg: 0,
             rating_count: 0,
@@ -197,6 +202,9 @@ export class AuthService {
             auto_confirm_paid_bookings: false,
         });
         await hotelDetailsRepo.save(hotelDetails);
+        await this.listingSubscriptionService.activate(em, savedListing, {
+            subscription_type: SubscriptionType.FREE,
+        });
 
         logInfo("Draft hotel created for vendor", {
             userId: user.id,
@@ -309,7 +317,7 @@ export class AuthService {
         if (!businessProfile) {
             businessProfile = businessProfileRepo.create({
                 user_id: user.id,
-                onboarding_status: BusinessOnboardingStatus.DRAFT,
+                onboarding_status: BusinessOnboardingStatus.APPROVED,
             });
         }
 
@@ -317,8 +325,41 @@ export class AuthService {
         businessProfile.business_name = businessName;
         businessProfile.phone_number = phone;
         businessProfile.city_id = cityId;
+        businessProfile.onboarding_status = BusinessOnboardingStatus.APPROVED;
+        businessProfile.submitted_at = businessProfile.submitted_at ?? new Date();
+        businessProfile.reviewed_at = new Date();
+        businessProfile.review_note = "Auto-approved during hotel owner registration.";
 
         await businessProfileRepo.save(businessProfile);
+    }
+
+    private async ensureApprovedVendorCapability(
+        em: EntityManager,
+        user: User,
+    ): Promise<void> {
+        const businessProfile = await em.getRepository(BusinessProfile).findOneOrFail({
+            where: { user_id: user.id },
+        });
+        const capabilityRepo = em.getRepository(BusinessCapability);
+        let capability = await capabilityRepo.findOne({
+            where: {
+                business_profile_id: businessProfile.id,
+                type: BusinessCapabilityType.HOTEL,
+            },
+        });
+
+        if (!capability) {
+            capability = capabilityRepo.create({
+                business_profile_id: businessProfile.id,
+                type: BusinessCapabilityType.HOTEL,
+            });
+        }
+
+        capability.status = BusinessCapabilityStatus.APPROVED;
+        capability.review_note = "Auto-approved during hotel owner registration.";
+        capability.approved_at = new Date();
+
+        await capabilityRepo.save(capability);
     }
 
     async register(
@@ -382,7 +423,7 @@ export class AuthService {
                 username: ownerName,
                 phone_number: normalizedPhone,
                 business_name: userRole === UserRole.VENDOR ? businessName : null,
-                is_business_verified: false,
+                is_business_verified: userRole === UserRole.VENDOR,
                 profile_picture: this.randomProfileImage(),
             });
             await em.save(UserProfile, profile);
@@ -399,6 +440,7 @@ export class AuthService {
                     normalizedPhone!,
                     cityId,
                 );
+                await this.ensureApprovedVendorCapability(em, savedUser);
                 await this.createDraftHotelForVendor(em, savedUser, businessName, normalizedPhone!, cityId);
             }
 
@@ -845,3 +887,5 @@ export class AuthService {
         };
     }
 }
+
+
