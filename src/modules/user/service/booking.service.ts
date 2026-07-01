@@ -1422,7 +1422,9 @@ export class BookingService {
 
             return this.getBookingById(savedBooking.id, actor, source === BookingSource.CUSTOMER_WEB ? "customer" : "vendor", manager);
         });
-        if (booking.payment_status === BookingPaymentStatus.PAID) {
+        const shouldSendCreateLifecycleNotification = source === BookingSource.PARTNER_MANUAL
+            || booking.payment_status === BookingPaymentStatus.PAID;
+        if (shouldSendCreateLifecycleNotification) {
             await this.notifyBookingLifecycle(
                 booking.id,
                 booking.booking_status === HotelBookingStatus.CONFIRMED ? "confirmed" : "created",
