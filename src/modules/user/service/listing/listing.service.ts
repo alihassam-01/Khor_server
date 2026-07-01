@@ -214,6 +214,11 @@ export class ListingService {
 
             const listing = new Listing();
             listing.type = strategy.type;
+            if (strategy.type === ListingType.HOTEL) {
+                // Hotel listings stay hidden from the public website while
+                // the portal is being used for manual bookings only.
+                listing.is_public_visible = false;
+            }
             listing.name = payload.name;
             listing.description = payload.description ?? "";
             listing.price_from = Number(payload.price_from ?? 0);
@@ -259,6 +264,7 @@ export class ListingService {
         try {
             const view = await this.loadView(id, strategy);
             if (view.listing.type !== strategy.type) return null;
+            if (options?.requirePublicVisible && strategy.type === ListingType.HOTEL) return null;
             if (options?.requirePublicVisible && !view.listing.is_public_visible) return null;
             return strategy.toDTO(view);
         } catch (err) {
@@ -276,7 +282,11 @@ export class ListingService {
             qb.andWhere("listing.is_active = :active", { active: true });
         }
         if (params.onlyPublicVisible !== false) {
-            qb.andWhere("listing.is_public_visible = :publicVisible", { publicVisible: true });
+            if (params.type === ListingType.HOTEL) {
+                qb.andWhere("1 = 0");
+            } else {
+                qb.andWhere("listing.is_public_visible = :publicVisible", { publicVisible: true });
+            }
         }
         if (params.searchQuery && params.searchQuery.trim() !== "") {
             qb.andWhere(
@@ -553,6 +563,9 @@ export class ListingService {
                 listing.is_active = payload.is_active;
                 listing.status = payload.is_active ? ListingStatus.ACTIVE : ListingStatus.INACTIVE;
             }
+            if (strategy.type === ListingType.HOTEL) {
+                listing.is_public_visible = false;
+            }
 
             await em.getRepository(Listing).save(listing);
 
@@ -791,3 +804,4 @@ export class ListingService {
         });
     }
 }
+
