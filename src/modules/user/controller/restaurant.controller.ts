@@ -52,7 +52,6 @@ export class RestaurantController {
         if (contentType.includes('multipart/form-data')) {
             const body = req.body as Record<string, any>;
 
-            // Extract plain field values
             const extractedBody: Record<string, any> = {};
             for (const key in body) {
                 const field = body[key];
@@ -76,8 +75,18 @@ export class RestaurantController {
                 if (Array.isArray(val)) return val;
                 try { return JSON.parse(val); } catch { return []; }
             };
+            const parseJsonField = <T>(val: any): T | undefined => {
+                if (val === undefined || val === null || val === '') return undefined;
+                if (typeof val === 'object') return val as T;
+                try { return JSON.parse(val) as T; } catch { return undefined; }
+            };
+            const parseBooleanField = (val: any, fallback?: boolean): boolean | undefined => {
+                if (val === undefined || val === null || val === '') return fallback;
+                if (typeof val === 'boolean') return val;
+                if (typeof val === 'string') return val.toLowerCase() === 'true';
+                return fallback;
+            };
 
-            // Upload main image to R2
             let imageUrl = '';
             if (body.image && typeof body.image !== 'string') {
                 const file = body.image;
@@ -88,7 +97,6 @@ export class RestaurantController {
                 imageUrl = extractedBody.image;
             }
 
-            // Upload menu images to R2
             const menuImageUrls: string[] = [];
             const menuImagesRaw = body.menu_images;
             if (menuImagesRaw) {
@@ -114,20 +122,30 @@ export class RestaurantController {
                 facebook: extractedBody.facebook || undefined,
                 instagram: extractedBody.instagram || undefined,
                 website: extractedBody.website || undefined,
+                map_link: extractedBody.map_link || undefined,
+                latitude: parseNumber(extractedBody.latitude, 'latitude'),
+                longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 description: extractedBody.description || "",
+                cuisines: parseArrayField(extractedBody.cuisines),
+                price_per_person: parseNumber(extractedBody.price_per_person, 'price_per_person'),
+                opening_hours: parseJsonField<Record<string, unknown>>(extractedBody.opening_hours),
                 menu_images: menuImageUrls.length > 0 ? menuImageUrls : parseArrayField(extractedBody.menu_images),
+                allow_online_orders: parseBooleanField(extractedBody.allow_online_orders, false),
+                allow_table_bookings: parseBooleanField(extractedBody.allow_table_bookings, false),
+                accepting_orders_now: parseBooleanField(extractedBody.accepting_orders_now, true),
+                accepting_reservations_now: parseBooleanField(extractedBody.accepting_reservations_now, true),
+                ordering_notes: extractedBody.ordering_notes || undefined,
+                reservation_notes: extractedBody.reservation_notes || undefined,
+                is_public_visible: parseBooleanField(extractedBody.is_public_visible, true),
+                visibility_note: extractedBody.visibility_note || undefined,
                 location_id: parseNumber(extractedBody.location_id, 'location_id') ?? 0,
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 is_featured: extractedBody.is_featured === 'true' || extractedBody.is_featured === true,
                 subscription_type: extractedBody.subscription_type || undefined,
                 plan_id: extractedBody.plan_id || undefined,
-                map_link: extractedBody.map_link || undefined,
-                latitude: parseNumber(extractedBody.latitude, 'latitude'),
-                longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || authUserId) : authUserId,
             };
 
-            // Validate phone and whatsapp formats if provided
             const phoneRegex = /^\+?[0-9\s-]+$/;
             if (restaurantData.phone && !phoneRegex.test(restaurantData.phone)) {
                 throw new AppError('Phone number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
@@ -139,7 +157,7 @@ export class RestaurantController {
             const body = req.body as ICreateRestaurantDTO;
             restaurantData = {
                 ...body,
-                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || authUserId) : authUserId 
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || authUserId) : authUserId
             };
         }
 
@@ -178,7 +196,6 @@ export class RestaurantController {
         const pageNum = parseInt(page, 10) || PAGINATION_DEFAULTS.PAGE;
         const limitNum = parseInt(limit, 10) || PAGINATION_DEFAULTS.LIMIT;
 
-        // Handle multiple location IDs if provided as comma-separated string
         let parsedLocationId: number | number[] | undefined = undefined;
         if (location_id) {
             const locStr = String(location_id);
@@ -221,16 +238,19 @@ export class RestaurantController {
                 reviews: 'number',
                 is_active: 'boolean',
                 is_featured: 'boolean',
+                allow_online_orders: 'boolean',
+                allow_table_bookings: 'boolean',
+                accepting_orders_now: 'boolean',
+                accepting_reservations_now: 'boolean',
+                is_public_visible: 'boolean',
                 plan_id: 'string',
             });
-            // Handle main image file upload
             if (body.image && typeof body.image !== 'string') {
                 const file = body.image;
                 const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
                 const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
                 restaurantData.image = res.url;
             }
-            // Handle menu images file uploads
             const menuImagesRaw = body.menu_images;
             if (menuImagesRaw) {
                 const menuFiles = Array.isArray(menuImagesRaw) ? menuImagesRaw : [menuImagesRaw];
@@ -285,8 +305,6 @@ export class RestaurantController {
         await this.restaurantService.deleteRestaurant(id);
         reply.code(204).send();
     }
-
-    // ========== ADMIN ENDPOINTS ==========
 
     async toggleAdStatus(
         req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IToggleRestaurantAdStatusBody }>,

@@ -45,6 +45,8 @@ export interface IListingCreatePayload {
     longitude?: number | null;
     is_featured?: boolean;
     is_active?: boolean;
+    is_public_visible?: boolean;
+    visibility_note?: string | null;
     is_verified?: boolean;
     contact: IContactInput;
     media: IMediaInput[];
@@ -54,7 +56,7 @@ export interface IListingCreatePayload {
     ext?: Record<string, unknown>;
 }
 
-/** Normalized update payload — every field optional. */
+/** Normalized update payload - every field optional. */
 export interface IListingUpdatePayload {
     name?: string;
     description?: string;
@@ -66,6 +68,8 @@ export interface IListingUpdatePayload {
     longitude?: number | null;
     is_featured?: boolean;
     is_active?: boolean;
+    is_public_visible?: boolean;
+    visibility_note?: string | null;
     is_verified?: boolean;
     contact?: IContactInput;
     media?: IMediaInput[];
@@ -88,7 +92,7 @@ export interface IListingViewModel {
 
 /**
  * A type-specific "policy" over a Listing. Each ListingType has exactly one
- * strategy that translates the legacy DTOs (for hotel, restaurant, …) to and
+ * strategy that translates the legacy DTOs (for hotel, restaurant, ...) to and
  * from the unified ListingCreatePayload, and hydrates / reads the
  * type-specific extension table.
  */

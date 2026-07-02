@@ -218,6 +218,11 @@ export class ListingService {
                 // Hotel listings stay hidden from the public website while
                 // the portal is being used for manual bookings only.
                 listing.is_public_visible = false;
+            } else if (payload.is_public_visible !== undefined) {
+                listing.is_public_visible = payload.is_public_visible;
+            }
+            if (payload.visibility_note !== undefined) {
+                listing.visibility_note = payload.visibility_note ?? null;
             }
             listing.name = payload.name;
             listing.description = payload.description ?? "";
@@ -565,6 +570,11 @@ export class ListingService {
             }
             if (strategy.type === ListingType.HOTEL) {
                 listing.is_public_visible = false;
+            } else if (payload.is_public_visible !== undefined) {
+                listing.is_public_visible = payload.is_public_visible;
+            }
+            if (payload.visibility_note !== undefined) {
+                listing.visibility_note = payload.visibility_note ?? null;
             }
 
             await em.getRepository(Listing).save(listing);
@@ -804,4 +814,8 @@ export class ListingService {
         });
     }
 }
+
+
+
+
 
