@@ -39,9 +39,20 @@ interface OpenRouterResponse {
   }>;
 }
 
+type ParsedOcrPayload = {
+  sections: OcrMenuSection[];
+  rawText: string;
+};
+
+type LooseOcrMenuItem = {
+  name?: unknown;
+  price?: unknown;
+  note?: unknown;
+};
+
 export class OcrService {
   private static readonly REQUEST_TIMEOUT_MS = 45_000;
-  private static readonly MAX_TOKENS = 1200;
+  private static readonly MAX_TOKENS = 2600;
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly primaryModel: string;
@@ -109,6 +120,7 @@ Rules:
   private async callModel(model: string, prompt: string, imageUrl: string): Promise<OcrMenuResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), OcrService.REQUEST_TIMEOUT_MS);
+    const startedAt = Date.now();
     const messages: OpenRouterMessage[] = [
       {
         role: "user",
@@ -152,11 +164,22 @@ Rules:
         throw new AppError("Empty response from OCR model", 502, ErrorCodes.INTERNAL_SERVER_ERROR);
       }
 
+      console.log("[OCR_MODEL_RAW_RESPONSE]", {
+        model,
+        durationMs: Date.now() - startedAt,
+        content,
+      });
+
       return this.parseResponse(content);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new AppError(`OCR model timed out after ${OcrService.REQUEST_TIMEOUT_MS / 1000}s`, 504, ErrorCodes.INTERNAL_SERVER_ERROR);
       }
+      console.error("[OCR_MODEL_ERROR]", {
+        model,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : error,
+      });
       throw error;
     } finally {
       clearTimeout(timeout);
@@ -164,11 +187,15 @@ Rules:
   }
 
   private parseResponse(content: string): OcrMenuResult {
-    let parsed: { sections: OcrMenuSection[]; rawText: string };
+    let parsed: ParsedOcrPayload | null = null;
 
     try {
       parsed = JSON.parse(content);
     } catch {
+      parsed = this.tryRepairTruncatedResponse(content);
+    }
+
+    if (!parsed) {
       throw new AppError("Invalid JSON response from OCR model", 502, ErrorCodes.INTERNAL_SERVER_ERROR);
     }
 
@@ -196,6 +223,53 @@ Rules:
       sections: normalizedSections,
       rawText: String(parsed.rawText || "").trim(),
     };
+  }
+
+  private tryRepairTruncatedResponse(content: string): ParsedOcrPayload | null {
+    const cleaned = content
+      .replace(/```json\s*/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    const sectionsStart = cleaned.indexOf('"sections"');
+    if (sectionsStart === -1) {
+      return null;
+    }
+
+    const items = this.extractCompleteItems(cleaned);
+    if (!items.length) {
+      return null;
+    }
+
+    const rawTextMatch = cleaned.match(/"rawText"\s*:\s*"([^"]*)/);
+    const rawText = rawTextMatch?.[1] ?? "";
+
+    return {
+      sections: [
+        {
+          title: "Main Menu",
+          items,
+        },
+      ],
+      rawText,
+    };
+  }
+
+  private extractCompleteItems(content: string): OcrMenuItem[] {
+    const matches = content.match(/\{\s*"name"\s*:\s*"[^"]*"\s*,\s*"price"\s*:\s*"[^"]*"(?:\s*,\s*"note"\s*:\s*"[^"]*")?\s*\}/g) ?? [];
+
+    return matches.map((itemText) => {
+      try {
+        const parsedItem = JSON.parse(itemText) as LooseOcrMenuItem;
+        return {
+          name: String(parsedItem.name || "").trim(),
+          price: String(parsedItem.price || "").trim(),
+          note: String(parsedItem.note || "").trim(),
+        };
+      } catch {
+        return null;
+      }
+    }).filter((item): item is OcrMenuItem => !!item && !!(item.name || item.price));
   }
 }
 
