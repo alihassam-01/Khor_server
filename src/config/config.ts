@@ -83,6 +83,17 @@ export const CONFIG = {
     expiryMinutes: Number(process.env.OTP_EXPIRY_MINUTES) || 10,
     resendCooldownSeconds: Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60,
   },
+  openrouter: {
+    apiKey: process.env.OPENROUTER_API_KEY || "",
+    baseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+    ocrPrimaryModel: process.env.OCR_PRIMARY_MODEL || "nvidia/nemotron-nano-12b-v2-vl:free",
+    ocrFallbackModels: [
+      process.env.OCR_FALLBACK_MODEL_1 || "qwen/qwen2.5-vl-72b-instruct:free",
+      process.env.OCR_FALLBACK_MODEL_2 || "qwen/qwen-2.5-vl-7b-instruct:free",
+      process.env.OCR_FALLBACK_MODEL_3 || "google/gemma-4-26b-a4b-it:free",
+      process.env.OCR_FALLBACK_MODEL_4 || "openrouter/free",
+    ].filter((value): value is string => !!value),
+  },
   notifications: {
     processRole: process.env.PROCESS_ROLE
       || (process.env.NODE_ENV === "production" ? "api" : "all"),

@@ -7,6 +7,7 @@ export * from './articleTag.service';
 export * from './r2client.service';
 export * from './hotel.service';
 export * from './restaurant.service';
+export * from './ocr.service';
 export * from './ads.service';
 export * from './ad-payment.service';
 export * from './booking-audit.service';

@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { RestaurantService } from "@modules/user/service/restaurant.service";
+import { ocrService } from "@modules/user/service/ocr.service";
 import {
     ICreateRestaurantDTO,
     IUpdateRestaurantDTO,
@@ -363,10 +364,35 @@ export class RestaurantController {
         reply.send(restaurants);
     }
 
-    async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
+async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
         const authUserId = this.getAuthUserId(req);
         const restaurants = await this.restaurantService.getAdsByVendor(authUserId);
         reply.send(restaurants);
+    }
+
+    async scanMenuOcr(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: { imageBase64: string } }>,
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const authUserId = this.getAuthUserId(req);
+        const { imageBase64 } = req.body;
+
+        if (!imageBase64) {
+            throw new AppError("Image data required", 400, ErrorCodes.VALIDATION_ERROR);
+        }
+
+        const restaurant = await this.restaurantService.getRestaurantById(id);
+        if (!restaurant) {
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        if (restaurant.vendor_id !== authUserId) {
+            throw new AppError("Not authorized to access this restaurant", 403, ErrorCodes.FORBIDDEN);
+        }
+
+        const result = await ocrService.extractMenuFromImage(imageBase64);
+        reply.send(result);
     }
 
     async setFeaturedStatus(
