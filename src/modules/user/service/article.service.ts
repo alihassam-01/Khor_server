@@ -1,5 +1,5 @@
 import { AppDataSource } from "@config/ormconfig";
-import { Not, IsNull, FindOptionsWhere, In } from "typeorm";
+import { Not, IsNull, FindOptionsWhere, In, SelectQueryBuilder } from "typeorm";
 import { Article, Tag, ArticleTag, ArticleCategoryMapping } from "@modules/user/entity/article";
 import { Location } from "@modules/user/entity/location";
 import { ArticleStatus } from "@common/enums";
@@ -19,6 +19,31 @@ export class ArticleService {
   private locationRepository = AppDataSource.getRepository(Location);
   private locationHelper = new LocationHelperService();
   private r2ClientService = new R2ClientService();
+
+  private parseFilterDate(value?: string): Date | null {
+    if (!value?.trim()) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error(`Invalid date filter: "${value}"`);
+    }
+    return parsed;
+  }
+
+  private applyDateFilters(
+    query: SelectQueryBuilder<Article>,
+    opts?: { publishedAfter?: string; updatedAfter?: string },
+  ): void {
+    const publishedAfter = this.parseFilterDate(opts?.publishedAfter);
+    const updatedAfter = this.parseFilterDate(opts?.updatedAfter);
+
+    if (publishedAfter) {
+      query.andWhere("article.published_at >= :publishedAfter", { publishedAfter });
+    }
+
+    if (updatedAfter) {
+      query.andWhere("article.updated_at >= :updatedAfter", { updatedAfter });
+    }
+  }
 
   private toArticleDTO(article: Article, enriched?: IEnrichedLocation): IArticleDTO {
     return {
@@ -346,6 +371,8 @@ export class ArticleService {
     placeId?: number;
     categoryId?: number;
     tag?: string;
+    publishedAfter?: string;
+    updatedAfter?: string;
   }): Promise<IPaginatedArticlesResponse> {
     const { 
         page = PAGINATION_DEFAULTS.PAGE, 
@@ -353,7 +380,9 @@ export class ArticleService {
         status, 
         placeId, 
         categoryId,
-        tag 
+        tag,
+        publishedAfter,
+        updatedAfter,
     } = options;
     const skip = (page - 1) * limit;
 
@@ -402,6 +431,8 @@ export class ArticleService {
       );
     }
 
+    this.applyDateFilters(query, { publishedAfter, updatedAfter });
+
     const [articles, count] = await query.getManyAndCount();
 
     const enrichedArticles = await this.locationHelper.enrichArticlesWithCities(
@@ -414,7 +445,10 @@ export class ArticleService {
     };
   }
 
-  async getAllArticles(includeAll: boolean = false, categoryId?: number): Promise<IArticleDTO[]> {
+  async getAllArticles(
+    includeAll: boolean = false,
+    opts?: { categoryId?: number; publishedAfter?: string; updatedAfter?: string },
+  ): Promise<IArticleDTO[]> {
     const query = this.articleRepository
       .createQueryBuilder("article")
       .leftJoinAndSelect("article.articleTags", "articleTags")
@@ -430,12 +464,17 @@ export class ArticleService {
       query.andWhere("article.published_at IS NOT NULL");
     }
 
-    if (categoryId) {
+    if (opts?.categoryId) {
       query.andWhere(
         "(categoryMappings.category_id = :categoryId OR locationCategoryMappings.category_id = :categoryId)",
-        { categoryId }
+        { categoryId: opts.categoryId }
       );
     }
+
+    this.applyDateFilters(query, {
+      publishedAfter: opts?.publishedAfter,
+      updatedAfter: opts?.updatedAfter,
+    });
 
     query.orderBy("article.published_at", "DESC");
 
@@ -446,7 +485,11 @@ export class ArticleService {
     return articles.map((a, index) => this.toArticleDTO(a, enrichedArticles[index]));
   }
 
-  async searchArticles(term: string, includeAll: boolean = false): Promise<IArticleDTO[]> {
+  async searchArticles(
+    term: string,
+    includeAll: boolean = false,
+    opts?: { publishedAfter?: string; updatedAfter?: string },
+  ): Promise<IArticleDTO[]> {
     const normalizedTerm = (term || "").trim();
     if (!normalizedTerm) {
       return [];
@@ -474,6 +517,11 @@ export class ArticleService {
     if (!includeAll) {
       query.andWhere("article.published_at IS NOT NULL");
     }
+
+    this.applyDateFilters(query, {
+      publishedAfter: opts?.publishedAfter,
+      updatedAfter: opts?.updatedAfter,
+    });
 
     const articles = await query
       .orderBy("rank", "DESC")

@@ -269,7 +269,6 @@ export class ListingService {
         try {
             const view = await this.loadView(id, strategy);
             if (view.listing.type !== strategy.type) return null;
-            if (options?.requirePublicVisible && strategy.type === ListingType.HOTEL) return null;
             if (options?.requirePublicVisible && !view.listing.is_public_visible) return null;
             return strategy.toDTO(view);
         } catch (err) {
@@ -287,11 +286,7 @@ export class ListingService {
             qb.andWhere("listing.is_active = :active", { active: true });
         }
         if (params.onlyPublicVisible !== false) {
-            if (params.type === ListingType.HOTEL) {
-                qb.andWhere("1 = 0");
-            } else {
-                qb.andWhere("listing.is_public_visible = :publicVisible", { publicVisible: true });
-            }
+            qb.andWhere("listing.is_public_visible = :publicVisible", { publicVisible: true });
         }
         if (params.searchQuery && params.searchQuery.trim() !== "") {
             qb.andWhere(

@@ -394,9 +394,20 @@ export class PartnerOnboardingService {
                 acceptedPolicy = await this.ensureCurrentPolicyAccepted(manager, profile, userId, ipAddress, userAgent);
             }
 
-            profile.onboarding_status = BusinessOnboardingStatus.SUBMITTED;
+            const hasApprovedCapability = profile.capabilities.some((capability) => (
+                capability.status === BusinessCapabilityStatus.APPROVED
+            ));
+
             profile.submitted_at = new Date();
             profile.review_note = null;
+            if (hasApprovedCapability) {
+                profile.onboarding_status = BusinessOnboardingStatus.APPROVED;
+                profile.reviewed_at = new Date();
+                profile.review_note = "Onboarding completed after partner access was auto-approved.";
+            } else {
+                profile.onboarding_status = BusinessOnboardingStatus.SUBMITTED;
+                profile.reviewed_at = null;
+            }
             await profileRepo.save(profile);
 
             for (const capability of profile.capabilities) {

@@ -134,7 +134,7 @@ export class ArticleController {
     reply: FastifyReply
   ) {
     try {
-      const { page, limit, status, placeId, categoryId, tag } = req.query;
+      const { page, limit, status, placeId, categoryId, tag, publishedAfter, updatedAfter } = req.query;
       const result: IPaginatedArticlesResponse = await this.articleService.listArticles({
         page: page ? Number(page) : undefined,
         limit: limit ? Number(limit) : undefined,
@@ -142,6 +142,8 @@ export class ArticleController {
         placeId: placeId ? Number(placeId) : undefined,
         categoryId: categoryId ? Number(categoryId) : undefined,
         tag,
+        publishedAfter,
+        updatedAfter,
       });
       reply.send(result);
     } catch (error: unknown) {
@@ -157,7 +159,11 @@ export class ArticleController {
     try {
       const includeAll = this.canIncludeUnpublished(req, req.query.all === 'true');
       const categoryId = req.query.categoryId ? Number(req.query.categoryId) : undefined;
-      const articles: IArticleDTO[] = await this.articleService.getAllArticles(includeAll, categoryId);
+      const articles: IArticleDTO[] = await this.articleService.getAllArticles(includeAll, {
+        categoryId,
+        publishedAfter: req.query.publishedAfter,
+        updatedAfter: req.query.updatedAfter,
+      });
       reply.send(articles);
     } catch (error: unknown) {
       const err = error as Error;
@@ -171,7 +177,10 @@ export class ArticleController {
   ) {
     try {
       const includeAll = this.canIncludeUnpublished(req, req.query.all === 'true');
-      const articles: IArticleDTO[] = await this.articleService.searchArticles(req.query.term || '', includeAll);
+      const articles: IArticleDTO[] = await this.articleService.searchArticles(req.query.term || '', includeAll, {
+        publishedAfter: req.query.publishedAfter,
+        updatedAfter: req.query.updatedAfter,
+      });
       reply.send(articles);
     } catch (error: unknown) {
       const err = error as Error;

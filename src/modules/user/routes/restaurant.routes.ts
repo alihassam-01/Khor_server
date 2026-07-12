@@ -86,9 +86,9 @@ export async function restaurantRoutes(fastify: FastifyInstance) {
         restaurantController.updateRestaurantByVendor.bind(restaurantController)
     );
 
-    fastify.post<{ Params: IRestaurantIdParams; Body: { imageBase64: string } }>(
+    fastify.post<{ Params: IRestaurantIdParams; Body: { imageBase64?: string; imageBase64List?: string[] } }>(
         "/vendor/restaurants/:id/menu/ocr",
-        { preHandler: authenticate },
+        { preHandler: authenticate, bodyLimit: CONFIG.server.multipartBodyLimit },
         restaurantController.scanMenuOcr.bind(restaurantController)
     );
 

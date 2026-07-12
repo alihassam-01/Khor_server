@@ -5,11 +5,11 @@ import type {
     Listing,
     ListingContact,
     ListingMedia,
-    ListingSubscription,
 } from "@modules/user/entity/listing";
 import type { ListingMediaRole, ListingType } from "@common/enums/listing.enums";
 import type { Review } from "@modules/user/entity/review/review.entity";
 import type { Location } from "@modules/user/entity/location";
+import type { ListingSubscription } from "@modules/user/entity/listing";
 
 /** A single piece of media to attach to a listing on create/update. */
 export interface IMediaInput {
@@ -86,6 +86,11 @@ export interface IListingViewModel {
     room_types: HotelRoomType[];
     promotions: HotelPromotion[];
     current_subscription: ListingSubscription | null;
+    linked_listing?: Listing | null;
+    linked_contact?: ListingContact | null;
+    linked_location?: Location | null;
+    linked_location_name?: string;
+    linked_subscription?: ListingSubscription | null;
     reviews: Review[];
     location_name?: string;
 }

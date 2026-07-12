@@ -207,7 +207,7 @@ export class ListingSubscriptionService {
             const payRepo = em.getRepository(AdPayment);
             payment = new AdPayment();
             payment.listing_id = listing.id;
-            payment.subscription_id = saved.id;
+            payment.vendor_subscription_id = null;
             payment.vendor_id = listing.vendor_id;
             payment.amount = resolution.total_amount;
             payment.payment_method = PaymentMethod.BANK_TRANSFER;

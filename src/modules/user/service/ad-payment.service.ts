@@ -14,7 +14,7 @@ import { logInfo, logWarn, logError } from "@lib/logger";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { SendEmail } from "./email/sendEmail";
-import { ListingSubscriptionService } from "./listing/listing-subscription.service";
+import { VendorSubscriptionService } from "./listing/vendor-subscription.service";
 
 const propertyTypeToListingType: Record<string, ListingType> = {
     [PropertyType.HOTEL]: ListingType.HOTEL,
@@ -39,7 +39,7 @@ export class AdPaymentService {
     private paymentRepo = AppDataSource.getRepository(AdPayment);
     private listingRepo = AppDataSource.getRepository(Listing);
     private emailService = new SendEmail();
-    private subscriptionService = new ListingSubscriptionService();
+    private subscriptionService = new VendorSubscriptionService();
 
     private async loadListings(ids: string[]): Promise<Map<string, Listing>> {
         const valid = ids.filter(isValidUuid);
@@ -51,12 +51,66 @@ export class AdPaymentService {
         return new Map(rows.map((l) => [l.id, l]));
     }
 
+    private async getPrimaryListingForVendor(vendorId: string): Promise<Listing | null> {
+        return this.listingRepo
+            .createQueryBuilder("listing")
+            .leftJoinAndSelect("listing.location", "location")
+            .where("listing.vendor_id = :vendorId", { vendorId })
+            .orderBy(`
+                CASE
+                    WHEN listing.type = :hotelType THEN 0
+                    WHEN listing.type = :restaurantType THEN 1
+                    ELSE 2
+                END
+            `, "ASC")
+            .addOrderBy("listing.created_at", "ASC")
+            .setParameters({
+                hotelType: ListingType.HOTEL,
+                restaurantType: ListingType.RESTAURANT,
+            })
+            .getOne();
+    }
+
+    private async resolveListingForPayment(
+        vendorId: string,
+        paymentData: ICreateAdPaymentDTO,
+    ): Promise<Listing> {
+        if (paymentData.ad_id) {
+            if (!isValidUuid(paymentData.ad_id)) {
+                logWarn(`Invalid ad_id UUID: "${paymentData.ad_id}"`);
+                throw new AppError(
+                    `Invalid ad_id format. Must be a UUID. Received: "${paymentData.ad_id}"`,
+                    400,
+                    ErrorCodes.VALIDATION_ERROR,
+                );
+            }
+
+            const listing = await this.listingRepo.findOne({
+                where: { id: paymentData.ad_id },
+            });
+            if (!listing) {
+                throw new AppError("Listing not found", 404, ErrorCodes.NOT_FOUND);
+            }
+            return listing;
+        }
+
+        const primaryListing = await this.getPrimaryListingForVendor(vendorId);
+        if (!primaryListing) {
+            throw new AppError(
+                "No connected hotel or restaurant found for this vendor subscription",
+                404,
+                ErrorCodes.NOT_FOUND,
+            );
+        }
+        return primaryListing;
+    }
+
     private async toDTO(
         payment: AdPayment,
         listing?: Listing | null,
     ): Promise<IAdPaymentDTO> {
         const sub = listing
-            ? await this.subscriptionService.getCurrent(AppDataSource.manager, listing.id)
+            ? await this.subscriptionService.getCurrent(AppDataSource.manager, payment.vendor_id)
             : null;
         return {
             payment_id: payment.payment_id,
@@ -97,15 +151,6 @@ export class AdPaymentService {
             amount: paymentData.amount,
         });
 
-        if (!isValidUuid(paymentData.ad_id)) {
-            logWarn(`Invalid ad_id UUID: "${paymentData.ad_id}"`);
-            throw new AppError(
-                `Invalid ad_id format. Must be a UUID. Received: "${paymentData.ad_id}"`,
-                400,
-                ErrorCodes.VALIDATION_ERROR,
-            );
-        }
-
         if (!isValidUuid(paymentData.vendor_id)) {
             logWarn(`Invalid vendor_id UUID: "${paymentData.vendor_id}"`);
             throw new AppError(
@@ -115,14 +160,11 @@ export class AdPaymentService {
             );
         }
 
-        const listing = await this.listingRepo.findOne({
-            where: { id: paymentData.ad_id },
-        });
-        if (!listing) {
-            throw new AppError("Listing not found", 404, ErrorCodes.NOT_FOUND);
-        }
+        const listing = await this.resolveListingForPayment(paymentData.vendor_id, paymentData);
 
-        const expectedListingType = propertyTypeToListingType[paymentData.ad_type];
+        const expectedListingType = paymentData.ad_type
+            ? propertyTypeToListingType[paymentData.ad_type]
+            : undefined;
         if (expectedListingType && listing.type !== expectedListingType) {
             throw new AppError(
                 `Listing type mismatch. Expected ${expectedListingType}, got ${listing.type}`,
@@ -134,6 +176,9 @@ export class AdPaymentService {
         const payment = new AdPayment();
         payment.listing_id = listing.id;
         payment.vendor_id = paymentData.vendor_id;
+        payment.vendor_subscription_id = (
+            await this.subscriptionService.getCurrent(AppDataSource.manager, paymentData.vendor_id)
+        )?.id ?? null;
         payment.amount = paymentData.amount;
         payment.payment_method = paymentData.payment_method;
         payment.transaction_id = paymentData.transaction_id;
@@ -153,18 +198,19 @@ export class AdPaymentService {
         vendorId: string,
         paymentData: ICreateAdPaymentDTO,
     ): Promise<IAdPaymentDTO> {
-        const listing = await this.listingRepo.findOne({
-            where: { id: paymentData.ad_id, vendor_id: vendorId },
-        });
+        if (paymentData.ad_id) {
+            const listing = await this.listingRepo.findOne({
+                where: { id: paymentData.ad_id, vendor_id: vendorId },
+            });
 
-        if (!listing) {
-            throw new AppError("Listing not found or access denied", 404, ErrorCodes.NOT_FOUND);
+            if (!listing) {
+                throw new AppError("Listing not found or access denied", 404, ErrorCodes.NOT_FOUND);
+            }
         }
 
         return this.createPayment({
             ...paymentData,
             vendor_id: vendorId,
-            ad_type: paymentData.ad_type,
         });
     }
 
@@ -193,7 +239,9 @@ export class AdPaymentService {
 
             if (isCompleting && listing) {
                 await this.subscriptionService.activate(em, listing);
-                const sub = await this.subscriptionService.getCurrent(em, listing.id);
+                const sub = payment.vendor_id
+                    ? await this.subscriptionService.getCurrent(em, payment.vendor_id)
+                    : null;
 
                 if (payment.vendor?.email) {
                     const username = payment.vendor.profile?.username || "Vendor";

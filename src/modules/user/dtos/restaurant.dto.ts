@@ -97,6 +97,7 @@ export interface IUpdateRestaurantDTO {
     rating?: number;
     reviews?: number;
     image?: string;
+    images?: string[];
     phone?: string | null;
     whatsapp?: string | null;
     facebook?: string | null;

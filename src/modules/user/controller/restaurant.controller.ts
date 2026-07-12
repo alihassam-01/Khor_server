@@ -12,6 +12,7 @@ import { extractMultipartFields, isMultipartRequest } from "@common/utils/multip
 import { PAGINATION_DEFAULTS } from "@common/constants";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { CONFIG } from "@config/config";
 import { logWarn } from "@lib/logger";
 import { isValidUuid } from "@common/utils/uuid.util";
 import {
@@ -371,15 +372,18 @@ async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
     }
 
     async scanMenuOcr(
-        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: { imageBase64: string } }>,
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: { imageBase64?: string; imageBase64List?: string[] } }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
         const authUserId = this.getAuthUserId(req);
-        const { imageBase64 } = req.body;
+        const requestedImages = normalizeImageBase64List(req.body);
 
-        if (!imageBase64) {
+        if (!requestedImages.length) {
             throw new AppError("Image data required", 400, ErrorCodes.VALIDATION_ERROR);
+        }
+        if (requestedImages.length > 5) {
+            throw new AppError("You can scan up to 5 images at a time", 400, ErrorCodes.VALIDATION_ERROR);
         }
 
         const restaurant = await this.restaurantService.getRestaurantById(id);
@@ -391,8 +395,26 @@ async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
             throw new AppError("Not authorized to access this restaurant", 403, ErrorCodes.FORBIDDEN);
         }
 
-        const result = await ocrService.extractMenuFromImage(imageBase64);
-        reply.send(result);
+        const usage = getOcrUsageMeta(restaurant.opening_hours);
+        if (usage.used + requestedImages.length > usage.limit) {
+            throw new AppError(`Daily OCR limit reached. ${usage.used}/${usage.limit} images already used today.`, 429, ErrorCodes.VALIDATION_ERROR);
+        }
+
+        const result = await ocrService.extractMenuFromImages(requestedImages);
+        const nextUsage = {
+            date: usage.date,
+            used: usage.used + requestedImages.length,
+            limit: usage.limit,
+        };
+
+        await this.restaurantService.updateRestaurantByVendor(id, authUserId, {
+            opening_hours: withUpdatedOcrUsage(restaurant.opening_hours, nextUsage),
+        });
+
+        reply.send({
+            ...result,
+            usage: nextUsage,
+        });
     }
 
     async setFeaturedStatus(
@@ -424,3 +446,90 @@ async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
         reply.send(restaurants);
     }
 }
+const WORKSPACE_META_KEY = "__restaurant_workspace";
+const OCR_USAGE_LIMIT = CONFIG.ocrSpace.ocrDailyLimit;
+
+type OcrUsageMeta = {
+    date: string;
+    used: number;
+    limit: number;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const getOcrUsageMeta = (openingHours?: Record<string, unknown> | null): OcrUsageMeta => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (!isRecord(openingHours)) {
+        return { date: today, used: 0, limit: OCR_USAGE_LIMIT };
+    }
+
+    const workspaceMeta = openingHours[WORKSPACE_META_KEY];
+    if (!isRecord(workspaceMeta) || !isRecord(workspaceMeta.ocrUsage)) {
+        return { date: today, used: 0, limit: OCR_USAGE_LIMIT };
+    }
+
+    const rawDate = typeof workspaceMeta.ocrUsage.date === "string" ? workspaceMeta.ocrUsage.date : today;
+    const rawUsed = typeof workspaceMeta.ocrUsage.used === "number" ? workspaceMeta.ocrUsage.used : Number(workspaceMeta.ocrUsage.used ?? 0);
+
+    if (rawDate !== today) {
+        return { date: today, used: 0, limit: OCR_USAGE_LIMIT };
+    }
+
+    return { date: today, used: Number.isFinite(rawUsed) ? rawUsed : 0, limit: OCR_USAGE_LIMIT };
+};
+
+const withUpdatedOcrUsage = (openingHours: Record<string, unknown> | null | undefined, usage: OcrUsageMeta): Record<string, unknown> => {
+    const nextOpeningHours = isRecord(openingHours) ? { ...openingHours } : {};
+    const workspaceMeta = isRecord(nextOpeningHours[WORKSPACE_META_KEY]) ? { ...nextOpeningHours[WORKSPACE_META_KEY] } : {};
+    workspaceMeta.ocrUsage = usage;
+    nextOpeningHours[WORKSPACE_META_KEY] = workspaceMeta;
+    return nextOpeningHours;
+};
+
+const normalizeImageBase64List = (body: unknown): string[] => {
+    if (!body) return [];
+
+    if (typeof body === "string") {
+        try {
+            return normalizeImageBase64List(JSON.parse(body));
+        } catch {
+            return [];
+        }
+    }
+
+    if (Array.isArray(body)) {
+        return body.filter((value): value is string => typeof value === "string" && !!value.trim());
+    }
+
+    if (!isRecord(body)) {
+        return [];
+    }
+
+    const directList = body.imageBase64List;
+    if (Array.isArray(directList)) {
+        return directList.filter((value): value is string => typeof value === "string" && !!value.trim());
+    }
+
+    if (typeof directList === "string") {
+        try {
+            const parsed = JSON.parse(directList);
+            if (Array.isArray(parsed)) {
+                return parsed.filter((value): value is string => typeof value === "string" && !!value.trim());
+            }
+        } catch {
+            if (directList.trim()) {
+                return [directList.trim()];
+            }
+        }
+    }
+
+    if (isRecord(directList)) {
+        return Object.values(directList).filter((value): value is string => typeof value === "string" && !!value.trim());
+    }
+
+    if (typeof body.imageBase64 === "string" && body.imageBase64.trim()) {
+        return [body.imageBase64.trim()];
+    }
+
+    return [];
+};

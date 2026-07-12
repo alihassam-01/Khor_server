@@ -16,85 +16,160 @@ export interface OcrMenuSection {
 export interface OcrMenuResult {
   sections: OcrMenuSection[];
   rawText: string;
-}
-
-interface OpenRouterMessage {
-  role: "user" | "assistant" | "system";
-  content: string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
-}
-
-interface OpenRouterRequest {
-  model: string;
-  messages: OpenRouterMessage[];
-  response_format?: { type: "json_object" };
-  max_tokens?: number;
-  temperature?: number;
-}
-
-interface OpenRouterResponse {
-  choices: Array<{
-    message: {
-      content: string;
-    };
+  partialFailures?: Array<{
+    imageIndex: number;
+    reason: string;
   }>;
 }
 
-type ParsedOcrPayload = {
-  sections: OcrMenuSection[];
-  rawText: string;
-};
-
-type LooseOcrMenuItem = {
-  name?: unknown;
-  price?: unknown;
-  note?: unknown;
-};
-
 export class OcrService {
-  private static readonly REQUEST_TIMEOUT_MS = 45_000;
-  private static readonly MAX_TOKENS = 2600;
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
-  private readonly primaryModel: string;
-  private readonly fallbackModels: string[];
+  private readonly ocrSpaceApiKey: string;
+  private readonly cfAccountId: string;
+  private readonly cfApiToken: string;
 
   constructor() {
-    this.apiKey = CONFIG.openrouter.apiKey;
-    this.baseUrl = CONFIG.openrouter.baseUrl;
-    this.primaryModel = CONFIG.openrouter.ocrPrimaryModel;
-    this.fallbackModels = CONFIG.openrouter.ocrFallbackModels;
+    this.ocrSpaceApiKey = CONFIG.ocrSpace?.apiKey || "";
+    this.cfAccountId = CONFIG.cloudflareAi?.accountId || "";
+    this.cfApiToken = CONFIG.cloudflareAi?.apiToken || "";
   }
 
   async extractMenuFromImage(imageBase64: string): Promise<OcrMenuResult> {
-    if (!this.apiKey) {
-      throw new AppError("OCR service not configured", 503, ErrorCodes.INTERNAL_SERVER_ERROR);
-    }
-
-    const prompt = this.buildPrompt();
-    const imageUrl = `data:image/jpeg;base64,${imageBase64}`;
-
-    try {
-      return await this.callModel(this.primaryModel, prompt, imageUrl);
-    } catch (primaryError) {
-      console.warn(`Primary OCR model (${this.primaryModel}) failed, trying fallbacks:`, primaryError);
-      const errors: Array<{ model: string; error: unknown }> = [];
-
-      for (const model of this.fallbackModels) {
-        try {
-          return await this.callModel(model, prompt, imageUrl);
-        } catch (fallbackError) {
-          errors.push({ model, error: fallbackError });
-          console.warn(`OCR fallback model (${model}) failed:`, fallbackError);
-        }
-      }
-
-      console.error("All OCR models failed:", errors);
-      throw new AppError("Both OCR models unavailable", 503, ErrorCodes.INTERNAL_SERVER_ERROR);
-    }
+    return this.extractMenuFromImages([imageBase64]);
   }
 
-  private buildPrompt(): string {
-    return `Extract this restaurant menu image into compact JSON. Return ONLY valid JSON in this exact shape:
+  async extractMenuFromImages(imageBase64Images: string[]): Promise<OcrMenuResult> {
+    if (!this.ocrSpaceApiKey) {
+      throw new AppError("OCR.Space service not configured", 503, ErrorCodes.INTERNAL_SERVER_ERROR);
+    }
+    if (!this.cfAccountId || !this.cfApiToken) {
+      throw new AppError("Cloudflare AI service not configured", 503, ErrorCodes.INTERNAL_SERVER_ERROR);
+    }
+    if (!imageBase64Images.length) {
+      throw new AppError("Image data required", 400, ErrorCodes.VALIDATION_ERROR);
+    }
+
+    const results: OcrMenuResult[] = [];
+    const partialFailures: Array<{ imageIndex: number; reason: string }> = [];
+
+    // Process images sequentially to respect OCR.Space rate limits
+    for (const [index, imageBase64] of imageBase64Images.entries()) {
+      try {
+        const result = await this.processSingleImage(imageBase64);
+        results.push(result);
+      } catch (error) {
+        partialFailures.push({
+          imageIndex: index,
+          reason: error instanceof Error ? error.message : "OCR failed for this image",
+        });
+      }
+    }
+
+    if (!results.length) {
+      console.error("OCR Extraction Failures:", JSON.stringify(partialFailures, null, 2));
+      throw new AppError("Failed to extract menu from any image", 503, ErrorCodes.INTERNAL_SERVER_ERROR);
+    }
+
+    return this.mergeResults(results, partialFailures);
+  }
+
+  private async processSingleImage(imageBase64: string): Promise<OcrMenuResult> {
+    // Step 1: Send to OCR.Space
+    const ocrData = await this.fetchOcrSpaceData(imageBase64);
+    
+    // Step 2 & 3: Normalize lines and structure data
+    const cleanedText = this.processLayout(ocrData);
+
+    // Step 4 & 5: Cloudflare AI for final JSON
+    return await this.callCloudflareAi(cleanedText);
+  }
+
+  private async fetchOcrSpaceData(imageBase64: string): Promise<any> {
+    let mimeType = "image/jpeg";
+    if (imageBase64.startsWith("UklGR")) mimeType = "image/webp";
+    else if (imageBase64.startsWith("iVBORw0KGgo")) mimeType = "image/png";
+
+    const formData = new URLSearchParams();
+    formData.append("base64image", `data:${mimeType};base64,${imageBase64}`);
+    formData.append("language", "eng");
+    formData.append("OCREngine", "2");
+    formData.append("isTable", "true");
+    formData.append("isOverlayRequired", "true");
+    formData.append("detectOrientation", "true");
+    formData.append("scale", "true");
+
+    const response = await fetch("https://api.ocr.space/parse/image", {
+      method: "POST",
+      headers: {
+        "apikey": this.ocrSpaceApiKey,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: formData.toString()
+    });
+
+    if (!response.ok) {
+      throw new AppError(`OCR.Space API error: ${response.status}`, response.status, ErrorCodes.INTERNAL_SERVER_ERROR);
+    }
+
+    const data = await response.json() as any;
+    if (data.IsErroredOnProcessing || !data.ParsedResults || !data.ParsedResults.length) {
+      console.error("OCR.Space API Error Response:", JSON.stringify(data, null, 2));
+      throw new AppError("OCR.Space failed to process image", 500, ErrorCodes.INTERNAL_SERVER_ERROR);
+    }
+
+    return data.ParsedResults[0];
+  }
+
+  private processLayout(parsedResult: any): string {
+    if (!parsedResult.TextOverlay || !parsedResult.TextOverlay.Lines) {
+      return parsedResult.ParsedText || "";
+    }
+
+    const lines = parsedResult.TextOverlay.Lines.map((line: any) => {
+      const left = Math.min(...line.Words.map((w: any) => w.Left));
+      const right = Math.max(...line.Words.map((w: any) => w.Left + w.Width));
+      return {
+        text: line.LineText?.trim() || "",
+        left,
+        right,
+        top: line.MinTop,
+        height: line.MaxHeight
+      };
+    });
+
+    if (!lines.length) return "";
+
+    // Sort by top first
+    lines.sort((a: any, b: any) => a.top - b.top);
+
+    // Estimate page width
+    const pageWidth = Math.max(...lines.map((l: any) => l.right));
+    const pageMiddle = pageWidth / 2;
+
+    const leftColumn = lines.filter((line: any) => line.left < pageMiddle);
+    const rightColumn = lines.filter((line: any) => line.left >= pageMiddle);
+
+    leftColumn.sort((a: any, b: any) => a.top - b.top);
+    rightColumn.sort((a: any, b: any) => a.top - b.top);
+
+    let layoutText = "=== LEFT COLUMN ===\n";
+    leftColumn.forEach((l: any) => layoutText += `${l.text}\n`);
+    layoutText += "\n=== RIGHT COLUMN ===\n";
+    rightColumn.forEach((l: any) => layoutText += `${l.text}\n`);
+
+    return layoutText;
+  }
+
+  private async callCloudflareAi(cleanedOcrData: string): Promise<OcrMenuResult> {
+    const prompt = `Convert the supplied restaurant menu OCR data into valid JSON.
+
+Rules:
+1. Detect sections by headers where possible.
+2. Preserve local dish names exactly.
+3. Do not invent items, prices or descriptions.
+4. Keep every item inside its supplied section.
+5. Convert clear prices into numbers but return them as strings in the "price" field.
+6. Extract item name, price, and short note (description) only when present.
+7. Return JSON ONLY in this exact shape:
 
 {
   "sections": [
@@ -108,109 +183,77 @@ export class OcrService {
   "rawText": "Short OCR text summary"
 }
 
-Rules:
-- Detect sections by headers where possible
-- Extract item name, price, and short note only when present
-- Normalize prices to digits only, without currency symbols
-- If no clear section exists, use "Main Menu"
-- Keep rawText concise
-- Return JSON only, with no markdown or commentary`;
-  }
+No markdown wrappers or commentary. Just raw JSON.`;
 
-  private async callModel(model: string, prompt: string, imageUrl: string): Promise<OcrMenuResult> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), OcrService.REQUEST_TIMEOUT_MS);
-    const startedAt = Date.now();
-    const messages: OpenRouterMessage[] = [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: prompt },
-          { type: "image_url", image_url: { url: imageUrl } },
-        ],
+    const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${this.cfAccountId}/ai/run/@cf/meta/llama-3.1-8b-instruct-fast`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${this.cfApiToken}`,
+        "Content-Type": "application/json"
       },
-    ];
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: cleanedOcrData }
+        ],
+        temperature: 0,
+        max_tokens: 1800
+      })
+    });
 
-    const requestBody: OpenRouterRequest = {
-      model,
-      messages,
-      response_format: { type: "json_object" },
-      max_tokens: OcrService.MAX_TOKENS,
-      temperature: 0.1,
-    };
-
-    try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://khor.com",
-          "X-Title": "Khor Partner Portal OCR",
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new AppError(`OpenRouter API error: ${response.status} ${errorText}`, 502, ErrorCodes.INTERNAL_SERVER_ERROR);
-      }
-
-      const data = await response.json() as OpenRouterResponse;
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new AppError("Empty response from OCR model", 502, ErrorCodes.INTERNAL_SERVER_ERROR);
-      }
-
-      console.log("[OCR_MODEL_RAW_RESPONSE]", {
-        model,
-        durationMs: Date.now() - startedAt,
-        content,
-      });
-
-      return this.parseResponse(content);
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new AppError(`OCR model timed out after ${OcrService.REQUEST_TIMEOUT_MS / 1000}s`, 504, ErrorCodes.INTERNAL_SERVER_ERROR);
-      }
-      console.error("[OCR_MODEL_ERROR]", {
-        model,
-        durationMs: Date.now() - startedAt,
-        error: error instanceof Error ? error.message : error,
-      });
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new AppError(`Cloudflare AI error: ${response.status} ${errText}`, response.status, ErrorCodes.INTERNAL_SERVER_ERROR);
     }
+
+    const data = await response.json() as any;
+    if (!data.success || !data.result) {
+      console.error("Cloudflare AI API Error Response:", JSON.stringify(data, null, 2));
+      throw new AppError("Cloudflare AI failed to generate response", 500, ErrorCodes.INTERNAL_SERVER_ERROR);
+    }
+
+    // Handle different possible shapes of the Cloudflare AI response
+    let content = "";
+    if (typeof data.result === 'string') {
+      content = data.result;
+    } else if (data.result.response && typeof data.result.response === 'string') {
+      content = data.result.response;
+    } else {
+      content = JSON.stringify(data.result);
+    }
+
+    return this.parseResponse(content, cleanedOcrData);
   }
 
-  private parseResponse(content: string): OcrMenuResult {
-    let parsed: ParsedOcrPayload | null = null;
+  private parseResponse(content: string, rawOcr: string): OcrMenuResult {
+    let parsed: any = null;
+
+    const cleaned = content.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
 
     try {
-      parsed = JSON.parse(content);
+      parsed = JSON.parse(cleaned);
     } catch {
-      parsed = this.tryRepairTruncatedResponse(content);
+      console.error("Cloudflare AI Response Parse Error. Raw content:", content);
+      throw new AppError("Invalid JSON response from Cloudflare AI", 502, ErrorCodes.INTERNAL_SERVER_ERROR);
     }
 
-    if (!parsed) {
-      throw new AppError("Invalid JSON response from OCR model", 502, ErrorCodes.INTERNAL_SERVER_ERROR);
+    if (parsed && parsed.response && Array.isArray(parsed.response.sections)) {
+      parsed = parsed.response;
     }
 
-    if (!parsed.sections || !Array.isArray(parsed.sections)) {
-      throw new AppError("Invalid response structure from OCR model", 502, ErrorCodes.INTERNAL_SERVER_ERROR);
+    if (!parsed || !parsed.sections || !Array.isArray(parsed.sections)) {
+      console.error("Cloudflare AI Invalid Structure. Parsed:", JSON.stringify(parsed, null, 2));
+      throw new AppError("Invalid response structure from Cloudflare AI", 502, ErrorCodes.INTERNAL_SERVER_ERROR);
     }
 
-    const normalizedSections = parsed.sections.map((section) => ({
+    const normalizedSections = parsed.sections.map((section: any) => ({
       title: String(section.title || "Main Menu").trim(),
-      items: (section.items || []).map((item) => ({
+      items: (section.items || []).map((item: any) => ({
         name: String(item.name || "").trim(),
         price: String(item.price || "").trim(),
         note: String(item.note || "").trim(),
-      })).filter((item) => item.name || item.price),
-    })).filter((section) => section.items.length > 0);
+      })).filter((item: any) => item.name || item.price),
+    })).filter((section: any) => section.items.length > 0);
 
     if (normalizedSections.length === 0) {
       normalizedSections.push({
@@ -221,55 +264,40 @@ Rules:
 
     return {
       sections: normalizedSections,
-      rawText: String(parsed.rawText || "").trim(),
+      rawText: String(parsed.rawText || rawOcr.slice(0, 500)).trim(),
     };
   }
 
-  private tryRepairTruncatedResponse(content: string): ParsedOcrPayload | null {
-    const cleaned = content
-      .replace(/```json\s*/gi, "")
-      .replace(/```/g, "")
-      .trim();
+  private mergeResults(
+    results: OcrMenuResult[],
+    partialFailures: Array<{ imageIndex: number; reason: string }> = [],
+  ): OcrMenuResult {
+    const sectionsMap = new Map<string, OcrMenuItem[]>();
+    const rawTextParts: string[] = [];
 
-    const sectionsStart = cleaned.indexOf('"sections"');
-    if (sectionsStart === -1) {
-      return null;
-    }
+    results.forEach((result) => {
+      result.sections.forEach((section) => {
+        const title = section.title?.trim() || "Main Menu";
+        const existingItems = sectionsMap.get(title) ?? [];
+        existingItems.push(...section.items);
+        sectionsMap.set(title, existingItems);
+      });
 
-    const items = this.extractCompleteItems(cleaned);
-    if (!items.length) {
-      return null;
-    }
+      if (result.rawText.trim()) {
+        rawTextParts.push(result.rawText.trim());
+      }
+    });
 
-    const rawTextMatch = cleaned.match(/"rawText"\s*:\s*"([^"]*)/);
-    const rawText = rawTextMatch?.[1] ?? "";
+    const sections = Array.from(sectionsMap.entries()).map(([title, items]) => ({
+      title,
+      items,
+    }));
 
     return {
-      sections: [
-        {
-          title: "Main Menu",
-          items,
-        },
-      ],
-      rawText,
+      sections: sections.length ? sections : [{ title: "Main Menu", items: [{ name: "", price: "", note: "" }] }],
+      rawText: rawTextParts.join("\n").trim(),
+      partialFailures,
     };
-  }
-
-  private extractCompleteItems(content: string): OcrMenuItem[] {
-    const matches = content.match(/\{\s*"name"\s*:\s*"[^"]*"\s*,\s*"price"\s*:\s*"[^"]*"(?:\s*,\s*"note"\s*:\s*"[^"]*")?\s*\}/g) ?? [];
-
-    return matches.map((itemText) => {
-      try {
-        const parsedItem = JSON.parse(itemText) as LooseOcrMenuItem;
-        return {
-          name: String(parsedItem.name || "").trim(),
-          price: String(parsedItem.price || "").trim(),
-          note: String(parsedItem.note || "").trim(),
-        };
-      } catch {
-        return null;
-      }
-    }).filter((item): item is OcrMenuItem => !!item && !!(item.name || item.price));
   }
 }
 

@@ -3,8 +3,8 @@ import { PropertyType } from "@common/enums/property.enums";
 import { SubscriptionType } from "@common/enums/subscription.enums";
 
 export interface ICreateAdPaymentDTO {
-    ad_id: string;
-    ad_type: PropertyType;
+    ad_id?: string;
+    ad_type?: PropertyType;
     vendor_id: string;
     amount: number;
     payment_method?: PaymentMethod;
@@ -23,8 +23,8 @@ export interface IUpdateAdPaymentDTO {
 
 export interface IAdPaymentDTO {
     payment_id: string;
-    ad_id: string;
-    ad_type: PropertyType;
+    ad_id?: string;
+    ad_type?: PropertyType;
     vendor_id: string;
     vendor_name?: string;
     vendor_email?: string;

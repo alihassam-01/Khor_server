@@ -155,8 +155,8 @@ export class RestaurantStrategy
         if (dto.address !== undefined) { contact.address = dto.address; touchedContact = true; }
         if (touchedContact) out.contact = contact;
 
-        if (dto.image !== undefined || dto.menu_images !== undefined) {
-            out.media = buildMedia(dto.image, undefined, dto.menu_images);
+        if (dto.image !== undefined || dto.images !== undefined || dto.menu_images !== undefined) {
+            out.media = buildMedia(dto.image, dto.images, dto.menu_images);
         }
 
         return out;
@@ -212,7 +212,18 @@ export class RestaurantStrategy
     }
 
     toDTO(view: IListingViewModel): IRestaurantDTO {
-        const { listing, contact, media, current_subscription, reviews, location_name } = view;
+        const {
+            listing,
+            contact,
+            media,
+            current_subscription,
+            linked_listing,
+            linked_contact,
+            linked_subscription,
+            linked_location_name,
+            reviews,
+            location_name,
+        } = view;
         const details = listing.restaurant_details;
         const grouped = groupMedia(media);
         const galleryUrls = grouped.gallery.map((m) => m.url);
@@ -221,13 +232,17 @@ export class RestaurantStrategy
             ? [coverUrl, ...galleryUrls.filter((u) => u !== coverUrl)]
             : galleryUrls;
         const menuUrls = grouped.menu.map((m) => m.url);
+        const identityListing = linked_listing ?? listing;
+        const identityContact = linked_contact ?? contact;
+        const subscriptionSource = linked_subscription ?? current_subscription;
+        const resolvedLocationName = linked_location_name ?? location_name ?? "";
 
         return {
             id: listing.id,
-            name: listing.name,
+            name: identityListing.name,
             type: "restaurant",
-            location: location_name ?? "",
-            address: contact?.address ?? null,
+            location: resolvedLocationName,
+            address: identityContact?.address ?? null,
             price: Number(listing.price_from ?? 0),
             rating: Number(listing.rating_avg ?? 0),
             reviews: listing.rating_count ?? 0,
@@ -235,15 +250,15 @@ export class RestaurantStrategy
             images: allImages,
             active: listing.is_active,
             links: {
-                phone: contact?.phone ?? null,
-                whatsapp: contact?.whatsapp ?? null,
-                facebook: contact?.facebook ?? null,
-                instagram: contact?.instagram ?? null,
-                website: contact?.website ?? null,
-                map_link: contact?.map_link ?? null,
+                phone: identityContact?.phone ?? null,
+                whatsapp: identityContact?.whatsapp ?? null,
+                facebook: identityContact?.facebook ?? null,
+                instagram: identityContact?.instagram ?? null,
+                website: identityContact?.website ?? null,
+                map_link: identityContact?.map_link ?? null,
             },
-            latitude: listing.latitude != null ? Number(listing.latitude) : null,
-            longitude: listing.longitude != null ? Number(listing.longitude) : null,
+            latitude: identityListing.latitude != null ? Number(identityListing.latitude) : null,
+            longitude: identityListing.longitude != null ? Number(identityListing.longitude) : null,
             description: listing.description,
             cuisines: details?.cuisines ?? [],
             price_per_person: details?.price_per_person != null ? Number(details.price_per_person) : null,
@@ -264,16 +279,16 @@ export class RestaurantStrategy
                 date: r.created_at,
             })),
             vendor_id: listing.vendor_id ?? undefined,
-            expires_at: current_subscription?.expires_at ?? undefined,
-            paid_at: current_subscription?.paid_at ?? undefined,
-            next_due_date: current_subscription?.next_due_date ?? undefined,
-            grace_period_days: current_subscription?.grace_period_days ?? 7,
-            subscription_type: current_subscription?.subscription_type ?? undefined,
-            plan_id: current_subscription?.plan_id ?? undefined,
-            is_paid: current_subscription?.is_paid ?? false,
+            expires_at: subscriptionSource?.expires_at ?? undefined,
+            paid_at: subscriptionSource?.paid_at ?? undefined,
+            next_due_date: subscriptionSource?.next_due_date ?? undefined,
+            grace_period_days: subscriptionSource?.grace_period_days ?? 7,
+            subscription_type: subscriptionSource?.subscription_type ?? undefined,
+            plan_id: subscriptionSource?.plan_id ?? undefined,
+            is_paid: subscriptionSource?.is_paid ?? false,
             is_featured: listing.is_featured,
             is_active: listing.is_active,
-            location_id: listing.location_id,
+            location_id: identityListing.location_id,
         };
     }
 }

@@ -10,13 +10,13 @@ import {
 } from "typeorm";
 import { User } from "@modules/user/entity/user/user.entity";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
-import { ListingSubscription } from "@modules/user/entity/listing/listing-subscription.entity";
+import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
 import { PaymentMethod, PaymentStatus } from "@common/enums/payment.enums";
 
 /**
  * Payment intent / receipt for an ad. Now references a Listing directly
  * (instead of carrying both `ad_id` and `ad_type` as strings) and optionally
- * links to the specific `ListingSubscription` period it paid for.
+ * links to the vendor-level subscription row it paid for.
  *
  * The DTO layer continues to expose `ad_id` / `ad_type` for backward-compat
  * with the existing API surface; on the database level we use proper FKs.
@@ -37,11 +37,11 @@ export class AdPayment {
     listing!: Listing;
 
     @Column({ type: "uuid", nullable: true })
-    subscription_id?: string | null;
+    vendor_subscription_id?: string | null;
 
-    @ManyToOne(() => ListingSubscription, { nullable: true, onDelete: "SET NULL" })
-    @JoinColumn({ name: "subscription_id" })
-    subscription?: ListingSubscription | null;
+    @ManyToOne(() => VendorSubscription, { nullable: true, onDelete: "SET NULL" })
+    @JoinColumn({ name: "vendor_subscription_id" })
+    subscription?: VendorSubscription | null;
 
     @Column({ type: "uuid" })
     vendor_id!: string;

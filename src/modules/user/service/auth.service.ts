@@ -66,11 +66,11 @@ import {
 } from "@modules/user/constant/audit.constant";
 import { AuditLogService } from "./audit-log.service";
 import { PROFILE_IMAGES } from "@modules/user/constant/user.constant";
-import { ListingSubscriptionService } from "./listing/listing-subscription.service";
+import { VendorSubscriptionService } from "./listing/vendor-subscription.service";
 
 export class AuthService {
     private auditLogService = new AuditLogService();
-    private listingSubscriptionService = new ListingSubscriptionService();
+    private listingSubscriptionService = new VendorSubscriptionService();
 
     constructor(
         private userRepository: Repository<User>,
@@ -317,7 +317,7 @@ export class AuthService {
         if (!businessProfile) {
             businessProfile = businessProfileRepo.create({
                 user_id: user.id,
-                onboarding_status: BusinessOnboardingStatus.APPROVED,
+                onboarding_status: BusinessOnboardingStatus.DRAFT,
             });
         }
 
@@ -325,10 +325,10 @@ export class AuthService {
         businessProfile.business_name = businessName;
         businessProfile.phone_number = phone;
         businessProfile.city_id = cityId;
-        businessProfile.onboarding_status = BusinessOnboardingStatus.APPROVED;
-        businessProfile.submitted_at = businessProfile.submitted_at ?? new Date();
-        businessProfile.reviewed_at = new Date();
-        businessProfile.review_note = "Auto-approved during hotel owner registration.";
+        businessProfile.onboarding_status = BusinessOnboardingStatus.DRAFT;
+        businessProfile.submitted_at = null;
+        businessProfile.reviewed_at = null;
+        businessProfile.review_note = "Partner access auto-approved during hotel owner registration. Complete onboarding documents and policy next.";
 
         await businessProfileRepo.save(businessProfile);
     }
@@ -356,7 +356,7 @@ export class AuthService {
         }
 
         capability.status = BusinessCapabilityStatus.APPROVED;
-        capability.review_note = "Auto-approved during hotel owner registration.";
+        capability.review_note = "Partner access auto-approved during hotel owner registration.";
         capability.approved_at = new Date();
 
         await capabilityRepo.save(capability);
