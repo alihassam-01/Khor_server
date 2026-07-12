@@ -313,8 +313,8 @@ export class RestaurantController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { is_active, plan_id } = req.body;
-        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active, plan_id);
+        const { is_active } = req.body;
+        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active);
         reply.send(restaurant);
     }
 
@@ -323,8 +323,8 @@ export class RestaurantController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { subscription_type, plan_id } = req.body;
-        const restaurant = await this.restaurantService.renewAd(id, subscription_type, plan_id);
+        const { subscription_type } = req.body;
+        const restaurant = await this.restaurantService.renewAd(id, subscription_type);
         reply.send(restaurant);
     }
 
@@ -335,8 +335,8 @@ export class RestaurantController {
         const { id } = req.params;
         const authUserId = this.getAuthUserId(req);
 
-        const { subscription_type, plan_id } = req.body;
-        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
+        const { subscription_type } = req.body;
+        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type);
         reply.send(restaurant);
     }
 

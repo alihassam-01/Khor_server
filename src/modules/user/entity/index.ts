@@ -25,4 +25,4 @@ export * from "./location";
 // User entities
 export * from "./user";
 export * from "./audit-log.entity";
-export * from "./subscription-plan.entity";
+

@@ -13,6 +13,5 @@ export * from './ad-payment.service';
 export * from './booking-audit.service';
 export * from './booking.service';
 export * from './booking-status-history.service';
-export * from './subscription-plan.service';
 export * from './payment-setting.service';
 export * from './flights.service';

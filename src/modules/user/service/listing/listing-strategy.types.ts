@@ -51,7 +51,6 @@ export interface IListingCreatePayload {
     contact: IContactInput;
     media: IMediaInput[];
     subscription_type?: string;
-    plan_id?: string | null;
     /** Type-specific payload understood only by the matching strategy. */
     ext?: Record<string, unknown>;
 }
@@ -74,7 +73,6 @@ export interface IListingUpdatePayload {
     contact?: IContactInput;
     media?: IMediaInput[];
     subscription_type?: string;
-    plan_id?: string | null;
     ext?: Record<string, unknown>;
 }
 

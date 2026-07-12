@@ -111,7 +111,7 @@ export class RestaurantStrategy
             },
             media: buildMedia(dto.image, dto.images, dto.menu_images),
             subscription_type: dto.subscription_type,
-            plan_id: dto.plan_id ?? null,
+
             ext,
         };
     }
@@ -142,7 +142,7 @@ export class RestaurantStrategy
         if (dto.visibility_note !== undefined) out.visibility_note = dto.visibility_note ?? null;
         if (dto.is_featured !== undefined) out.is_featured = dto.is_featured;
         if (dto.subscription_type !== undefined) out.subscription_type = dto.subscription_type;
-        if (dto.plan_id !== undefined) out.plan_id = dto.plan_id ?? null;
+
 
         const contact: IListingUpdatePayload["contact"] = {};
         let touchedContact = false;
@@ -284,7 +284,7 @@ export class RestaurantStrategy
             next_due_date: subscriptionSource?.next_due_date ?? undefined,
             grace_period_days: subscriptionSource?.grace_period_days ?? 7,
             subscription_type: subscriptionSource?.subscription_type ?? undefined,
-            plan_id: subscriptionSource?.plan_id ?? undefined,
+
             is_paid: subscriptionSource?.is_paid ?? false,
             is_featured: listing.is_featured,
             is_active: listing.is_active,

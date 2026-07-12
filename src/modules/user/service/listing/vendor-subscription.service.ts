@@ -1,7 +1,6 @@
 import { EntityManager, LessThanOrEqual, MoreThan } from "typeorm";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
 import { AdPayment } from "@modules/user/entity/payment/ad-payment.entity";
-import { SubscriptionPlan } from "@modules/user/entity/subscription-plan.entity";
 import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
 import {
     ListingStatus,
@@ -19,7 +18,6 @@ import { ErrorCodes } from "@common/errors/error-codes";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface IPlanResolution {
-    plan: SubscriptionPlan | null;
     type: SubscriptionType;
     duration_days: number;
     base_amount: number;
@@ -90,51 +88,36 @@ export class VendorSubscriptionService {
     }
 
     async resolvePlan(
-        em: EntityManager,
+        _em: EntityManager,
         opts: {
-            plan_id?: string | null;
             subscription_type?: SubscriptionType | string | null;
             is_featured?: boolean;
         },
     ): Promise<IPlanResolution> {
-        const planRepo = em.getRepository(SubscriptionPlan);
-        let plan: SubscriptionPlan | null = null;
+        let finalType = SubscriptionType.FREE;
+        const duration_days = this.daysFor(finalType);
+        let base_amount = 0;
 
-        if (opts.plan_id) {
-            plan = await planRepo.findOne({ where: { plan_id: opts.plan_id } });
-        }
-        if (!plan && opts.subscription_type) {
-            const candidate = String(opts.subscription_type);
-            if (candidate.length > 20) {
-                plan = await planRepo.findOne({ where: { plan_id: candidate } });
-            } else {
-                plan = await planRepo.findOne({
-                    where: { type: candidate as SubscriptionType },
-                });
+        if (opts.subscription_type) {
+            const up = String(opts.subscription_type).toUpperCase();
+            if (Object.values(SubscriptionType).includes(up as any) || Object.values(SubscriptionType).includes(opts.subscription_type as any)) {
+                finalType = (up === SubscriptionType.FREE.toUpperCase() ? SubscriptionType.FREE :
+                             up === SubscriptionType.MONTHLY.toUpperCase() ? SubscriptionType.MONTHLY :
+                             up === SubscriptionType.QUARTERLY.toUpperCase() ? SubscriptionType.QUARTERLY :
+                             up === SubscriptionType.YEARLY.toUpperCase() ? SubscriptionType.YEARLY :
+                             SubscriptionType.FREE);
             }
         }
 
-        const type = (plan?.type as SubscriptionType)
-            ?? (opts.subscription_type as SubscriptionType)
-            ?? SubscriptionType.FREE;
-        const duration_days = plan ? plan.duration_days : this.daysFor(type);
-        const base_amount = plan ? Number(plan.price) : 0;
-
-        let featured_amount = 0;
-        if (opts.is_featured) {
-            const featuredPlan = await planRepo.findOne({
-                where: { type: "featured" as SubscriptionType },
-            });
-            featured_amount = featuredPlan ? Number(featuredPlan.price) : FEATURED_AD_PRICE;
-        }
+        const featured_amount = opts.is_featured ? FEATURED_AD_PRICE : 0;
+        const total_amount = base_amount + featured_amount;
 
         return {
-            plan,
-            type,
+            type: finalType,
             duration_days,
             base_amount,
             featured_amount,
-            total_amount: base_amount + featured_amount,
+            total_amount,
         };
     }
 
@@ -142,7 +125,6 @@ export class VendorSubscriptionService {
         em: EntityManager,
         listing: Listing,
         opts: {
-            plan_id?: string | null;
             subscription_type?: SubscriptionType | string | null;
             is_featured?: boolean;
         },
@@ -161,7 +143,6 @@ export class VendorSubscriptionService {
         em: EntityManager,
         listing: Listing,
         opts: {
-            plan_id?: string | null;
             subscription_type?: SubscriptionType | string | null;
             is_featured?: boolean;
             duration_days?: number;
@@ -188,7 +169,6 @@ export class VendorSubscriptionService {
             sub.grace_period_days = 7;
         }
 
-        sub.plan_id = resolution.plan?.plan_id ?? opts.plan_id ?? sub.plan_id ?? null;
         sub.subscription_type = resolution.type;
         sub.is_featured = !!opts.is_featured;
         sub.amount = resolution.total_amount;
@@ -252,7 +232,6 @@ export class VendorSubscriptionService {
         em: EntityManager,
         listing: Listing,
         opts: {
-            plan_id?: string | null;
             subscription_type?: SubscriptionType | string | null;
             duration_days?: number;
         } = {},
@@ -262,7 +241,6 @@ export class VendorSubscriptionService {
             em,
             listing,
             {
-                plan_id: opts.plan_id ?? null,
                 subscription_type: opts.subscription_type ?? null,
                 is_featured: listing.is_featured,
                 duration_days: opts.duration_days,
@@ -278,7 +256,7 @@ export class VendorSubscriptionService {
         em: EntityManager,
         listing: Listing,
         opts: {
-            plan_id?: string | null;
+
             subscription_type?: SubscriptionType | string | null;
             is_featured?: boolean;
         },
@@ -292,7 +270,7 @@ export class VendorSubscriptionService {
             em,
             listing,
             {
-                plan_id: opts.plan_id ?? null,
+
                 subscription_type: opts.subscription_type ?? null,
                 is_featured: opts.is_featured,
             },
@@ -332,7 +310,7 @@ export class VendorSubscriptionService {
             em,
             listing,
             {
-                plan_id: null,
+
                 subscription_type: undefined,
                 is_featured: listing.is_featured,
             },
@@ -350,14 +328,14 @@ export class VendorSubscriptionService {
         em: EntityManager,
         listing: Listing,
         opts: {
-            plan_id?: string | null;
+
             subscription_type?: SubscriptionType | string | null;
         },
     ): Promise<VendorSubscription | null> {
         if (!listing.vendor_id) return null;
         const current = await this.getCurrent(em, listing.vendor_id);
         if (!current) return null;
-        if (opts.plan_id !== undefined) current.plan_id = opts.plan_id ?? null;
+
         if (opts.subscription_type !== undefined) {
             current.subscription_type = opts.subscription_type as SubscriptionType;
         }

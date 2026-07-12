@@ -9,7 +9,6 @@ import {
     UpdateDateColumn,
 } from "typeorm";
 import { User } from "./user.entity";
-import { SubscriptionPlan } from "@modules/user/entity/subscription-plan.entity";
 import { ListingSubscriptionStatus } from "@common/enums/listing.enums";
 import { SubscriptionType } from "@common/enums/subscription.enums";
 
@@ -34,13 +33,6 @@ export class VendorSubscription {
     @ManyToOne(() => User, { nullable: false, onDelete: "CASCADE" })
     @JoinColumn({ name: "vendor_id" })
     vendor!: User;
-
-    @Column({ type: "uuid", nullable: true })
-    plan_id?: string | null;
-
-    @ManyToOne(() => SubscriptionPlan, { nullable: true, onDelete: "SET NULL" })
-    @JoinColumn({ name: "plan_id" })
-    plan?: SubscriptionPlan | null;
 
     @Column({
         type: "enum",

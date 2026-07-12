@@ -360,8 +360,8 @@ export class HotelController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { is_active, plan_id } = req.body;
-        const hotel = await this.hotelService.toggleAdStatus(id, is_active, plan_id);
+        const { is_active } = req.body;
+        const hotel = await this.hotelService.toggleAdStatus(id, is_active);
         reply.send(hotel);
     }
 
@@ -370,8 +370,8 @@ export class HotelController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { subscription_type, plan_id } = req.body;
-        const hotel = await this.hotelService.renewAd(id, subscription_type, plan_id);
+        const { subscription_type } = req.body;
+        const hotel = await this.hotelService.renewAd(id, subscription_type);
         reply.send(hotel);
     }
 
@@ -385,8 +385,8 @@ export class HotelController {
             throw new AppError("Authentication required. Please log in.", 401, ErrorCodes.UNAUTHORIZED);
         }
 
-        const { subscription_type, plan_id } = req.body;
-        const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
+        const { subscription_type } = req.body;
+        const hotel = await this.hotelService.renewAdByVendor(id, authUserId, subscription_type);
         reply.send(hotel);
     }
 

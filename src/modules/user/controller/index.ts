@@ -9,7 +9,6 @@ export * from './hotel.controller';
 export * from './restaurant.controller';
 export * from './ads.controller';
 export * from './ad-payment.controller';
-export * from './subscription-plan.controller';
 export * from './contact.controller';
 export * from './property.controller';
 export * from './payment-setting.controller';
