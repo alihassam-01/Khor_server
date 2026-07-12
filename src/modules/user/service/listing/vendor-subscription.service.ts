@@ -1,15 +1,11 @@
 import { EntityManager, LessThanOrEqual, MoreThan } from "typeorm";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
-import { AdPayment } from "@modules/user/entity/payment/ad-payment.entity";
+
 import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
 import {
     ListingStatus,
     ListingSubscriptionStatus,
 } from "@common/enums/listing.enums";
-import {
-    PaymentMethod,
-    PaymentStatus,
-} from "@common/enums/payment.enums";
 import { SubscriptionType } from "@common/enums/subscription.enums";
 import { FEATURED_AD_PRICE, SUBSCRIPTION_DURATION_DAYS } from "@common/constants";
 import { AppError } from "@common/errors/AppError";
@@ -206,20 +202,7 @@ export class VendorSubscriptionService {
 
         const saved = await repo.save(sub);
 
-        if (behavior.createPaymentIntent && !shouldActivate) {
-            const payment = new AdPayment();
-            payment.listing_id = listing.id;
-            payment.vendor_id = listing.vendor_id;
-            payment.vendor_subscription_id = saved.id;
-            payment.amount = resolution.total_amount;
-            payment.payment_method = PaymentMethod.BANK_TRANSFER;
-            payment.transaction_id = "PENDING_APPROVAL";
-            payment.notes = `Auto-generated payment intent for ${listing.type}: ${listing.name}`;
-            payment.payment_status = PaymentStatus.PENDING;
-            const createdPayment = await em.getRepository(AdPayment).save(payment);
-            saved.payment_id = createdPayment.payment_id;
-            await repo.save(saved);
-        }
+        
 
         if (shouldActivate) {
             await this.setVendorListingsActive(em, listing.vendor_id, true);
@@ -260,10 +243,10 @@ export class VendorSubscriptionService {
             subscription_type?: SubscriptionType | string | null;
             is_featured?: boolean;
         },
-    ): Promise<{ subscription: VendorSubscription | null; payment: AdPayment | null; resolution: IPlanResolution }> {
+    ): Promise<{ subscription: VendorSubscription | null; resolution: IPlanResolution }> {
         const resolution = await this.resolvePlan(em, opts);
         if (!listing.vendor_id) {
-            return { subscription: null, payment: null, resolution };
+            return { subscription: null, resolution };
         }
 
         const subscription = await this.openOrRefresh(
@@ -277,14 +260,7 @@ export class VendorSubscriptionService {
             { createPaymentIntent: true },
         );
 
-        let payment: AdPayment | null = null;
-        if (subscription.payment_id) {
-            payment = await em.getRepository(AdPayment).findOne({
-                where: { payment_id: subscription.payment_id },
-            });
-        }
-
-        return { subscription, payment, resolution };
+        return { subscription, resolution };
     }
 
     async deactivate(em: EntityManager, listing: Listing): Promise<void> {
@@ -370,3 +346,5 @@ export class VendorSubscriptionService {
         });
     }
 }
+
+

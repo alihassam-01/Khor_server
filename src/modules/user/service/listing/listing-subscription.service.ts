@@ -1,15 +1,11 @@
 import { EntityManager, LessThanOrEqual, MoreThan } from "typeorm";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
 import { ListingSubscription } from "@modules/user/entity/listing/listing-subscription.entity";
-import { AdPayment } from "@modules/user/entity/payment/ad-payment.entity";
+
 import {
     ListingStatus,
     ListingSubscriptionStatus,
 } from "@common/enums/listing.enums";
-import {
-    PaymentMethod,
-    PaymentStatus,
-} from "@common/enums/payment.enums";
 import { SubscriptionType } from "@common/enums/subscription.enums";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
@@ -149,7 +145,7 @@ export class ListingSubscriptionService {
             subscription_type?: SubscriptionType | string | null;
             is_featured?: boolean;
         },
-    ): Promise<{ subscription: ListingSubscription; payment: AdPayment | null; resolution: IPlanResolution }> {
+    ): Promise<{ subscription: ListingSubscription; resolution: IPlanResolution }> {
         const resolution = await this.resolvePlan(em, opts);
 
         const isFree = resolution.type === SubscriptionType.FREE && !opts.is_featured;
@@ -182,25 +178,7 @@ export class ListingSubscriptionService {
 
         const saved = await subRepo.save(sub);
 
-        let payment: AdPayment | null = null;
-        if (!isFreeOrZero && listing.vendor_id) {
-            const payRepo = em.getRepository(AdPayment);
-            payment = new AdPayment();
-            payment.listing_id = listing.id;
-            payment.vendor_subscription_id = null;
-            payment.vendor_id = listing.vendor_id;
-            payment.amount = resolution.total_amount;
-            payment.payment_method = PaymentMethod.BANK_TRANSFER;
-            payment.transaction_id = "PENDING_APPROVAL";
-            payment.notes = `Auto-generated payment intent for ${listing.type}: ${listing.name}`;
-            payment.payment_status = PaymentStatus.PENDING;
-            payment = await payRepo.save(payment);
-
-            saved.payment_id = payment.payment_id;
-            await subRepo.save(saved);
-        }
-
-        return { subscription: saved, payment, resolution };
+        return { subscription: saved, resolution };
     }
 
     /**
@@ -362,3 +340,5 @@ export class ListingSubscriptionService {
         });
     }
 }
+
+
