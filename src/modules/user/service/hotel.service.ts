@@ -60,18 +60,18 @@ export class HotelService {
         return this.listings.delete(this.strategy, id);
     }
 
-    toggleAdStatus(id: string, isActive: boolean, planId?: string): Promise<IHotelDTO> {
-        return this.listings.toggleStatus(this.strategy, id, isActive, planId);
+    toggleAdStatus(id: string, isActive: boolean): Promise<IHotelDTO> {
+        return this.listings.toggleStatus(this.strategy, id, isActive);
     }
 
     renewAd(
         id: string,
         subscriptionType?: SubscriptionType,
-        planId?: string,
+        
     ): Promise<IHotelDTO> {
         return this.listings.renewByAdmin(this.strategy, id, {
             subscription_type: subscriptionType,
-            plan_id: planId,
+
         });
     }
 
@@ -79,11 +79,11 @@ export class HotelService {
         id: string,
         vendorId: string,
         subscriptionType?: SubscriptionType | string,
-        planId?: string,
+        
     ): Promise<IHotelDTO> {
         return this.listings.renewByVendor(this.strategy, id, vendorId, {
             subscription_type: subscriptionType,
-            plan_id: planId,
+
         });
     }
 

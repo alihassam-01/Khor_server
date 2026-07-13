@@ -1,7 +1,7 @@
 import { AppDataSource } from "@config/ormconfig";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
-import { ListingSubscription } from "@modules/user/entity/listing/listing-subscription.entity";
-import { ListingSubscriptionStatus, ListingType } from "@common/enums/listing.enums";
+import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
+import { ListingStatus, ListingSubscriptionStatus, ListingType } from "@common/enums/listing.enums";
 import { SendEmail } from "@modules/user/service/email/sendEmail";
 import { NotificationOutboxService } from "@modules/user/service/notification-outbox.service";
 import { logInfo, logError } from "@lib/logger";
@@ -17,18 +17,34 @@ const TYPE_LABEL: Record<ListingType, string> = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Cron-style scanner over `listing_subscriptions`. Finds subscription periods
- * about to expire (and already expired) and notifies the listing's vendor.
+ * Cron-style scanner over `vendor_subscriptions`. Finds business subscriptions
+ * about to expire (and already expired) and notifies the vendor account.
  *
  * Replaces the previous Hotel/Restaurant-specific job — both types now flow
- * through the unified `listings` + `listing_subscriptions` tables, so a single
- * scan handles every listing type.
+ * through the unified vendor billing model, so a single scan covers the
+ * hotel's associated restaurant too.
  */
 export class SubscriptionJobService {
-    private subRepo = AppDataSource.getRepository(ListingSubscription);
+    private subRepo = AppDataSource.getRepository(VendorSubscription);
     private listingRepo = AppDataSource.getRepository(Listing);
     private emailService = new SendEmail();
     private notificationOutboxService = new NotificationOutboxService();
+
+    private async loadPrimaryListing(vendorId: string): Promise<Listing | null> {
+        const rows = await this.listingRepo.find({
+            where: [
+                { vendor_id: vendorId, type: ListingType.HOTEL },
+                { vendor_id: vendorId, type: ListingType.RESTAURANT },
+            ],
+            relations: ["contact"],
+            order: {
+                is_active: "DESC",
+                created_at: "ASC",
+            },
+            take: 2,
+        });
+        return rows[0] ?? null;
+    }
 
     async checkExpirations(): Promise<void> {
         logInfo("Checking for ad expirations and warnings...");
@@ -60,9 +76,9 @@ export class SubscriptionJobService {
         });
 
         for (const sub of upcoming) {
-            const listing = sub.listing;
-            if (!listing || !sub.next_due_date) continue;
-            const username = listing.vendor?.profile?.username || "Vendor";
+            if (!sub.vendor_id || !sub.next_due_date) continue;
+            const listing = await this.loadPrimaryListing(sub.vendor_id);
+            const username = sub.vendor?.profile?.username || "Vendor";
             const dueDateLabel = sub.next_due_date.toLocaleDateString("en-PK", {
                 day: "numeric",
                 month: "short",
@@ -70,43 +86,47 @@ export class SubscriptionJobService {
             });
             const dueMonth = sub.next_due_date.toLocaleDateString("en-PK", { month: "long" });
             const dueKey = sub.next_due_date.toISOString().slice(0, 10);
+            const businessName = listing?.name
+                || sub.vendor?.profile?.business_name
+                || sub.vendor?.profile?.username
+                || "Your business";
 
-            if (listing.vendor?.email) {
+            if (sub.vendor?.email) {
                 await this.emailService
                     .sendSubscriptionPaymentReminderEmail({
-                        to: listing.vendor.email,
+                        to: sub.vendor.email,
                         recipientName: username,
-                        businessName: listing.name,
+                        businessName,
                         dueMonth,
                         dueDateLabel,
                         metadata: {
-                            listingId: listing.id,
+                            listingId: listing?.id ?? sub.vendor_id,
                             dueDate: dueKey,
-                            listingType: listing.type,
+                            listingType: listing?.type ?? ListingType.HOTEL,
                         },
                     })
                     .catch((e) =>
-                        logError(e, `Failed subscription payment reminder email for ${listing.type}: ${listing.name}`),
+                        logError(e, `Failed subscription payment reminder email for vendor ${sub.vendor_id}`),
                     );
             }
 
-            if (listing.vendor_id) {
+            if (sub.vendor_id) {
                 await this.notificationOutboxService
                     .enqueueSubscriptionPaymentReminder({
                         manager: AppDataSource.manager,
-                        userId: listing.vendor_id,
-                        listingId: listing.id,
-                        phoneNumber: listing.vendor?.profile?.phone_number
-                            ?? listing.contact?.whatsapp
-                            ?? listing.contact?.phone,
+                        userId: sub.vendor_id,
+                        listingId: listing?.id ?? sub.vendor_id,
+                        phoneNumber: sub.vendor?.profile?.phone_number
+                            ?? listing?.contact?.whatsapp
+                            ?? listing?.contact?.phone,
                         ownerName: username,
-                        businessName: listing.name,
+                        businessName,
                         dueMonth,
                         dueDate: dueDateLabel,
                         dueKey,
                     })
                     .catch((e) =>
-                        logError(e, `Failed subscription payment reminder WhatsApp enqueue for ${listing.type}: ${listing.name}`),
+                        logError(e, `Failed subscription payment reminder WhatsApp enqueue for vendor ${sub.vendor_id}`),
                     );
             }
         }
@@ -129,27 +149,34 @@ export class SubscriptionJobService {
         });
 
         for (const sub of expired) {
-            const listing = sub.listing;
-            if (!listing) continue;
+            if (!sub.vendor_id) continue;
+            const listing = await this.loadPrimaryListing(sub.vendor_id);
 
             sub.status = ListingSubscriptionStatus.EXPIRED;
             await this.subRepo.save(sub);
-            listing.is_active = false;
-            await this.listingRepo.save(listing);
+            await this.listingRepo.createQueryBuilder()
+                .update(Listing)
+                .set({ is_active: false, status: ListingStatus.INACTIVE })
+                .where("vendor_id = :vendorId", { vendorId: sub.vendor_id })
+                .execute();
 
-            if (listing.vendor?.email && sub.expires_at) {
-                const username = listing.vendor.profile?.username || "Vendor";
-                const adType = TYPE_LABEL[listing.type] ?? "Listing";
+            if (sub.vendor?.email && sub.expires_at) {
+                const username = sub.vendor.profile?.username || "Vendor";
+                const businessName = listing?.name
+                    || sub.vendor.profile?.business_name
+                    || sub.vendor.profile?.username
+                    || "Your business";
+                const adType = TYPE_LABEL[listing?.type ?? ListingType.HOTEL] ?? "Listing";
                 await this.emailService
                     .sendAdExpiredEmail(
                         username,
-                        listing.vendor.email,
-                        listing.name,
+                        sub.vendor.email,
+                        businessName,
                         adType,
                         sub.expires_at,
                     )
                     .catch((e) =>
-                        logError(e, `Failed expiration notice for ${listing.type}: ${listing.name}`),
+                        logError(e, `Failed expiration notice for vendor ${sub.vendor_id}`),
                     );
             }
         }

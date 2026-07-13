@@ -9,6 +9,8 @@ export interface IArticleSlugParams {
 export interface IGetArticleQuery {
     all?: string;
     categoryId?: string;
+    publishedAfter?: string;
+    updatedAfter?: string;
 }
 
 export interface IListArticlesQuery {
@@ -18,9 +20,13 @@ export interface IListArticlesQuery {
     placeId?: string;
     categoryId?: string;
     tag?: string;
+    publishedAfter?: string;
+    updatedAfter?: string;
 }
 
 export interface ISearchArticlesQuery {
     term: string;
     all?: string;
+    publishedAfter?: string;
+    updatedAfter?: string;
 }
