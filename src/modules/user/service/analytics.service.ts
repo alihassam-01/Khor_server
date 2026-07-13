@@ -1,6 +1,7 @@
 import { AppDataSource } from "@config/ormconfig";
 import { AdAnalytics } from "@modules/user/entity/payment/ad-analytics.entity";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
+import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
 import { AnalyticsEventType } from "@common/enums/analytics.enums";
 import { ListingType } from "@common/enums/listing.enums";
 import { PropertyType } from "@common/enums/property.enums";
@@ -211,23 +212,23 @@ export class AnalyticsService {
                     vendor_id: vendorId,
                     ...(listingType ? { type: listingType } : {}),
                 },
-                relations: ["subscriptions"],
             });
 
             const adIds = ads.map((ad) => ad.id);
             const now = new Date();
+            const vendorSub = await AppDataSource.getRepository(VendorSubscription).findOne({
+                where: { vendor_id: vendorId },
+            });
 
             const history = {
                 totalAds: ads.length,
                 activeAds: ads.filter((ad) => ad.is_active).length,
                 pendingAds: ads.filter((ad) => {
                     if (ad.is_active) return false;
-                    const sub = ad.subscriptions?.[0];
-                    return sub && !sub.is_paid;
+                    return !!vendorSub && !vendorSub.is_paid;
                 }).length,
-                expiredAds: ads.filter((ad) => {
-                    const sub = ad.subscriptions?.[0];
-                    return sub?.expires_at && new Date(sub.expires_at) < now;
+                expiredAds: ads.filter(() => {
+                    return !!vendorSub?.expires_at && new Date(vendorSub.expires_at) < now;
                 }).length,
             };
 

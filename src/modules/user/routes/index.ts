@@ -11,9 +11,7 @@ import { contactRoutes } from "./contact.routes";
 import { hotelRoutes } from "./hotel.routes";
 import { restaurantRoutes } from "./restaurant.routes";
 import { adsRoutes } from "./ads.routes";
-import { adPaymentRoutes } from "./ad-payment.routes";
-import { subscriptionPlanRoutes } from "./subscription-plan.routes";
-import { paymentSettingRoutes } from "./payment-setting.routes";
+
 import propertyRoutes from "./property.routes";
 import { mediaRoutes } from "./media.routes";
 import analyticsRoutes from "./analytics.routes";
@@ -42,9 +40,7 @@ const routes = [
   hotelRoutes, // Admin hotel management
   restaurantRoutes, // Admin restaurant management
   adsRoutes, // Public ads endpoint
-  adPaymentRoutes, // Admin payment management
-  subscriptionPlanRoutes, // Public subscription plans
-  paymentSettingRoutes, // Admin and public payment settings
+
   propertyRoutes, // Generic property routes
   bookingRoutes,
   realtimeRoutes,

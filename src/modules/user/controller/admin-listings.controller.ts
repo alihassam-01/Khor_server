@@ -2,7 +2,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { AdminListingsService } from "@modules/user/service/admin-listings.service";
-import { IUpdateListingVisibilityDto } from "@modules/user/types/admin-listings.types";
+import { IUpdateListingVisibilityDto, IBulkUpdateListingVisibilityDto } from "@modules/user/types/admin-listings.types";
 
 type ListingParams = {
     id: string;
@@ -26,5 +26,21 @@ export class AdminListingsController {
 
         const listing = await this.service.updatePublicVisibility(request.params.id, request.body);
         reply.send(listing);
+    }
+
+    async bulkUpdatePublicVisibility(
+        request: FastifyRequest<{ Body: IBulkUpdateListingVisibilityDto }>,
+        reply: FastifyReply,
+    ) {
+        if (typeof request.body?.is_public_visible !== "boolean") {
+            throw new AppError("is_public_visible is required", 400, ErrorCodes.BAD_REQUEST);
+        }
+
+        const result = await this.service.bulkUpdatePublicVisibility({
+            is_public_visible: request.body.is_public_visible,
+            type: request.body.type ?? "all",
+        });
+
+        reply.send(result);
     }
 }

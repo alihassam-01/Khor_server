@@ -43,6 +43,7 @@ jobs:
               cd "$PROD_DIR"
               npm ci
               npm run build
+              npm run migration:run:dist
               sudo -n systemctl restart gokhor-api gokhor-worker
               exit 0
             fi

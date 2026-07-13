@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { RestaurantService } from "@modules/user/service/restaurant.service";
+import { ocrService } from "@modules/user/service/ocr.service";
 import {
     ICreateRestaurantDTO,
     IUpdateRestaurantDTO,
@@ -11,6 +12,7 @@ import { extractMultipartFields, isMultipartRequest } from "@common/utils/multip
 import { PAGINATION_DEFAULTS } from "@common/constants";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
+import { CONFIG } from "@config/config";
 import { logWarn } from "@lib/logger";
 import { isValidUuid } from "@common/utils/uuid.util";
 import {
@@ -52,7 +54,6 @@ export class RestaurantController {
         if (contentType.includes('multipart/form-data')) {
             const body = req.body as Record<string, any>;
 
-            // Extract plain field values
             const extractedBody: Record<string, any> = {};
             for (const key in body) {
                 const field = body[key];
@@ -76,8 +77,18 @@ export class RestaurantController {
                 if (Array.isArray(val)) return val;
                 try { return JSON.parse(val); } catch { return []; }
             };
+            const parseJsonField = <T>(val: any): T | undefined => {
+                if (val === undefined || val === null || val === '') return undefined;
+                if (typeof val === 'object') return val as T;
+                try { return JSON.parse(val) as T; } catch { return undefined; }
+            };
+            const parseBooleanField = (val: any, fallback?: boolean): boolean | undefined => {
+                if (val === undefined || val === null || val === '') return fallback;
+                if (typeof val === 'boolean') return val;
+                if (typeof val === 'string') return val.toLowerCase() === 'true';
+                return fallback;
+            };
 
-            // Upload main image to R2
             let imageUrl = '';
             if (body.image && typeof body.image !== 'string') {
                 const file = body.image;
@@ -88,7 +99,6 @@ export class RestaurantController {
                 imageUrl = extractedBody.image;
             }
 
-            // Upload menu images to R2
             const menuImageUrls: string[] = [];
             const menuImagesRaw = body.menu_images;
             if (menuImagesRaw) {
@@ -114,20 +124,30 @@ export class RestaurantController {
                 facebook: extractedBody.facebook || undefined,
                 instagram: extractedBody.instagram || undefined,
                 website: extractedBody.website || undefined,
+                map_link: extractedBody.map_link || undefined,
+                latitude: parseNumber(extractedBody.latitude, 'latitude'),
+                longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 description: extractedBody.description || "",
+                cuisines: parseArrayField(extractedBody.cuisines),
+                price_per_person: parseNumber(extractedBody.price_per_person, 'price_per_person'),
+                opening_hours: parseJsonField<Record<string, unknown>>(extractedBody.opening_hours),
                 menu_images: menuImageUrls.length > 0 ? menuImageUrls : parseArrayField(extractedBody.menu_images),
+                allow_online_orders: parseBooleanField(extractedBody.allow_online_orders, false),
+                allow_table_bookings: parseBooleanField(extractedBody.allow_table_bookings, false),
+                accepting_orders_now: parseBooleanField(extractedBody.accepting_orders_now, true),
+                accepting_reservations_now: parseBooleanField(extractedBody.accepting_reservations_now, true),
+                ordering_notes: extractedBody.ordering_notes || undefined,
+                reservation_notes: extractedBody.reservation_notes || undefined,
+                is_public_visible: parseBooleanField(extractedBody.is_public_visible, true),
+                visibility_note: extractedBody.visibility_note || undefined,
                 location_id: parseNumber(extractedBody.location_id, 'location_id') ?? 0,
                 is_active: extractedBody.is_active === 'true' || extractedBody.is_active === true,
                 is_featured: extractedBody.is_featured === 'true' || extractedBody.is_featured === true,
                 subscription_type: extractedBody.subscription_type || undefined,
                 plan_id: extractedBody.plan_id || undefined,
-                map_link: extractedBody.map_link || undefined,
-                latitude: parseNumber(extractedBody.latitude, 'latitude'),
-                longitude: parseNumber(extractedBody.longitude, 'longitude'),
                 vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? (extractedBody.vendor_id || authUserId) : authUserId,
             };
 
-            // Validate phone and whatsapp formats if provided
             const phoneRegex = /^\+?[0-9\s-]+$/;
             if (restaurantData.phone && !phoneRegex.test(restaurantData.phone)) {
                 throw new AppError('Phone number must contain only digits, spaces, hyphens and optional leading +', 400, ErrorCodes.VALIDATION_ERROR);
@@ -139,7 +159,7 @@ export class RestaurantController {
             const body = req.body as ICreateRestaurantDTO;
             restaurantData = {
                 ...body,
-                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || authUserId) : authUserId 
+                vendor_id: (req.user as any)?.userType === UserRole.ADMIN ? ((body as any).vendor_id || authUserId) : authUserId
             };
         }
 
@@ -178,7 +198,6 @@ export class RestaurantController {
         const pageNum = parseInt(page, 10) || PAGINATION_DEFAULTS.PAGE;
         const limitNum = parseInt(limit, 10) || PAGINATION_DEFAULTS.LIMIT;
 
-        // Handle multiple location IDs if provided as comma-separated string
         let parsedLocationId: number | number[] | undefined = undefined;
         if (location_id) {
             const locStr = String(location_id);
@@ -221,16 +240,19 @@ export class RestaurantController {
                 reviews: 'number',
                 is_active: 'boolean',
                 is_featured: 'boolean',
+                allow_online_orders: 'boolean',
+                allow_table_bookings: 'boolean',
+                accepting_orders_now: 'boolean',
+                accepting_reservations_now: 'boolean',
+                is_public_visible: 'boolean',
                 plan_id: 'string',
             });
-            // Handle main image file upload
             if (body.image && typeof body.image !== 'string') {
                 const file = body.image;
                 const buffer: Buffer = file.toBuffer ? await file.toBuffer() : Buffer.from([]);
                 const res = await this.r2Client.uploadFileToR2(buffer, file.filename || 'image', file.mimetype || 'application/octet-stream');
                 restaurantData.image = res.url;
             }
-            // Handle menu images file uploads
             const menuImagesRaw = body.menu_images;
             if (menuImagesRaw) {
                 const menuFiles = Array.isArray(menuImagesRaw) ? menuImagesRaw : [menuImagesRaw];
@@ -286,15 +308,13 @@ export class RestaurantController {
         reply.code(204).send();
     }
 
-    // ========== ADMIN ENDPOINTS ==========
-
     async toggleAdStatus(
         req: FastifyRequest<{ Params: IRestaurantIdParams; Body: IToggleRestaurantAdStatusBody }>,
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { is_active, plan_id } = req.body;
-        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active, plan_id);
+        const { is_active } = req.body;
+        const restaurant = await this.restaurantService.toggleAdStatus(id, is_active);
         reply.send(restaurant);
     }
 
@@ -303,8 +323,8 @@ export class RestaurantController {
         reply: FastifyReply
     ) {
         const { id } = req.params;
-        const { subscription_type, plan_id } = req.body;
-        const restaurant = await this.restaurantService.renewAd(id, subscription_type, plan_id);
+        const { subscription_type } = req.body;
+        const restaurant = await this.restaurantService.renewAd(id, subscription_type);
         reply.send(restaurant);
     }
 
@@ -315,8 +335,8 @@ export class RestaurantController {
         const { id } = req.params;
         const authUserId = this.getAuthUserId(req);
 
-        const { subscription_type, plan_id } = req.body;
-        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type, plan_id);
+        const { subscription_type } = req.body;
+        const restaurant = await this.restaurantService.renewAdByVendor(id, authUserId, subscription_type);
         reply.send(restaurant);
     }
 
@@ -345,10 +365,56 @@ export class RestaurantController {
         reply.send(restaurants);
     }
 
-    async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
+async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
         const authUserId = this.getAuthUserId(req);
         const restaurants = await this.restaurantService.getAdsByVendor(authUserId);
         reply.send(restaurants);
+    }
+
+    async scanMenuOcr(
+        req: FastifyRequest<{ Params: IRestaurantIdParams; Body: { imageBase64?: string; imageBase64List?: string[] } }>,
+        reply: FastifyReply
+    ) {
+        const { id } = req.params;
+        const authUserId = this.getAuthUserId(req);
+        const requestedImages = normalizeImageBase64List(req.body);
+
+        if (!requestedImages.length) {
+            throw new AppError("Image data required", 400, ErrorCodes.VALIDATION_ERROR);
+        }
+        if (requestedImages.length > 5) {
+            throw new AppError("You can scan up to 5 images at a time", 400, ErrorCodes.VALIDATION_ERROR);
+        }
+
+        const restaurant = await this.restaurantService.getRestaurantById(id);
+        if (!restaurant) {
+            throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
+        }
+
+        if (restaurant.vendor_id !== authUserId) {
+            throw new AppError("Not authorized to access this restaurant", 403, ErrorCodes.FORBIDDEN);
+        }
+
+        const usage = getOcrUsageMeta(restaurant.opening_hours);
+        if (usage.used + requestedImages.length > usage.limit) {
+            throw new AppError(`Daily OCR limit reached. ${usage.used}/${usage.limit} images already used today.`, 429, ErrorCodes.VALIDATION_ERROR);
+        }
+
+        const result = await ocrService.extractMenuFromImages(requestedImages);
+        const nextUsage = {
+            date: usage.date,
+            used: usage.used + requestedImages.length,
+            limit: usage.limit,
+        };
+
+        await this.restaurantService.updateRestaurantByVendor(id, authUserId, {
+            opening_hours: withUpdatedOcrUsage(restaurant.opening_hours, nextUsage),
+        });
+
+        reply.send({
+            ...result,
+            usage: nextUsage,
+        });
     }
 
     async setFeaturedStatus(
@@ -380,3 +446,90 @@ export class RestaurantController {
         reply.send(restaurants);
     }
 }
+const WORKSPACE_META_KEY = "__restaurant_workspace";
+const OCR_USAGE_LIMIT = CONFIG.ocrSpace.ocrDailyLimit;
+
+type OcrUsageMeta = {
+    date: string;
+    used: number;
+    limit: number;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const getOcrUsageMeta = (openingHours?: Record<string, unknown> | null): OcrUsageMeta => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (!isRecord(openingHours)) {
+        return { date: today, used: 0, limit: OCR_USAGE_LIMIT };
+    }
+
+    const workspaceMeta = openingHours[WORKSPACE_META_KEY];
+    if (!isRecord(workspaceMeta) || !isRecord(workspaceMeta.ocrUsage)) {
+        return { date: today, used: 0, limit: OCR_USAGE_LIMIT };
+    }
+
+    const rawDate = typeof workspaceMeta.ocrUsage.date === "string" ? workspaceMeta.ocrUsage.date : today;
+    const rawUsed = typeof workspaceMeta.ocrUsage.used === "number" ? workspaceMeta.ocrUsage.used : Number(workspaceMeta.ocrUsage.used ?? 0);
+
+    if (rawDate !== today) {
+        return { date: today, used: 0, limit: OCR_USAGE_LIMIT };
+    }
+
+    return { date: today, used: Number.isFinite(rawUsed) ? rawUsed : 0, limit: OCR_USAGE_LIMIT };
+};
+
+const withUpdatedOcrUsage = (openingHours: Record<string, unknown> | null | undefined, usage: OcrUsageMeta): Record<string, unknown> => {
+    const nextOpeningHours = isRecord(openingHours) ? { ...openingHours } : {};
+    const workspaceMeta = isRecord(nextOpeningHours[WORKSPACE_META_KEY]) ? { ...nextOpeningHours[WORKSPACE_META_KEY] } : {};
+    workspaceMeta.ocrUsage = usage;
+    nextOpeningHours[WORKSPACE_META_KEY] = workspaceMeta;
+    return nextOpeningHours;
+};
+
+const normalizeImageBase64List = (body: unknown): string[] => {
+    if (!body) return [];
+
+    if (typeof body === "string") {
+        try {
+            return normalizeImageBase64List(JSON.parse(body));
+        } catch {
+            return [];
+        }
+    }
+
+    if (Array.isArray(body)) {
+        return body.filter((value): value is string => typeof value === "string" && !!value.trim());
+    }
+
+    if (!isRecord(body)) {
+        return [];
+    }
+
+    const directList = body.imageBase64List;
+    if (Array.isArray(directList)) {
+        return directList.filter((value): value is string => typeof value === "string" && !!value.trim());
+    }
+
+    if (typeof directList === "string") {
+        try {
+            const parsed = JSON.parse(directList);
+            if (Array.isArray(parsed)) {
+                return parsed.filter((value): value is string => typeof value === "string" && !!value.trim());
+            }
+        } catch {
+            if (directList.trim()) {
+                return [directList.trim()];
+            }
+        }
+    }
+
+    if (isRecord(directList)) {
+        return Object.values(directList).filter((value): value is string => typeof value === "string" && !!value.trim());
+    }
+
+    if (typeof body.imageBase64 === "string" && body.imageBase64.trim()) {
+        return [body.imageBase64.trim()];
+    }
+
+    return [];
+};
