@@ -10,7 +10,21 @@ const refreshCookieMaxAgeMs = CONFIG.jwt.refreshExpiresInDays * 24 * 60 * 60 * 1
 
 export const getRefreshCookieMaxAgeMs = (): number => refreshCookieMaxAgeMs;
 
-const resolveCookieScope = (request: { headers?: { origin?: string | null; referer?: string | null } } | undefined): AuthCookieScope => {
+const normalizeCookieScope = (value: unknown): AuthCookieScope | null => {
+    if (typeof value !== "string") return null;
+    const normalized = value.toLowerCase();
+    if (normalized === "admin" || normalized === "partner" || normalized === "web") {
+        return normalized;
+    }
+    return null;
+};
+
+const resolveCookieScope = (
+    request: { headers?: { origin?: string | null; referer?: string | null; "x-auth-scope"?: string | string[] | null } } | undefined,
+): AuthCookieScope => {
+    const explicitScope = normalizeCookieScope(request?.headers?.["x-auth-scope"]);
+    if (explicitScope) return explicitScope;
+
     const candidateUrl = request?.headers?.origin || request?.headers?.referer || "";
     try {
         const host = new URL(candidateUrl).hostname.toLowerCase();
@@ -48,3 +62,4 @@ export const clearRefreshTokenCookie = (reply: FastifyReply, scope: AuthCookieSc
         path: "/api/auth",
     });
 };
+

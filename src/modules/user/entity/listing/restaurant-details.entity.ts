@@ -33,4 +33,22 @@ export class RestaurantDetails {
      */
     @Column({ type: "jsonb", nullable: true })
     opening_hours?: Record<string, unknown> | null;
+
+    @Column({ type: "boolean", default: false })
+    allow_online_orders!: boolean;
+
+    @Column({ type: "boolean", default: false })
+    allow_table_bookings!: boolean;
+
+    @Column({ type: "boolean", default: true })
+    accepting_orders_now!: boolean;
+
+    @Column({ type: "boolean", default: true })
+    accepting_reservations_now!: boolean;
+
+    @Column({ type: "text", nullable: true })
+    ordering_notes?: string | null;
+
+    @Column({ type: "text", nullable: true })
+    reservation_notes?: string | null;
 }

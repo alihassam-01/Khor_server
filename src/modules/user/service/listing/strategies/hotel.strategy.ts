@@ -124,7 +124,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             },
             media: buildMedia(dto.image, dto.logo, dto.images),
             subscription_type: dto.subscription_type,
-            plan_id: dto.plan_id ?? null,
+
             ext,
         };
     }
@@ -153,7 +153,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
         if (dto.is_featured !== undefined) out.is_featured = dto.is_featured;
         if (dto.verified !== undefined) out.is_verified = !!dto.verified;
         if (dto.subscription_type !== undefined) out.subscription_type = dto.subscription_type;
-        if (dto.plan_id !== undefined) out.plan_id = dto.plan_id ?? null;
+
 
         const contact: IListingUpdatePayload["contact"] = {};
         let touchedContact = false;
@@ -396,7 +396,7 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             next_due_date: current_subscription?.next_due_date ?? undefined,
             grace_period_days: current_subscription?.grace_period_days ?? 7,
             subscription_type: current_subscription?.subscription_type ?? undefined,
-            plan_id: current_subscription?.plan_id ?? undefined,
+
             is_paid: current_subscription?.is_paid ?? false,
             is_featured: listing.is_featured,
             is_active: listing.is_active,

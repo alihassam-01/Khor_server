@@ -5,11 +5,11 @@ import type {
     Listing,
     ListingContact,
     ListingMedia,
-    ListingSubscription,
 } from "@modules/user/entity/listing";
 import type { ListingMediaRole, ListingType } from "@common/enums/listing.enums";
 import type { Review } from "@modules/user/entity/review/review.entity";
 import type { Location } from "@modules/user/entity/location";
+import type { ListingSubscription } from "@modules/user/entity/listing";
 
 /** A single piece of media to attach to a listing on create/update. */
 export interface IMediaInput {
@@ -45,16 +45,17 @@ export interface IListingCreatePayload {
     longitude?: number | null;
     is_featured?: boolean;
     is_active?: boolean;
+    is_public_visible?: boolean;
+    visibility_note?: string | null;
     is_verified?: boolean;
     contact: IContactInput;
     media: IMediaInput[];
     subscription_type?: string;
-    plan_id?: string | null;
     /** Type-specific payload understood only by the matching strategy. */
     ext?: Record<string, unknown>;
 }
 
-/** Normalized update payload — every field optional. */
+/** Normalized update payload - every field optional. */
 export interface IListingUpdatePayload {
     name?: string;
     description?: string;
@@ -66,11 +67,12 @@ export interface IListingUpdatePayload {
     longitude?: number | null;
     is_featured?: boolean;
     is_active?: boolean;
+    is_public_visible?: boolean;
+    visibility_note?: string | null;
     is_verified?: boolean;
     contact?: IContactInput;
     media?: IMediaInput[];
     subscription_type?: string;
-    plan_id?: string | null;
     ext?: Record<string, unknown>;
 }
 
@@ -82,13 +84,18 @@ export interface IListingViewModel {
     room_types: HotelRoomType[];
     promotions: HotelPromotion[];
     current_subscription: ListingSubscription | null;
+    linked_listing?: Listing | null;
+    linked_contact?: ListingContact | null;
+    linked_location?: Location | null;
+    linked_location_name?: string;
+    linked_subscription?: ListingSubscription | null;
     reviews: Review[];
     location_name?: string;
 }
 
 /**
  * A type-specific "policy" over a Listing. Each ListingType has exactly one
- * strategy that translates the legacy DTOs (for hotel, restaurant, …) to and
+ * strategy that translates the legacy DTOs (for hotel, restaurant, ...) to and
  * from the unified ListingCreatePayload, and hydrates / reads the
  * type-specific extension table.
  */

@@ -83,6 +83,14 @@ export const CONFIG = {
     expiryMinutes: Number(process.env.OTP_EXPIRY_MINUTES) || 10,
     resendCooldownSeconds: Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60,
   },
+  ocrSpace: {
+    apiKey: process.env.OCR_SPACE_API_KEY || "",
+    ocrDailyLimit: Number(process.env.OCR_DAILY_LIMIT) || 20,
+  },
+  cloudflareAi: {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID || "",
+    apiToken: process.env.CLOUDFLARE_API_TOKEN || "",
+  },
   notifications: {
     processRole: process.env.PROCESS_ROLE
       || (process.env.NODE_ENV === "production" ? "api" : "all"),

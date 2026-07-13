@@ -3,9 +3,11 @@ import { Listing } from "@modules/user/entity/listing";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { ListingType } from "@common/enums/listing.enums";
+import { In } from "typeorm";
 import {
     IAdminListingDto,
     IUpdateListingVisibilityDto,
+    IBulkUpdateListingVisibilityDto,
 } from "@modules/user/types/admin-listings.types";
 
 export class AdminListingsService {
@@ -69,5 +71,26 @@ export class AdminListingsService {
             createdAt: saved.created_at.toISOString(),
             updatedAt: saved.updated_at.toISOString(),
         };
+    }
+
+    async bulkUpdatePublicVisibility(payload: IBulkUpdateListingVisibilityDto): Promise<{ updated: number }> {
+        const types =
+            payload.type === "hotel"
+                ? [ListingType.HOTEL]
+                : payload.type === "restaurant"
+                    ? [ListingType.RESTAURANT]
+                    : [ListingType.HOTEL, ListingType.RESTAURANT];
+
+        const result = await this.listingRepo.update(
+            { type: In(types) },
+            {
+                is_public_visible: payload.is_public_visible,
+                visibility_note: payload.is_public_visible
+                    ? null
+                    : "Hidden from public frontend by admin (bulk action).",
+            },
+        );
+
+        return { updated: result.affected ?? 0 };
     }
 }

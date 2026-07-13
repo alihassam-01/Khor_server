@@ -218,6 +218,11 @@ export class ListingService {
                 // Hotel listings stay hidden from the public website while
                 // the portal is being used for manual bookings only.
                 listing.is_public_visible = false;
+            } else if (payload.is_public_visible !== undefined) {
+                listing.is_public_visible = payload.is_public_visible;
+            }
+            if (payload.visibility_note !== undefined) {
+                listing.visibility_note = payload.visibility_note ?? null;
             }
             listing.name = payload.name;
             listing.description = payload.description ?? "";
@@ -243,7 +248,6 @@ export class ListingService {
 
             // Initial subscription period (creates payment intent if non-free)
             await this.subscriptionService.openPeriod(em, saved, {
-                plan_id: payload.plan_id ?? null,
                 subscription_type: payload.subscription_type ?? null,
                 is_featured: payload.is_featured,
             });
@@ -264,7 +268,6 @@ export class ListingService {
         try {
             const view = await this.loadView(id, strategy);
             if (view.listing.type !== strategy.type) return null;
-            if (options?.requirePublicVisible && strategy.type === ListingType.HOTEL) return null;
             if (options?.requirePublicVisible && !view.listing.is_public_visible) return null;
             return strategy.toDTO(view);
         } catch (err) {
@@ -282,11 +285,7 @@ export class ListingService {
             qb.andWhere("listing.is_active = :active", { active: true });
         }
         if (params.onlyPublicVisible !== false) {
-            if (params.type === ListingType.HOTEL) {
-                qb.andWhere("1 = 0");
-            } else {
-                qb.andWhere("listing.is_public_visible = :publicVisible", { publicVisible: true });
-            }
+            qb.andWhere("listing.is_public_visible = :publicVisible", { publicVisible: true });
         }
         if (params.searchQuery && params.searchQuery.trim() !== "") {
             qb.andWhere(
@@ -565,6 +564,11 @@ export class ListingService {
             }
             if (strategy.type === ListingType.HOTEL) {
                 listing.is_public_visible = false;
+            } else if (payload.is_public_visible !== undefined) {
+                listing.is_public_visible = payload.is_public_visible;
+            }
+            if (payload.visibility_note !== undefined) {
+                listing.visibility_note = payload.visibility_note ?? null;
             }
 
             await em.getRepository(Listing).save(listing);
@@ -589,7 +593,6 @@ export class ListingService {
             // Subscription / activation logic
             if (payload.is_active !== undefined && payload.is_active && !wasActive) {
                 await this.subscriptionService.activate(em, listing, {
-                    plan_id: payload.plan_id ?? null,
                     subscription_type: payload.subscription_type ?? null,
                 });
                 if (listing.vendor?.email) {
@@ -605,12 +608,11 @@ export class ListingService {
                 }
             } else if (payload.is_active === false && wasActive) {
                 await this.subscriptionService.deactivate(em, listing);
-            } else if (payload.plan_id !== undefined || payload.subscription_type !== undefined) {
+            } else if (payload.subscription_type !== undefined) {
                 // Plan/type changed without activation — patch the most recent
                 // subscription so future renewals use the new defaults.
                 const current = await this.subscriptionService.getCurrent(em, listing.id);
                 if (current) {
-                    if (payload.plan_id !== undefined) current.plan_id = payload.plan_id ?? null;
                     if (payload.subscription_type !== undefined) {
                         current.subscription_type = payload.subscription_type as SubscriptionType;
                     }
@@ -667,7 +669,7 @@ export class ListingService {
         strategy: IListingStrategy<any, any, TDTO>,
         id: string,
         isActive: boolean,
-        planId?: string,
+        
     ): Promise<TDTO> {
         return AppDataSource.transaction(async (em) => {
             const listing = await em.getRepository(Listing).findOne({
@@ -680,7 +682,7 @@ export class ListingService {
 
             const wasActive = listing.is_active;
             if (isActive) {
-                await this.subscriptionService.activate(em, listing, { plan_id: planId ?? null });
+                await this.subscriptionService.activate(em, listing, {});
             } else {
                 await this.subscriptionService.deactivate(em, listing);
             }
@@ -726,7 +728,6 @@ export class ListingService {
                 throw new AppError(`${strategy.type} not found`, 404, ErrorCodes.NOT_FOUND);
             }
             await this.subscriptionService.activate(em, listing, {
-                plan_id: opts.plan_id ?? null,
                 subscription_type: opts.subscription_type ?? null,
             });
             const view = await this.loadView(listing.id, strategy, em);
@@ -738,7 +739,7 @@ export class ListingService {
         strategy: IListingStrategy<any, any, TDTO>,
         id: string,
         vendorId: string,
-        opts: { subscription_type?: SubscriptionType | string; plan_id?: string },
+        opts: { subscription_type?: SubscriptionType | string },
     ): Promise<TDTO> {
         return AppDataSource.transaction(async (em) => {
             const resolvedVendor = await this.resolveVendorUserId(em, vendorId);
@@ -753,26 +754,22 @@ export class ListingService {
             }
 
             const resolution = await this.subscriptionService.resolvePlan(em, {
-                plan_id: opts.plan_id,
                 subscription_type: opts.subscription_type ?? null,
                 is_featured: listing.is_featured,
             });
 
             if (resolution.type === SubscriptionType.FREE && !listing.is_featured) {
                 await this.subscriptionService.activate(em, listing, {
-                    plan_id: resolution.plan?.plan_id ?? null,
                     subscription_type: resolution.type,
                     duration_days: resolution.duration_days,
                 });
             } else if (resolution.total_amount <= 0) {
                 await this.subscriptionService.activate(em, listing, {
-                    plan_id: resolution.plan?.plan_id ?? null,
                     subscription_type: resolution.type,
                     duration_days: resolution.duration_days,
                 });
             } else {
                 await this.subscriptionService.openPeriod(em, listing, {
-                    plan_id: resolution.plan?.plan_id ?? null,
                     subscription_type: resolution.type,
                     is_featured: listing.is_featured,
                 });
@@ -804,4 +801,8 @@ export class ListingService {
         });
     }
 }
+
+
+
+
 

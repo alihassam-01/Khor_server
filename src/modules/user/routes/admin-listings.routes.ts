@@ -3,7 +3,7 @@ import { authenticate } from "@middlewares/authenticate";
 import { authorizeAdmin } from "@middlewares/authorizeAdmin";
 import { AdminListingsController } from "@modules/user/controller/admin-listings.controller";
 import { AdminListingsService } from "@modules/user/service/admin-listings.service";
-import { IUpdateListingVisibilityDto } from "@modules/user/types/admin-listings.types";
+import { IUpdateListingVisibilityDto, IBulkUpdateListingVisibilityDto } from "@modules/user/types/admin-listings.types";
 
 export default async function adminListingsRoutes(fastify: FastifyInstance) {
     const service = new AdminListingsService();
@@ -11,9 +11,16 @@ export default async function adminListingsRoutes(fastify: FastifyInstance) {
     const preHandler = [authenticate, authorizeAdmin];
 
     fastify.get("/admin/listings", { preHandler }, controller.listListings.bind(controller));
+
     fastify.patch<{ Params: { id: string }; Body: IUpdateListingVisibilityDto }>(
         "/admin/listings/:id/public-visibility",
         { preHandler },
         controller.updatePublicVisibility.bind(controller),
+    );
+
+    fastify.patch<{ Body: IBulkUpdateListingVisibilityDto }>(
+        "/admin/listings/bulk-visibility",
+        { preHandler },
+        controller.bulkUpdatePublicVisibility.bind(controller),
     );
 }

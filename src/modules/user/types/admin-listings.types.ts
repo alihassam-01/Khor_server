@@ -17,3 +17,9 @@ export type IUpdateListingVisibilityDto = {
     is_public_visible: boolean;
     visibility_note?: string | null;
 };
+
+export type IBulkUpdateListingVisibilityDto = {
+    is_public_visible: boolean;
+    /** "hotel" | "restaurant" | "all" — defaults to "all" */
+    type?: "hotel" | "restaurant" | "all";
+};
