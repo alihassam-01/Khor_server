@@ -70,7 +70,7 @@ import { VendorSubscriptionService } from "./listing/vendor-subscription.service
 
 export class AuthService {
     private auditLogService = new AuditLogService();
-    private listingSubscriptionService = new VendorSubscriptionService();
+    private vendorSubscriptionService = new VendorSubscriptionService();
 
     constructor(
         private userRepository: Repository<User>,
@@ -202,7 +202,7 @@ export class AuthService {
             auto_confirm_paid_bookings: false,
         });
         await hotelDetailsRepo.save(hotelDetails);
-        await this.listingSubscriptionService.activate(em, savedListing, {
+        await this.vendorSubscriptionService.activate(em, savedListing, {
             subscription_type: SubscriptionType.FREE,
         });
 

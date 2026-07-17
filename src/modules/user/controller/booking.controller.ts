@@ -1,4 +1,4 @@
-﻿import { FastifyReply, FastifyRequest } from "fastify";
+import { FastifyReply, FastifyRequest } from "fastify";
 import { UserRole } from "@common/enums/user.enums";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
@@ -471,5 +471,23 @@ export class BookingController {
     ) {
         const ranges = await this.bookingService.getBookedDatesForRoomType(req.params.roomTypeId);
         reply.send(ranges);
+    }
+
+    async getOfflineBookingAnalytics(
+        req: FastifyRequest<{ Querystring: { month?: string; year?: string; listingId?: string } }>,
+        reply: FastifyReply,
+    ) {
+        try {
+            const { month, year, listingId } = req.query;
+            const parsedMonth = month && month !== "0" && month !== "all" ? parseInt(month) : undefined;
+            const data = await this.bookingService.getOfflineBookingAnalytics(
+                parsedMonth,
+                year ? parseInt(year) : undefined,
+                listingId
+            );
+            reply.status(200).send(data);
+        } catch (error: any) {
+            reply.status(error.statusCode || 500).send({ message: error.message });
+        }
     }
 }

@@ -9,7 +9,6 @@ import type {
 import type { ListingMediaRole, ListingType } from "@common/enums/listing.enums";
 import type { Review } from "@modules/user/entity/review/review.entity";
 import type { Location } from "@modules/user/entity/location";
-import type { ListingSubscription } from "@modules/user/entity/listing";
 
 /** A single piece of media to attach to a listing on create/update. */
 export interface IMediaInput {
@@ -76,6 +75,8 @@ export interface IListingUpdatePayload {
     ext?: Record<string, unknown>;
 }
 
+import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
+
 /** Snapshot used by `toDTO` to assemble the legacy response shape. */
 export interface IListingViewModel {
     listing: Listing;
@@ -83,12 +84,12 @@ export interface IListingViewModel {
     media: ListingMedia[];
     room_types: HotelRoomType[];
     promotions: HotelPromotion[];
-    current_subscription: ListingSubscription | null;
+    current_subscription: VendorSubscription | null;
     linked_listing?: Listing | null;
     linked_contact?: ListingContact | null;
     linked_location?: Location | null;
     linked_location_name?: string;
-    linked_subscription?: ListingSubscription | null;
+    linked_subscription?: VendorSubscription | null;
     reviews: Review[];
     location_name?: string;
 }

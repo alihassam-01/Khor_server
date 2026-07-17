@@ -3932,4 +3932,57 @@ export class BookingService {
             end: booking.check_out_date,
         }));
     }
+
+    async getOfflineBookingAnalytics(month?: number, year?: number, listingId?: string) {
+        const query = this.bookingRepo.createQueryBuilder("booking")
+            .innerJoinAndSelect("booking.listing", "listing")
+            .where("booking.source = :source", { source: BookingSource.PARTNER_MANUAL });
+
+        if (year) {
+            if (month) {
+                const startDate = new Date(year, month - 1, 1);
+                const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+                query.andWhere("booking.created_at >= :startDate AND booking.created_at <= :endDate", { startDate, endDate });
+            } else {
+                const startDate = new Date(year, 0, 1);
+                const endDate = new Date(year, 11, 31, 23, 59, 59, 999);
+                query.andWhere("booking.created_at >= :startDate AND booking.created_at <= :endDate", { startDate, endDate });
+            }
+        }
+
+        if (listingId) {
+            query.andWhere("booking.listing_id = :listingId", { listingId });
+        }
+
+        const bookings = await query.getMany();
+
+        const totalBookings = bookings.length;
+        const totalAmount = bookings.reduce((sum, b) => sum + Number(b.total_amount || 0), 0);
+        const totalGuests = bookings.reduce((sum, b) => sum + (b.guest_count || 0), 0);
+
+        const byHotelMap = new Map<string, any>();
+        for (const b of bookings) {
+            const id = b.listing_id;
+            if (!byHotelMap.has(id)) {
+                byHotelMap.set(id, {
+                    hotelId: id,
+                    hotelName: b.listing?.name || "Unknown Hotel",
+                    bookingsCount: 0,
+                    totalAmount: 0,
+                    totalGuests: 0
+                });
+            }
+            const stat = byHotelMap.get(id);
+            stat.bookingsCount += 1;
+            stat.totalAmount += Number(b.total_amount || 0);
+            stat.totalGuests += (b.guest_count || 0);
+        }
+
+        return {
+            totalBookings,
+            totalAmount: Number(totalAmount.toFixed(2)),
+            totalGuests,
+            byHotel: Array.from(byHotelMap.values())
+        };
+    }
 }

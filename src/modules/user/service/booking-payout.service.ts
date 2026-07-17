@@ -4,6 +4,8 @@ import { ErrorCodes } from "@common/errors/error-codes";
 import { BookingPayout } from "@modules/user/entity/booking/booking-payout.entity";
 import { HotelBooking } from "@modules/user/entity/booking/hotel-booking.entity";
 import { PlatformSetting } from "@modules/user/entity/payment/platform-setting.entity";
+import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
+import { SubscriptionType } from "@common/enums/subscription.enums";
 import {
     BookingPaymentStatus,
     BookingRefundStatus,
@@ -16,7 +18,10 @@ export class BookingPayoutService {
     private payoutRepo = AppDataSource.getRepository(BookingPayout);
     private bookingRepo = AppDataSource.getRepository(HotelBooking);
     private platformSettingRepo = AppDataSource.getRepository(PlatformSetting);
+    private vendorSubRepo = AppDataSource.getRepository(VendorSubscription);
     private readonly payoutCommissionKey = "global_payout_commission_rate";
+    private readonly monthlyCommissionKey = "commission_rate_monthly";
+    private readonly freeCommissionKey = "commission_rate_free";
 
     private normalizeRate(rate: number | null | undefined): number {
         if (rate === null || rate === undefined || !Number.isFinite(rate) || rate <= 0) {
@@ -132,10 +137,29 @@ export class BookingPayoutService {
             throw new AppError("Cannot create a payout without a positive captured balance", 409, ErrorCodes.CONFLICT);
         }
 
-        const globalCommissionSetting = await this.platformSettingRepo.findOne({
-            where: { setting_key: this.payoutCommissionKey },
+        let targetCommissionKey = this.freeCommissionKey;
+        if (booking.listing?.vendor_id) {
+            const vendorSub = await this.vendorSubRepo.findOne({
+                where: { vendor_id: booking.listing.vendor_id },
+                order: { created_at: "DESC" },
+            });
+            if (vendorSub?.subscription_type === SubscriptionType.MONTHLY) {
+                targetCommissionKey = this.monthlyCommissionKey;
+            }
+        }
+
+        let commissionSetting = await this.platformSettingRepo.findOne({
+            where: { setting_key: targetCommissionKey },
         });
-        const rawGlobalRate = globalCommissionSetting ? Number(globalCommissionSetting.setting_value) : 0;
+
+        // Fallback to legacy global key if specific tier key is missing
+        if (!commissionSetting) {
+            commissionSetting = await this.platformSettingRepo.findOne({
+                where: { setting_key: this.payoutCommissionKey },
+            });
+        }
+
+        const rawGlobalRate = commissionSetting ? Number(commissionSetting.setting_value) : 0;
         const commissionRate = this.normalizeRate(rawGlobalRate);
         const grossAmount = netCapturedAmount;
         const commissionAmount = this.roundAmount(grossAmount * commissionRate);

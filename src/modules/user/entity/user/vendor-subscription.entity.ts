@@ -71,9 +71,6 @@ export class VendorSubscription {
     @Column({ type: "timestamptz", nullable: true })
     next_due_date?: Date | null;
 
-    @Column({ type: "int", default: 7 })
-    grace_period_days!: number;
-
     @Column({ type: "timestamptz", nullable: true })
     expires_at?: Date | null;
 

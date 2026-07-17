@@ -89,7 +89,7 @@ export class RestaurantService {
         opts: {
             paid_at?: string;
             next_due_date?: string;
-            grace_period_days?: number;
+
         },
     ): Promise<IRestaurantDTO> {
         return this.listings.updateSubscriptionBillingByAdmin(this.strategy, id, opts);

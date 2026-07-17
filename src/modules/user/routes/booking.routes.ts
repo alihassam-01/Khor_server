@@ -1,4 +1,4 @@
-﻿import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { authenticate } from "@middlewares/authenticate";
 import { authorizeAdmin } from "@middlewares/authorizeAdmin";
 import { RATE_LIMITS } from "@config/rate-limit.config";
@@ -207,6 +207,12 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         "/admin/bookings",
         { preHandler: [authenticate, authorizeAdmin] },
         bookingController.listAdminBookings.bind(bookingController),
+    );
+
+    fastify.get<{ Querystring: { month?: string; year?: string; listingId?: string } }>(
+        "/admin/bookings/offline-analytics",
+        { preHandler: [authenticate, authorizeAdmin] },
+        bookingController.getOfflineBookingAnalytics.bind(bookingController),
     );
 
     fastify.get<{ Params: IBookingIdParams }>(

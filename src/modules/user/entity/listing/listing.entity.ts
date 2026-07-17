@@ -18,7 +18,7 @@ import { Location } from "@modules/user/entity/location";
 import { User } from "@modules/user/entity/user/user.entity";
 import { ListingContact } from "./listing-contact.entity";
 import { ListingMedia } from "./listing-media.entity";
-import { ListingSubscription } from "./listing-subscription.entity";
+
 import { HotelDetails } from "./hotel-details.entity";
 import { RestaurantDetails } from "./restaurant-details.entity";
 import { HotelRoomType } from "./hotel-room-type.entity";
@@ -137,8 +137,6 @@ export class Listing {
     @OneToMany(() => HotelPromotion, (promotion) => promotion.listing, { cascade: true })
     promotions!: HotelPromotion[];
 
-    @OneToMany(() => ListingSubscription, (sub) => sub.listing, { cascade: true })
-    subscriptions!: ListingSubscription[];
 
     @CreateDateColumn({ type: "timestamptz" })
     created_at!: Date;

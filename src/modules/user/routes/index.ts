@@ -28,7 +28,8 @@ import adminListingsRoutes from "./admin-listings.routes";
 import adminPublicPolicyRoutes from "./admin-public-policy.routes";
 import publicPolicyRoutes from "./public-policy.routes";
 import { realtimeRoutes } from "./realtime.routes";
-
+import { adminVendorPaymentsRoutes } from "./admin-vendor-payments.routes";
+import { adminPlatformSettingsRoutes } from "./admin-platform-settings.routes";
 
 // Core routes - always enabled
 const routes = [
@@ -56,6 +57,8 @@ const routes = [
   adminPublicPolicyRoutes,
   publicPolicyRoutes,
   flightsRoutes, // Google Flights price scraper
+  adminVendorPaymentsRoutes,
+  adminPlatformSettingsRoutes,
 ];
 
 

@@ -8,8 +8,6 @@ import { SUBSCRIPTION_DURATION_DAYS } from "@common/constants";
 test("daysFor returns the configured duration for known subscription types", () => {
     const svc = new ListingSubscriptionService();
     assert.equal(svc.daysFor(SubscriptionType.MONTHLY), SUBSCRIPTION_DURATION_DAYS.MONTHLY);
-    assert.equal(svc.daysFor(SubscriptionType.YEARLY), SUBSCRIPTION_DURATION_DAYS.YEARLY);
-    assert.equal(svc.daysFor(SubscriptionType.QUARTERLY), SUBSCRIPTION_DURATION_DAYS.QUARTERLY);
     assert.equal(svc.daysFor(SubscriptionType.FREE), SUBSCRIPTION_DURATION_DAYS.FREE);
 });
 

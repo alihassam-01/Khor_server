@@ -282,8 +282,9 @@ export class RestaurantStrategy
             expires_at: subscriptionSource?.expires_at ?? undefined,
             paid_at: subscriptionSource?.paid_at ?? undefined,
             next_due_date: subscriptionSource?.next_due_date ?? undefined,
-            grace_period_days: subscriptionSource?.grace_period_days ?? 7,
+
             subscription_type: subscriptionSource?.subscription_type ?? undefined,
+            subscription_status: subscriptionSource?.status ?? undefined,
 
             is_paid: subscriptionSource?.is_paid ?? false,
             is_featured: listing.is_featured,
