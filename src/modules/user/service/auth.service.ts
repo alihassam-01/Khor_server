@@ -5,7 +5,8 @@ import { BusinessCapability } from "@modules/user/entity/user/business-capabilit
 import { BusinessProfile } from "@modules/user/entity/user/business-profile.entity";
 import { Location } from "@modules/user/entity/location";
 import { HotelDetails, Listing, ListingContact } from "@modules/user/entity/listing";
-import { EntityManager, Repository } from "typeorm";
+import { HotelBooking } from "@modules/user/entity/booking/hotel-booking.entity";
+import { EntityManager, Repository, IsNull } from "typeorm";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
 import * as crypto from "crypto";
@@ -478,6 +479,8 @@ export class AuthService {
         user.passwordResetJtiHash = this.hashResetTokenId(resetTokenId);
         await this.userRepository.save(user);
 
+        await this.linkOrphanedBookings(user.id, user.email, this.userRepository.manager);
+
         logInfo(`OTP verified successfully for user: ${email}`);
 
         if (!CONFIG.jwt.resetSecret) {
@@ -809,6 +812,8 @@ export class AuthService {
                 });
                 await em.save(UserProfile, profile);
 
+                await this.linkOrphanedBookings(saved.id, email, em);
+
                 logInfo(`New user registered via Google OAuth: ${email}`);
                 return saved;
             });
@@ -885,6 +890,14 @@ export class AuthService {
             partnerAccessStatus,
             approvedCapabilities: approvedCapabilities.map((capability) => capability.type),
         };
+    }
+
+    private async linkOrphanedBookings(userId: string, email: string, manager: EntityManager): Promise<void> {
+        await manager.getRepository(HotelBooking).update(
+            { guest_email: email, customer_user_id: IsNull() },
+            { customer_user_id: userId },
+        );
+        logInfo(`Linked orphaned bookings for user: ${email} (${userId})`);
     }
 }
 

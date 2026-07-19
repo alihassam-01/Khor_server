@@ -1,4 +1,4 @@
-﻿import { EntityManager } from "typeorm";
+import { EntityManager } from "typeorm";
 import { AppDataSource } from "@config/ormconfig";
 import {
     BookingAuditActorRole,
@@ -164,8 +164,8 @@ export class BookingBillService {
         if (!input.item_name?.trim()) {
             throw new AppError("item_name is required", 400, ErrorCodes.VALIDATION_ERROR);
         }
-        if (!(input.amount > 0)) {
-            throw new AppError("amount must be greater than zero", 400, ErrorCodes.VALIDATION_ERROR);
+        if (input.amount === 0) {
+            throw new AppError("amount cannot be zero", 400, ErrorCodes.VALIDATION_ERROR);
         }
 
         const bill = await AppDataSource.transaction(async (manager) => {
@@ -190,6 +190,49 @@ export class BookingBillService {
                 source: "vendor",
                 before_state: { bill_total_amount: previousTotal },
                 after_state: { bill_total_amount: this.roundAmount(previousTotal + Number(item.amount)) },
+                metadata: {
+                    bill_id: bill.id,
+                    bill_item_id: item.id,
+                    item_name: item.item_name,
+                    amount: Number(item.amount),
+                },
+            }, manager);
+
+            return this.loadBillByBookingId(booking.id, manager) as Promise<BookingBill>;
+        });
+
+        return this.toDTO(bill);
+    }
+
+    async removeVendorBookingBillItem(
+        bookingId: string,
+        itemId: string,
+        actor: AuthActor,
+    ): Promise<IBookingBillDTO> {
+        const bill = await AppDataSource.transaction(async (manager) => {
+            const booking = await this.loadOwnedBooking(bookingId, actor, manager);
+            const bill = await this.ensureBill(booking, actor, manager);
+
+            const item = await manager.getRepository(BookingBillItem).findOne({
+                where: { id: itemId, bill_id: bill.id },
+            });
+
+            if (!item) {
+                throw new AppError("Bill item not found", 404, ErrorCodes.NOT_FOUND);
+            }
+
+            const previousTotal = this.computeBillTotal(bill.items ?? []);
+
+            await manager.getRepository(BookingBillItem).remove(item);
+
+            await this.auditService.record({
+                booking_id: booking.id,
+                event_type: "booking_bill_item_removed_by_vendor" as any,
+                actor_user_id: actor.userId,
+                actor_role: BookingAuditActorRole.VENDOR,
+                source: "vendor",
+                before_state: { bill_total_amount: previousTotal },
+                after_state: { bill_total_amount: this.roundAmount(previousTotal - Number(item.amount)) },
                 metadata: {
                     bill_id: bill.id,
                     bill_item_id: item.id,

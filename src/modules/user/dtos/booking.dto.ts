@@ -1,4 +1,4 @@
-﻿import {
+import {
     BookingBillStatus,
     BookingCancellationStatus,
     BookingPaymentStatus,
@@ -78,6 +78,13 @@ export interface IBookingListingSummaryDTO {
     refund_cutoff_hours?: number | null;
     check_in_time?: string | null;
     check_out_time?: string | null;
+    linked_restaurant?: {
+        id: string;
+        name: string;
+        image?: string | null;
+        menu_images?: string[];
+        description?: string;
+    } | null;
 }
 
 export interface IBookingRoomTypeSummaryDTO {

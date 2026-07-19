@@ -410,3 +410,4 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
         };
     }
 }
+

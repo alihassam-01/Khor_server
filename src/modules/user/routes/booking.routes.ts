@@ -59,8 +59,21 @@ const writePublicSseEvent = (reply: FastifyReply, event: BookingRealtimeEvent) =
     reply.raw.write(`data: ${JSON.stringify(toPublicBookingRealtimeEvent(event))}\n\n`);
 };
 
-export async function bookingRoutes(fastify: FastifyInstance) {
+export const bookingRoutes = async (fastify: FastifyInstance) => {
     const bookingController = new BookingController();
+
+    // ==========================================
+    // Public Endpoints
+    // ==========================================
+
+    fastify.post<{ Body: { token: string } }>(
+        "/bookings/detach",
+        bookingController.detachBooking.bind(bookingController),
+    );
+
+    // ==========================================
+    // Customer Endpoints
+    // ==========================================
 
     fastify.post<{ Body: ICreateHotelBookingDTO }>(
         "/bookings/hotel/checkout",
@@ -189,6 +202,12 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         "/vendor/bookings/:id/bill/items",
         { preHandler: authenticate },
         bookingController.addVendorBookingBillItem.bind(bookingController),
+    );
+
+    fastify.delete<{ Params: IBookingIdParams & { itemId: string } }>(
+        "/vendor/bookings/:id/bill/items/:itemId",
+        { preHandler: authenticate },
+        bookingController.removeVendorBookingBillItem.bind(bookingController),
     );
 
     fastify.post<{ Params: IBookingIdParams; Body: IRecordBookingBillPaymentDTO }>(

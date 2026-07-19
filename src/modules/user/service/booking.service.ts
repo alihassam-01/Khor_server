@@ -27,6 +27,7 @@ import { HotelDetails } from "@modules/user/entity/listing/hotel-details.entity"
 import { HotelPromotion } from "@modules/user/entity/listing/hotel-promotion.entity";
 import { HotelRoomType } from "@modules/user/entity/listing/hotel-room-type.entity";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
+import { User } from "@modules/user/entity/user/user.entity";
 import {
     IBookingHoldDTO,
     IBookingTimelineEventDTO,
@@ -55,6 +56,7 @@ import { pickBestPromotion } from "./listing/hotel-promotion.util";
 import { NotificationService, type NotificationPayload } from "./notification.service";
 import { NotificationOutboxService } from "./notification-outbox.service";
 import { PayFastService } from "./payfast.service";
+import { generateDetachBookingToken, verifyDetachBookingToken } from "./detach-booking-token.util";
 
 const ACTIVE_BOOKING_STATUSES = [
     HotelBookingStatus.PENDING,
@@ -1240,9 +1242,20 @@ export class BookingService {
                     || await this.shouldAutoConfirmPaidBooking(manager, dto.listing_id)
                 );
 
+            let linkedUserId: string | null = source === BookingSource.CUSTOMER_WEB ? actor.userId : null;
+
+            if (source === BookingSource.PARTNER_MANUAL && dto.guest_email) {
+                const existingUser = await manager.getRepository(User).findOne({
+                    where: { email: dto.guest_email.trim().toLowerCase(), isVerified: true },
+                });
+                if (existingUser) {
+                    linkedUserId = existingUser.id;
+                }
+            }
+
             const booking = manager.getRepository(HotelBooking).create({
                 source,
-                customer_user_id: source === BookingSource.CUSTOMER_WEB ? actor.userId : null,
+                customer_user_id: linkedUserId,
                 guest_name: dto.guest_name.trim(),
                 guest_email: dto.guest_email.trim().toLowerCase(),
                 guest_phone: dto.guest_phone.trim(),
@@ -1430,6 +1443,17 @@ export class BookingService {
                 booking.booking_status === HotelBookingStatus.CONFIRMED ? "confirmed" : "created",
             );
         }
+
+        if (source === BookingSource.PARTNER_MANUAL && booking.guest.email) {
+            if (booking.customer_user_id) {
+                // Was auto-linked
+                this.sendBookingLinkedNotice(booking).catch(err => logWarn(`Failed to send booking linked notice: ${err}`));
+            } else {
+                // Send signup invitation (with rate limit check)
+                this.sendGuestSignupInvitation(booking).catch(err => logWarn(`Failed to send guest signup invitation: ${err}`));
+            }
+        }
+
         return booking;
     }
 
@@ -1447,6 +1471,8 @@ export class BookingService {
             .leftJoinAndSelect("listing.location", "listing_location")
             .leftJoinAndSelect("listing.contact", "listing_contact")
             .leftJoinAndSelect("listing.hotel_details", "listing_hotel_details")
+            .leftJoinAndMapOne("booking.linked_restaurant", Listing, "linked_restaurant", "linked_restaurant.vendor_id = listing.vendor_id AND linked_restaurant.type = 'restaurant'")
+            .leftJoinAndSelect("linked_restaurant.media", "linked_restaurant_media")
             .leftJoinAndSelect("listing.media", "listing_media")
             .leftJoinAndSelect("listing.vendor", "listing_vendor")
             .leftJoinAndSelect("booking.room_type", "room_type")
@@ -1488,6 +1514,8 @@ export class BookingService {
             .leftJoinAndSelect("listing.location", "listing_location")
             .leftJoinAndSelect("listing.contact", "listing_contact")
             .leftJoinAndSelect("listing.hotel_details", "listing_hotel_details")
+            .leftJoinAndMapOne("booking.linked_restaurant", Listing, "linked_restaurant", "linked_restaurant.vendor_id = listing.vendor_id AND linked_restaurant.type = 'restaurant'")
+            .leftJoinAndSelect("linked_restaurant.media", "linked_restaurant_media")
             .leftJoinAndSelect("listing.media", "listing_media")
             .leftJoinAndSelect("listing.vendor", "listing_vendor")
             .leftJoinAndSelect("booking.room_type", "room_type")
@@ -1655,6 +1683,13 @@ export class BookingService {
                     ?? null,
                 check_in_time: booking.listing.hotel_details?.check_in_time ?? null,
                 check_out_time: booking.listing.hotel_details?.check_out_time ?? null,
+                linked_restaurant: (booking as any).linked_restaurant ? {
+                    id: (booking as any).linked_restaurant.id,
+                    name: (booking as any).linked_restaurant.name,
+                    image: (booking as any).linked_restaurant.media?.find((m: any) => m.role === "cover")?.url ?? null,
+                    menu_images: (booking as any).linked_restaurant.media?.filter((m: any) => m.role === "menu").map((m: any) => m.url) ?? [],
+                    description: (booking as any).linked_restaurant.description,
+                } : null,
             },
             room_type: {
                 id: booking.room_type.id,
@@ -2037,6 +2072,8 @@ export class BookingService {
             .leftJoinAndSelect("listing.location", "listing_location")
             .leftJoinAndSelect("listing.contact", "listing_contact")
             .leftJoinAndSelect("listing.hotel_details", "listing_hotel_details")
+            .leftJoinAndMapOne("booking.linked_restaurant", Listing, "linked_restaurant", "linked_restaurant.vendor_id = listing.vendor_id AND linked_restaurant.type = 'restaurant'")
+            .leftJoinAndSelect("linked_restaurant.media", "linked_restaurant_media")
             .leftJoinAndSelect("listing.media", "listing_media")
             .leftJoinAndSelect("listing.vendor", "listing_vendor")
             .leftJoinAndSelect("booking.room_type", "room_type")
@@ -3984,5 +4021,111 @@ export class BookingService {
             totalGuests,
             byHotel: Array.from(byHotelMap.values())
         };
+    }
+
+    private async sendGuestSignupInvitation(booking: IHotelBookingDTO): Promise<void> {
+        const emailSentAudit = await this.bookingRepo.manager.getRepository(BookingAuditLog).findOne({
+            where: {
+                booking_id: booking.id,
+                event_type: "guest_signup_invitation_sent",
+            },
+            order: { created_at: "DESC" },
+        });
+
+        if (emailSentAudit) {
+            const timeSinceLastEmail = Date.now() - emailSentAudit.created_at.getTime();
+            if (timeSinceLastEmail < 24 * 60 * 60 * 1000) {
+                logInfo(`Skipping guest signup invitation for ${booking.guest.email} (sent within 24h)`);
+                return;
+            }
+        }
+
+        const signupUrl = `${CONFIG.web_domain.url}/signup?email=${encodeURIComponent(booking.guest.email)}`;
+        const detachToken = generateDetachBookingToken(booking.id, booking.guest.email);
+        const detachUrl = `${CONFIG.web_domain.url}/detach-booking?token=${detachToken}`;
+
+        await this.emailService.sendGuestSignupInvitationEmail({
+            to: booking.guest.email,
+            guestName: booking.guest.name,
+            hotelName: booking.listing.name || "Hotel",
+            bookingNumber: booking.booking_number,
+            checkInDate: booking.check_in_date,
+            checkOutDate: booking.check_out_date,
+            totalAmount: Number(booking.total_amount),
+            signupUrl,
+            detachUrl,
+        });
+
+        await this.auditService.record({
+            booking_id: booking.id,
+            event_type: "guest_signup_invitation_sent",
+            actor_user_id: null,
+            actor_role: BookingAuditActorRole.SYSTEM,
+            source: booking.source,
+            metadata: { guest_email: booking.guest.email },
+        }, this.bookingRepo.manager);
+    }
+
+    private async sendBookingLinkedNotice(booking: IHotelBookingDTO): Promise<void> {
+        const loginUrl = `${CONFIG.web_domain.url}/login`;
+        const detachToken = generateDetachBookingToken(booking.id, booking.guest.email);
+        const detachUrl = `${CONFIG.web_domain.url}/detach-booking?token=${detachToken}`;
+
+        await this.emailService.sendBookingLinkedNoticeEmail({
+            to: booking.guest.email,
+            guestName: booking.guest.name,
+            hotelName: booking.listing.name || "Hotel",
+            bookingNumber: booking.booking_number,
+            checkInDate: booking.check_in_date,
+            checkOutDate: booking.check_out_date,
+            totalAmount: Number(booking.total_amount),
+            loginUrl,
+            detachUrl,
+        });
+
+        await this.auditService.record({
+            booking_id: booking.id,
+            event_type: "booking_linked_notice_sent",
+            actor_user_id: null,
+            actor_role: BookingAuditActorRole.SYSTEM,
+            source: booking.source,
+            metadata: { guest_email: booking.guest.email },
+        }, this.bookingRepo.manager);
+    }
+
+    public async detachBooking(token: string): Promise<{ success: boolean; message: string }> {
+        const payload = verifyDetachBookingToken(token);
+        const bookingId = payload.sub;
+        const email = payload.email;
+
+        return this.bookingRepo.manager.transaction(async (manager) => {
+            const booking = await manager.getRepository(HotelBooking).findOne({
+                where: { id: bookingId },
+            });
+
+            if (!booking) {
+                throw new AppError("Booking not found", 404, ErrorCodes.NOT_FOUND);
+            }
+
+            if (booking.guest_email !== email) {
+                throw new AppError("Token email does not match booking email", 403, ErrorCodes.FORBIDDEN);
+            }
+
+            // Remove association
+            booking.customer_user_id = null;
+            booking.guest_email = `detached_${Date.now()}@gokhor.com`; // Placeholder to stop emails but keep it "unique-ish"
+            await manager.getRepository(HotelBooking).save(booking);
+
+            await this.auditService.record({
+                booking_id: booking.id,
+                event_type: "booking_detached",
+                actor_user_id: null,
+                actor_role: BookingAuditActorRole.SYSTEM,
+                source: booking.source,
+                metadata: { original_guest_email: email },
+            }, manager);
+
+            return { success: true, message: "Booking successfully detached" };
+        });
     }
 }

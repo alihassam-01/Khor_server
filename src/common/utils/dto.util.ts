@@ -23,5 +23,10 @@ export function sanitizePublicListingDTO<T extends Record<string, any>>(dto: T):
         delete sanitized.links.map_link;
     }
     
+    // Remove nested vendor object if it leaked through
+    if (sanitized.vendor) {
+        delete sanitized.vendor;
+    }
+    
     return sanitized as T;
 }

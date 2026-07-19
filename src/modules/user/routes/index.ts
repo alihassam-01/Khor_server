@@ -10,6 +10,7 @@ import userRoutes from "./user.routes";
 import { contactRoutes } from "./contact.routes";
 import { hotelRoutes } from "./hotel.routes";
 import { restaurantRoutes } from "./restaurant.routes";
+import { restaurantOrderRoutes } from "./restaurant-order.routes";
 import { adsRoutes } from "./ads.routes";
 
 import propertyRoutes from "./property.routes";
@@ -40,6 +41,7 @@ const routes = [
   contactRoutes,
   hotelRoutes, // Admin hotel management
   restaurantRoutes, // Admin restaurant management
+  restaurantOrderRoutes,
   adsRoutes, // Public ads endpoint
 
   propertyRoutes, // Generic property routes

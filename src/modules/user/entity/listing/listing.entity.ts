@@ -38,6 +38,7 @@ import { HotelPromotion } from "./hotel-promotion.entity";
 @Entity("listings")
 @Index(["type", "status", "location_id"])
 @Index(["vendor_id"])
+@Index("idx_listings_vendor_type", ["vendor_id", "type"], { unique: true, where: "deleted_at IS NULL" })
 @Index(["is_featured", "status", "location_id"])
 export class Listing {
     @PrimaryGeneratedColumn("uuid")
