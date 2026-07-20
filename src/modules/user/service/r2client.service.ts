@@ -278,6 +278,19 @@ export class R2ClientService {
   };
 
   /**
+   * Fetch a paginated list of all non-deleted images from the database
+   */
+  getAllImages = async (page: number = 1, limit: number = 50): Promise<{ images: S3ImagesEntity[], total: number }> => {
+    const [images, total] = await this.s3Image.findAndCount({
+      where: { isDeleted: false },
+      order: { dateUploaded: "DESC" },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { images, total };
+  };
+
+  /**
    * Get the max allowed file size
    */
   getMaxFileSize(): number {
