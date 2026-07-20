@@ -38,7 +38,7 @@ export class VendorSubscription {
         type: "enum",
         enum: SubscriptionType,
         enumName: "listing_subscriptions_subscription_type_enum",
-        default: SubscriptionType.FREE,
+        default: SubscriptionType.MONTHLY,
     })
     subscription_type!: SubscriptionType;
 
