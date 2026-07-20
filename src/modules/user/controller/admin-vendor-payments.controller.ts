@@ -44,8 +44,7 @@ export class AdminVendorPaymentsController {
             const params = req.params as any;
             const vendorId = params.vendorId;
             const body = req.body as any;
-            const subscriptionType = body.subscription_type;
-            const data = await this.service.updateSubscriptionType(vendorId, subscriptionType);
+            const data = await this.service.updateSubscriptionType(vendorId, body);
             reply.status(200).send(data);
         } catch (error: any) {
             reply.status(error.statusCode || 500).send({ message: error.message });
