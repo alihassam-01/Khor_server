@@ -574,7 +574,6 @@ export class BookingService {
             .createQueryBuilder("payment")
             .innerJoinAndSelect("payment.booking", "booking")
             .where("payment.payment_status = :status", { status: BookingPaymentStatus.PENDING })
-            .andWhere("booking.booking_status = :bookingStatus", { bookingStatus: HotelBookingStatus.PENDING })
             .andWhere("(payment.provider = :provider OR payment.provider = :redirectProvider)", {
                 provider: "payfast",
                 redirectProvider: "payfast_redirect",
