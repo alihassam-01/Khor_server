@@ -1,3 +1,4 @@
+import { sanitizePublicListingDTO } from "@common/utils/dto.util";
 import { FastifyRequest, FastifyReply } from "fastify";
 import { HotelService } from "@modules/user/service/hotel.service";
 import { ICreateHotelDTO, IUpdateHotelDTO, IPaginatedHotelsResponse } from "@modules/user/dtos";
@@ -216,7 +217,7 @@ export class HotelController {
             throw new AppError("Hotel not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        reply.send(hotel);
+        reply.send(sanitizePublicListingDTO(hotel));
     }
 
     async getAllHotels(
@@ -259,6 +260,7 @@ export class HotelController {
             priceMax: priceMax ? parseFloat(priceMax) : undefined,
             isFeatured: isFeatured === 'true',
         });
+        result.items = result.items.map((hotel) => sanitizePublicListingDTO(hotel));
         reply.send(result);
     }
 
@@ -446,11 +448,11 @@ export class HotelController {
     ) {
         const { locationId } = req.params;
         const hotels = await this.hotelService.getFeaturedAds(locationId);
-        reply.send(hotels);
+        reply.send(hotels.map(h => sanitizePublicListingDTO(h)));
     }
 
     async getPremiumAds(_req: FastifyRequest, reply: FastifyReply) {
         const hotels = await this.hotelService.getPremiumAds();
-        reply.send(hotels);
+        reply.send(hotels.map(h => sanitizePublicListingDTO(h)));
     }
 }

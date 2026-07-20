@@ -1,5 +1,5 @@
 type BookingRealtimeEvent = {
-    type: "inventory_changed" | "booking_changed" | "hold_changed";
+    type: "inventory_changed" | "booking_changed" | "hold_changed" | "restaurant_order_changed";
     action: string;
     listing_id: string;
     room_type_id?: string | null;

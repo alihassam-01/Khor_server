@@ -18,7 +18,7 @@ import { Location } from "@modules/user/entity/location";
 import { User } from "@modules/user/entity/user/user.entity";
 import { ListingContact } from "./listing-contact.entity";
 import { ListingMedia } from "./listing-media.entity";
-import { ListingSubscription } from "./listing-subscription.entity";
+
 import { HotelDetails } from "./hotel-details.entity";
 import { RestaurantDetails } from "./restaurant-details.entity";
 import { HotelRoomType } from "./hotel-room-type.entity";
@@ -38,6 +38,7 @@ import { HotelPromotion } from "./hotel-promotion.entity";
 @Entity("listings")
 @Index(["type", "status", "location_id"])
 @Index(["vendor_id"])
+@Index("idx_listings_vendor_type", ["vendor_id", "type"], { unique: true, where: "deleted_at IS NULL" })
 @Index(["is_featured", "status", "location_id"])
 export class Listing {
     @PrimaryGeneratedColumn("uuid")
@@ -137,8 +138,6 @@ export class Listing {
     @OneToMany(() => HotelPromotion, (promotion) => promotion.listing, { cascade: true })
     promotions!: HotelPromotion[];
 
-    @OneToMany(() => ListingSubscription, (sub) => sub.listing, { cascade: true })
-    subscriptions!: ListingSubscription[];
 
     @CreateDateColumn({ type: "timestamptz" })
     created_at!: Date;

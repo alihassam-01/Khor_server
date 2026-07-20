@@ -11,3 +11,4 @@ export * from "./support-ticket-message.entity";
 export * from "./booking-refund.entity";
 export * from "./booking-audit-log.entity";
 export * from "./booking-status-history.entity";
+export * from "./restaurant-order.entity";

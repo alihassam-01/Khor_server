@@ -3,8 +3,8 @@ import { EntityManager, In, SelectQueryBuilder } from "typeorm";
 import {
     Listing,
     ListingContact,
-    ListingSubscription,
 } from "@modules/user/entity/listing";
+import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
 import { User } from "@modules/user/entity/user/user.entity";
 import { Location } from "@modules/user/entity/location";
 import { Review } from "@modules/user/entity/review/review.entity";
@@ -30,7 +30,7 @@ import {
     IListingViewModel,
 } from "./listing-strategy.types";
 import { ListingMediaService } from "./listing-media.service";
-import { ListingSubscriptionService } from "./listing-subscription.service";
+import { VendorSubscriptionService } from "./vendor-subscription.service";
 
 const REVIEW_PREVIEW_LIMIT = 20;
 
@@ -69,7 +69,7 @@ export interface IListingQueryParams {
 export class ListingService {
     private listingRepo = AppDataSource.getRepository(Listing);
     private mediaService = new ListingMediaService();
-    private subscriptionService = new ListingSubscriptionService();
+    private subscriptionService = new VendorSubscriptionService();
     private emailService = new SendEmail();
 
     // ---------- helpers ----------
@@ -136,7 +136,7 @@ export class ListingService {
 
         const sub = await this.subscriptionService.getCurrent(
             em ?? AppDataSource.manager,
-            listingId,
+            listing.vendor_id,
         );
 
         const reviewRepo = (em ?? AppDataSource.manager).getRepository(Review);
@@ -340,7 +340,7 @@ export class ListingService {
         }
 
         const [rows, total] = await qb.skip(skip).take(limit).getManyAndCount();
-        const subs = await this.bulkLoadSubscriptions(rows.map((r) => r.id));
+        const subs = await this.bulkLoadSubscriptions(rows);
         const reviews = await this.bulkLoadReviewPreviews(rows.map((r) => r.id));
 
         const items = rows.map((listing) => strategy.toDTO({
@@ -359,16 +359,30 @@ export class ListingService {
     }
 
     /** Bulk version of `subscriptionService.getCurrent` for the list endpoints. */
-    private async bulkLoadSubscriptions(listingIds: string[]): Promise<Map<string, ListingSubscription>> {
-        if (listingIds.length === 0) return new Map();
-        const rows = await AppDataSource.getRepository(ListingSubscription)
+    private async bulkLoadSubscriptions(listings: Listing[]): Promise<Map<string, VendorSubscription>> {
+        if (listings.length === 0) return new Map();
+        
+        const vendorIds = [...new Set(listings.map(l => l.vendor_id).filter(Boolean))] as string[];
+        if (vendorIds.length === 0) return new Map();
+
+        const rows = await AppDataSource.getRepository(VendorSubscription)
             .createQueryBuilder("sub")
-            .where("sub.listing_id IN (:...ids)", { ids: listingIds })
+            .where("sub.vendor_id IN (:...ids)", { ids: vendorIds })
             .orderBy("sub.created_at", "DESC")
             .getMany();
-        const out = new Map<string, ListingSubscription>();
+            
+        // First map vendor_id -> VendorSubscription (latest one due to DESC sort)
+        const vendorSubs = new Map<string, VendorSubscription>();
         for (const r of rows) {
-            if (!out.has(r.listing_id)) out.set(r.listing_id, r);
+            if (!vendorSubs.has(r.vendor_id)) vendorSubs.set(r.vendor_id, r);
+        }
+
+        // Then map listing_id -> VendorSubscription
+        const out = new Map<string, VendorSubscription>();
+        for (const listing of listings) {
+            if (listing.vendor_id && vendorSubs.has(listing.vendor_id)) {
+                out.set(listing.id, vendorSubs.get(listing.vendor_id)!);
+            }
         }
         return out;
     }
@@ -427,9 +441,9 @@ export class ListingService {
             .leftJoinAndSelect("listing.media", "media")
             .leftJoinAndSelect("listing.location", "location")
             .innerJoin(
-                ListingSubscription,
+                VendorSubscription,
                 "sub",
-                "sub.listing_id = listing.id AND sub.is_paid = true AND sub.subscription_type != :free",
+                "sub.vendor_id = listing.vendor_id AND sub.is_paid = true AND sub.subscription_type != :free",
                 { free: SubscriptionType.FREE },
             );
         if (strategy.type === ListingType.HOTEL) {
@@ -443,7 +457,7 @@ export class ListingService {
             .orderBy("listing.created_at", "DESC");
 
         const rows = await qb.getMany();
-        const subs = await this.bulkLoadSubscriptions(rows.map((r) => r.id));
+        const subs = await this.bulkLoadSubscriptions(rows);
         const reviews = await this.bulkLoadReviewPreviews(rows.map((r) => r.id));
         return rows.map((listing) => strategy.toDTO({
             listing,
@@ -480,7 +494,7 @@ export class ListingService {
             .orderBy("listing.created_at", "DESC");
 
         const rows = await qb.getMany();
-        const subs = await this.bulkLoadSubscriptions(rows.map((r) => r.id));
+        const subs = await this.bulkLoadSubscriptions(rows);
         const reviews = await this.bulkLoadReviewPreviews(rows.map((r) => r.id));
         return rows.map((listing) => strategy.toDTO({
             listing,
@@ -497,18 +511,18 @@ export class ListingService {
 
     async findExpired<TDTO>(strategy: IListingStrategy<any, any, TDTO>): Promise<TDTO[]> {
         const now = new Date();
-        const expiredSubs = await AppDataSource.getRepository(ListingSubscription)
+        const expiredSubs = await AppDataSource.getRepository(VendorSubscription)
             .createQueryBuilder("sub")
             .where("(sub.expires_at IS NULL OR sub.expires_at < :now)", { now })
             .getMany();
-        const ids = Array.from(new Set(expiredSubs.map((s) => s.listing_id)));
-        if (ids.length === 0) return [];
+        const vendorIds = Array.from(new Set(expiredSubs.map((s) => s.vendor_id)));
+        if (vendorIds.length === 0) return [];
         const rows = await this.listingRepo.find({
-            where: { id: In(ids), type: strategy.type },
+            where: { vendor_id: In(vendorIds), type: strategy.type },
             relations: ["contact", "media", "location", ...this.extensionRelationFor(strategy.type)],
             order: { created_at: "DESC" },
         });
-        const subs = await this.bulkLoadSubscriptions(rows.map((r) => r.id));
+        const subs = await this.bulkLoadSubscriptions(rows);
         const reviews = await this.bulkLoadReviewPreviews(rows.map((r) => r.id));
         return rows.map((listing) => strategy.toDTO({
             listing,
@@ -611,12 +625,12 @@ export class ListingService {
             } else if (payload.subscription_type !== undefined) {
                 // Plan/type changed without activation — patch the most recent
                 // subscription so future renewals use the new defaults.
-                const current = await this.subscriptionService.getCurrent(em, listing.id);
+                const current = await this.subscriptionService.getCurrent(em, listing.vendor_id!);
                 if (current) {
                     if (payload.subscription_type !== undefined) {
                         current.subscription_type = payload.subscription_type as SubscriptionType;
                     }
-                    await em.getRepository(ListingSubscription).save(current);
+                    await em.getRepository(VendorSubscription).save(current);
                 }
             }
 
@@ -753,7 +767,7 @@ export class ListingService {
                 throw new AppError(`${strategy.type} not found or access denied`, 404, ErrorCodes.NOT_FOUND);
             }
 
-            const resolution = await this.subscriptionService.resolvePlan(em, {
+            const resolution = await this.subscriptionService.resolvePlan(em, vendorId, {
                 subscription_type: opts.subscription_type ?? null,
                 is_featured: listing.is_featured,
             });
@@ -786,7 +800,7 @@ export class ListingService {
         opts: {
             paid_at?: string;
             next_due_date?: string;
-            grace_period_days?: number;
+
         },
     ): Promise<TDTO> {
         return AppDataSource.transaction(async (em) => {

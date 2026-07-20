@@ -1,10 +1,12 @@
 import { EntityManager, LessThanOrEqual, MoreThan } from "typeorm";
 import { Listing } from "@modules/user/entity/listing/listing.entity";
+import { PlatformSettingsService } from "@modules/user/service/platform-settings.service";
 
 import { VendorSubscription } from "@modules/user/entity/user/vendor-subscription.entity";
 import {
     ListingStatus,
     ListingSubscriptionStatus,
+    ListingType,
 } from "@common/enums/listing.enums";
 import { SubscriptionType } from "@common/enums/subscription.enums";
 import { FEATURED_AD_PRICE, SUBSCRIPTION_DURATION_DAYS } from "@common/constants";
@@ -22,6 +24,8 @@ export interface IPlanResolution {
 }
 
 export class VendorSubscriptionService {
+    private platformSettingsService = new PlatformSettingsService();
+
     private parseDateInput(value?: string | Date | null): Date | null {
         if (!value) return null;
         const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
@@ -39,12 +43,6 @@ export class VendorSubscriptionService {
             return next;
         }
         switch (String(type ?? SubscriptionType.MONTHLY).toLowerCase()) {
-            case SubscriptionType.YEARLY:
-                next.setFullYear(next.getFullYear() + 1);
-                return next;
-            case SubscriptionType.QUARTERLY:
-                next.setMonth(next.getMonth() + 3);
-                return next;
             case SubscriptionType.FREE:
                 next.setDate(next.getDate() + this.daysFor(type));
                 return next;
@@ -70,8 +68,9 @@ export class VendorSubscriptionService {
 
     async getCurrent(
         em: EntityManager,
-        vendorId: string,
+        vendorId: string | null | undefined,
     ): Promise<VendorSubscription | null> {
+        if (!vendorId) return null;
         return em.getRepository(VendorSubscription).findOne({
             where: { vendor_id: vendorId },
         });
@@ -84,14 +83,14 @@ export class VendorSubscriptionService {
     }
 
     async resolvePlan(
-        _em: EntityManager,
+        em: EntityManager,
+        vendorId: string | null | undefined,
         opts: {
             subscription_type?: SubscriptionType | string | null;
             is_featured?: boolean;
         },
     ): Promise<IPlanResolution> {
-        let finalType = SubscriptionType.FREE;
-        const duration_days = this.daysFor(finalType);
+        let finalType = SubscriptionType.MONTHLY;
         let base_amount = 0;
 
         if (opts.subscription_type) {
@@ -99,13 +98,37 @@ export class VendorSubscriptionService {
             if (Object.values(SubscriptionType).includes(up as any) || Object.values(SubscriptionType).includes(opts.subscription_type as any)) {
                 finalType = (up === SubscriptionType.FREE.toUpperCase() ? SubscriptionType.FREE :
                              up === SubscriptionType.MONTHLY.toUpperCase() ? SubscriptionType.MONTHLY :
-                             up === SubscriptionType.QUARTERLY.toUpperCase() ? SubscriptionType.QUARTERLY :
-                             up === SubscriptionType.YEARLY.toUpperCase() ? SubscriptionType.YEARLY :
-                             SubscriptionType.FREE);
+                             SubscriptionType.MONTHLY);
             }
         }
 
-        const featured_amount = opts.is_featured ? FEATURED_AD_PRICE : 0;
+        const duration_days = this.daysFor(finalType);
+
+        if (finalType !== SubscriptionType.FREE && vendorId) {
+            const baseFeeStr = await this.platformSettingsService.getSetting("subscription_monthly_base_fee", "2500", em);
+            const carAddonStr = await this.platformSettingsService.getSetting("subscription_car_addon_fee", "2500", em);
+            const tourAddonStr = await this.platformSettingsService.getSetting("subscription_tour_addon_fee", "2500", em);
+
+            let baseFee = Number(baseFeeStr) || 2500;
+            const carAddon = Number(carAddonStr) || 2500;
+            const tourAddon = Number(tourAddonStr) || 2500;
+
+            // Find all active/pending listings for this vendor
+            const listings = await em.getRepository(Listing).find({
+                where: { vendor_id: vendorId, is_active: true }
+            });
+
+            const hasCar = listings.some(l => l.type === ListingType.VEHICLE);
+            const hasTour = listings.some(l => l.type === ListingType.TOUR);
+
+            if (hasCar) baseFee += carAddon;
+            if (hasTour) baseFee += tourAddon;
+
+            base_amount = baseFee;
+        }
+
+        const featuredAdPriceStr = await this.platformSettingsService.getSetting("featured_ad_price", String(FEATURED_AD_PRICE), em);
+        const featured_amount = opts.is_featured ? (Number(featuredAdPriceStr) || FEATURED_AD_PRICE) : 0;
         const total_amount = base_amount + featured_amount;
 
         return {
@@ -148,7 +171,7 @@ export class VendorSubscriptionService {
             paid_at?: string | Date | null;
             next_due_date?: string | Date | null;
             forceActive?: boolean;
-            grace_period_days?: number;
+
         } = { createPaymentIntent: false },
     ): Promise<VendorSubscription> {
         if (!listing.vendor_id) {
@@ -157,12 +180,12 @@ export class VendorSubscriptionService {
 
         const repo = em.getRepository(VendorSubscription);
         const current = await this.getCurrent(em, listing.vendor_id);
-        const resolution = await this.resolvePlan(em, opts);
+        const resolution = await this.resolvePlan(em, listing.vendor_id, opts);
 
         const sub = current ?? new VendorSubscription();
         if (!current) {
             sub.vendor_id = listing.vendor_id;
-            sub.grace_period_days = 7;
+
         }
 
         sub.subscription_type = resolution.type;
@@ -181,12 +204,7 @@ export class VendorSubscriptionService {
         const isFreeOrZero = resolution.total_amount <= 0 || (resolution.type === SubscriptionType.FREE && !opts.is_featured);
         const shouldActivate = behavior.forceActive === true || isFreeOrZero;
 
-        if (behavior.grace_period_days !== undefined) {
-            if (!Number.isInteger(behavior.grace_period_days) || behavior.grace_period_days < 0) {
-                throw new AppError("grace_period_days must be a non-negative integer", 400, ErrorCodes.VALIDATION_ERROR);
-            }
-            sub.grace_period_days = behavior.grace_period_days;
-        }
+
 
         if (shouldActivate) {
             sub.started_at = sub.started_at ?? paidAt;
@@ -244,7 +262,7 @@ export class VendorSubscriptionService {
             is_featured?: boolean;
         },
     ): Promise<{ subscription: VendorSubscription | null; resolution: IPlanResolution }> {
-        const resolution = await this.resolvePlan(em, opts);
+        const resolution = await this.resolvePlan(em, listing.vendor_id, opts);
         if (!listing.vendor_id) {
             return { subscription: null, resolution };
         }
@@ -279,22 +297,22 @@ export class VendorSubscriptionService {
         opts: {
             paid_at?: string | Date | null;
             next_due_date?: string | Date | null;
-            grace_period_days?: number;
+
         } = {},
     ): Promise<VendorSubscription> {
+        const current = await this.getCurrent(em, listing.vendor_id!);
         return this.openOrRefresh(
             em,
             listing,
             {
-
-                subscription_type: undefined,
+                subscription_type: current?.subscription_type,
                 is_featured: listing.is_featured,
             },
             {
                 createPaymentIntent: false,
                 paid_at: opts.paid_at,
                 next_due_date: opts.next_due_date,
-                grace_period_days: opts.grace_period_days,
+
                 forceActive: true,
             },
         );

@@ -1,4 +1,4 @@
-﻿import { FastifyReply, FastifyRequest } from "fastify";
+import { FastifyReply, FastifyRequest } from "fastify";
 import { UserRole } from "@common/enums/user.enums";
 import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
@@ -261,6 +261,18 @@ export class BookingController {
         reply.code(201).send(bill);
     }
 
+    async removeVendorBookingBillItem(
+        req: FastifyRequest<{ Params: IBookingIdParams & { itemId: string } }>,
+        reply: FastifyReply,
+    ) {
+        const bill = await this.bookingBillService.removeVendorBookingBillItem(
+            req.params.id,
+            req.params.itemId,
+            this.getActor(req),
+        );
+        reply.code(200).send(bill);
+    }
+
     async recordVendorBookingBillPayment(
         req: FastifyRequest<{ Params: IBookingIdParams; Body: IRecordBookingBillPaymentDTO }>,
         reply: FastifyReply,
@@ -471,5 +483,35 @@ export class BookingController {
     ) {
         const ranges = await this.bookingService.getBookedDatesForRoomType(req.params.roomTypeId);
         reply.send(ranges);
+    }
+
+    async getOfflineBookingAnalytics(
+        req: FastifyRequest<{ Querystring: { month?: string; year?: string; listingId?: string } }>,
+        reply: FastifyReply,
+    ) {
+        try {
+            const { month, year, listingId } = req.query;
+            const parsedMonth = month && month !== "0" && month !== "all" ? parseInt(month) : undefined;
+            const data = await this.bookingService.getOfflineBookingAnalytics(
+                parsedMonth,
+                year ? parseInt(year) : undefined,
+                listingId
+            );
+            reply.status(200).send(data);
+        } catch (error: any) {
+            reply.status(error.statusCode || 500).send({ message: error.message });
+        }
+    }
+
+    async detachBooking(
+        req: FastifyRequest<{ Body: { token: string } }>,
+        reply: FastifyReply,
+    ) {
+        const { token } = req.body;
+        if (!token) {
+            throw new AppError("Token is required", 400, ErrorCodes.VALIDATION_ERROR);
+        }
+        const result = await this.bookingService.detachBooking(token);
+        reply.send(result);
     }
 }

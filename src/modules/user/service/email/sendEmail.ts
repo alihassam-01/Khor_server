@@ -1,4 +1,4 @@
-﻿import { sendEmail } from "./index";
+import { sendEmail } from "./index";
 import { AuditLogStatus, AuditLogEventType, EMAIL_SUBJECTS } from "@modules/user/constant/audit.constant";
 import { AuditLogService } from "@modules/user/service/audit-log.service";
 import { bookingBillDailyDigestTemplate, type BookingBillDailyDigestItem } from "./templates/bookingBillDailyDigest";
@@ -7,6 +7,8 @@ import { ownerDailyCheckInsTemplate, type OwnerDailyCheckInItem } from "./templa
 import { partnerApprovalTemplate, type PartnerApprovalTemplateInput } from "./templates/partnerApproval";
 import { ticketActivityTemplate, type TicketActivityTemplateInput } from "./templates/ticketActivity";
 import { vendorPolicyUpdateTemplate, type VendorPolicyUpdateTemplateInput } from "./templates/vendorPolicyUpdate";
+import { guestSignupInvitationTemplate, type GuestSignupInvitationTemplateInput } from "./templates/guestSignupInvitation";
+import { bookingLinkedNoticeTemplate, type BookingLinkedNoticeTemplateInput } from "./templates/bookingLinkedNotice";
 
 export class SendEmail {
   private auditLogService = new AuditLogService();
@@ -346,7 +348,7 @@ export class SendEmail {
   }) {
     const recipientName = input.recipientName?.trim() || "there";
     const html = `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#1f2937;">
+      <div style="font-family:sans-serif;color:#374151;max-width:600px;margin:0 auto;line-height:1.6;">
         <h2 style="margin-bottom:16px;">Payment Reminder</h2>
         <p>Hi ${recipientName},</p>
         <p>Your due for the month <strong>${input.dueMonth}</strong> is due by <strong>${input.dueDateLabel}</strong>.</p>
@@ -362,6 +364,26 @@ export class SendEmail {
       EMAIL_SUBJECTS.SUBSCRIPTION_PAYMENT_REMINDER,
       html,
       input.metadata,
+    );
+  }
+
+  async sendGuestSignupInvitationEmail(input: { to: string } & GuestSignupInvitationTemplateInput) {
+    const html = guestSignupInvitationTemplate(input);
+    return this.sendAuditedEmail(
+      "GUEST_SIGNUP_INVITATION" as any,
+      input.to,
+      `You have made a booking at ${input.hotelName}`,
+      html,
+    );
+  }
+
+  async sendBookingLinkedNoticeEmail(input: { to: string } & BookingLinkedNoticeTemplateInput) {
+    const html = bookingLinkedNoticeTemplate(input);
+    return this.sendAuditedEmail(
+      "BOOKING_LINKED_NOTICE" as any,
+      input.to,
+      `A booking at ${input.hotelName} has been linked to your account`,
+      html,
     );
   }
 }

@@ -10,6 +10,7 @@ import userRoutes from "./user.routes";
 import { contactRoutes } from "./contact.routes";
 import { hotelRoutes } from "./hotel.routes";
 import { restaurantRoutes } from "./restaurant.routes";
+import { restaurantOrderRoutes } from "./restaurant-order.routes";
 import { adsRoutes } from "./ads.routes";
 
 import propertyRoutes from "./property.routes";
@@ -28,7 +29,8 @@ import adminListingsRoutes from "./admin-listings.routes";
 import adminPublicPolicyRoutes from "./admin-public-policy.routes";
 import publicPolicyRoutes from "./public-policy.routes";
 import { realtimeRoutes } from "./realtime.routes";
-
+import { adminVendorPaymentsRoutes } from "./admin-vendor-payments.routes";
+import { adminPlatformSettingsRoutes } from "./admin-platform-settings.routes";
 
 // Core routes - always enabled
 const routes = [
@@ -39,6 +41,7 @@ const routes = [
   contactRoutes,
   hotelRoutes, // Admin hotel management
   restaurantRoutes, // Admin restaurant management
+  restaurantOrderRoutes,
   adsRoutes, // Public ads endpoint
 
   propertyRoutes, // Generic property routes
@@ -56,6 +59,8 @@ const routes = [
   adminPublicPolicyRoutes,
   publicPolicyRoutes,
   flightsRoutes, // Google Flights price scraper
+  adminVendorPaymentsRoutes,
+  adminPlatformSettingsRoutes,
 ];
 
 

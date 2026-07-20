@@ -1,4 +1,4 @@
-﻿import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { authenticate } from "@middlewares/authenticate";
 import { authorizeAdmin } from "@middlewares/authorizeAdmin";
 import { RATE_LIMITS } from "@config/rate-limit.config";
@@ -59,8 +59,21 @@ const writePublicSseEvent = (reply: FastifyReply, event: BookingRealtimeEvent) =
     reply.raw.write(`data: ${JSON.stringify(toPublicBookingRealtimeEvent(event))}\n\n`);
 };
 
-export async function bookingRoutes(fastify: FastifyInstance) {
+export const bookingRoutes = async (fastify: FastifyInstance) => {
     const bookingController = new BookingController();
+
+    // ==========================================
+    // Public Endpoints
+    // ==========================================
+
+    fastify.post<{ Body: { token: string } }>(
+        "/bookings/detach",
+        bookingController.detachBooking.bind(bookingController),
+    );
+
+    // ==========================================
+    // Customer Endpoints
+    // ==========================================
 
     fastify.post<{ Body: ICreateHotelBookingDTO }>(
         "/bookings/hotel/checkout",
@@ -191,6 +204,12 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         bookingController.addVendorBookingBillItem.bind(bookingController),
     );
 
+    fastify.delete<{ Params: IBookingIdParams & { itemId: string } }>(
+        "/vendor/bookings/:id/bill/items/:itemId",
+        { preHandler: authenticate },
+        bookingController.removeVendorBookingBillItem.bind(bookingController),
+    );
+
     fastify.post<{ Params: IBookingIdParams; Body: IRecordBookingBillPaymentDTO }>(
         "/vendor/bookings/:id/bill/payments",
         { preHandler: authenticate },
@@ -207,6 +226,12 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         "/admin/bookings",
         { preHandler: [authenticate, authorizeAdmin] },
         bookingController.listAdminBookings.bind(bookingController),
+    );
+
+    fastify.get<{ Querystring: { month?: string; year?: string; listingId?: string } }>(
+        "/admin/bookings/offline-analytics",
+        { preHandler: [authenticate, authorizeAdmin] },
+        bookingController.getOfflineBookingAnalytics.bind(bookingController),
     );
 
     fastify.get<{ Params: IBookingIdParams }>(

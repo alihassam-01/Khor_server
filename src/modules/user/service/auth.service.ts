@@ -5,7 +5,8 @@ import { BusinessCapability } from "@modules/user/entity/user/business-capabilit
 import { BusinessProfile } from "@modules/user/entity/user/business-profile.entity";
 import { Location } from "@modules/user/entity/location";
 import { HotelDetails, Listing, ListingContact } from "@modules/user/entity/listing";
-import { EntityManager, Repository } from "typeorm";
+import { HotelBooking } from "@modules/user/entity/booking/hotel-booking.entity";
+import { EntityManager, Repository, IsNull } from "typeorm";
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
 import * as crypto from "crypto";
@@ -70,7 +71,7 @@ import { VendorSubscriptionService } from "./listing/vendor-subscription.service
 
 export class AuthService {
     private auditLogService = new AuditLogService();
-    private listingSubscriptionService = new VendorSubscriptionService();
+    private vendorSubscriptionService = new VendorSubscriptionService();
 
     constructor(
         private userRepository: Repository<User>,
@@ -202,7 +203,7 @@ export class AuthService {
             auto_confirm_paid_bookings: false,
         });
         await hotelDetailsRepo.save(hotelDetails);
-        await this.listingSubscriptionService.activate(em, savedListing, {
+        await this.vendorSubscriptionService.activate(em, savedListing, {
             subscription_type: SubscriptionType.FREE,
         });
 
@@ -477,6 +478,8 @@ export class AuthService {
         user.otpExpiresAt = undefined;
         user.passwordResetJtiHash = this.hashResetTokenId(resetTokenId);
         await this.userRepository.save(user);
+
+        await this.linkOrphanedBookings(user.id, user.email, this.userRepository.manager);
 
         logInfo(`OTP verified successfully for user: ${email}`);
 
@@ -809,6 +812,8 @@ export class AuthService {
                 });
                 await em.save(UserProfile, profile);
 
+                await this.linkOrphanedBookings(saved.id, email, em);
+
                 logInfo(`New user registered via Google OAuth: ${email}`);
                 return saved;
             });
@@ -885,6 +890,14 @@ export class AuthService {
             partnerAccessStatus,
             approvedCapabilities: approvedCapabilities.map((capability) => capability.type),
         };
+    }
+
+    private async linkOrphanedBookings(userId: string, email: string, manager: EntityManager): Promise<void> {
+        await manager.getRepository(HotelBooking).update(
+            { guest_email: email, customer_user_id: IsNull() },
+            { customer_user_id: userId },
+        );
+        logInfo(`Linked orphaned bookings for user: ${email} (${userId})`);
     }
 }
 

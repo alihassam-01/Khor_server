@@ -41,8 +41,9 @@ export interface IRestaurantDTO {
     expires_at?: Date;
     paid_at?: Date;
     next_due_date?: Date;
-    grace_period_days?: number;
+
     subscription_type?: SubscriptionType;
+    subscription_status?: string;
     plan_id?: string;
     is_paid?: boolean;
     is_featured?: boolean;

@@ -1,3 +1,4 @@
+import { sanitizePublicListingDTO } from "@common/utils/dto.util";
 import { FastifyRequest, FastifyReply } from "fastify";
 import { RestaurantService } from "@modules/user/service/restaurant.service";
 import { ocrService } from "@modules/user/service/ocr.service";
@@ -220,6 +221,7 @@ export class RestaurantController {
             priceMax: priceMax ? parseFloat(priceMax) : undefined,
             isFeatured: isFeatured === 'true',
         });
+        result.items = result.items.map((restaurant) => sanitizePublicListingDTO(restaurant));
         reply.send(result);
     }
 
@@ -285,7 +287,7 @@ export class RestaurantController {
             throw new AppError("Restaurant not found", 404, ErrorCodes.NOT_FOUND);
         }
 
-        reply.send(restaurant);
+        reply.send(sanitizePublicListingDTO(restaurant));
     }
 
     async updateRestaurantByVendor(
@@ -433,17 +435,17 @@ async getVendorRestaurants(req: FastifyRequest, reply: FastifyReply) {
     }
 
     async getFeaturedAds(
-        req: FastifyRequest<{ Params: IHotelLocationParams }>,
+        req: FastifyRequest<{ Params: IHotelLocationParams }>, 
         reply: FastifyReply
     ) {
         const { locationId } = req.params;
         const restaurants = await this.restaurantService.getFeaturedAds(locationId);
-        reply.send(restaurants);
+        reply.send(restaurants.map(r => sanitizePublicListingDTO(r)));
     }
 
     async getPremiumAds(_req: FastifyRequest, reply: FastifyReply) {
         const restaurants = await this.restaurantService.getPremiumAds();
-        reply.send(restaurants);
+        reply.send(restaurants.map(r => sanitizePublicListingDTO(r)));
     }
 }
 const WORKSPACE_META_KEY = "__restaurant_workspace";

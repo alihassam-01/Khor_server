@@ -394,8 +394,9 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
             expires_at: current_subscription?.expires_at ?? undefined,
             paid_at: current_subscription?.paid_at ?? undefined,
             next_due_date: current_subscription?.next_due_date ?? undefined,
-            grace_period_days: current_subscription?.grace_period_days ?? 7,
+
             subscription_type: current_subscription?.subscription_type ?? undefined,
+            subscription_status: current_subscription?.status ?? undefined,
 
             is_paid: current_subscription?.is_paid ?? false,
             is_featured: listing.is_featured,
@@ -409,3 +410,4 @@ export class HotelStrategy implements IListingStrategy<ICreateHotelDTO, IUpdateH
         };
     }
 }
+

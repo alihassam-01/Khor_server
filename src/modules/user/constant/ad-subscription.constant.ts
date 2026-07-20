@@ -1,15 +1,11 @@
 export const SUBSCRIPTION_DURATION_DAYS = {
     FREE: 30,
     MONTHLY: 30,
-    QUARTERLY: 90,
-    YEARLY: 365,
 } as const;
 
 export const SUBSCRIPTION_PRICES = {
     FREE: 0,
-    MONTHLY: 5000,
-    QUARTERLY: 13500,
-    YEARLY: 48000,
+    MONTHLY: 2500,
 } as const;
 
 export const FEATURED_AD_PRICE = 2000;
