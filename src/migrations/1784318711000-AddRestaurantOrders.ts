@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class AddRestaurantOrders1900000000021 implements MigrationInterface {
-    name = 'AddRestaurantOrders1900000000021'
+export class AddRestaurantOrders1784318711000 implements MigrationInterface {
+    name = 'AddRestaurantOrders1784318711000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`DROP TABLE IF EXISTS "restaurant_orders" CASCADE`);
