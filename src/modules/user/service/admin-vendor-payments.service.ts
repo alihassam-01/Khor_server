@@ -240,21 +240,54 @@ export class AdminVendorPaymentsService {
 
         return saved;
     }
-    async updateSubscriptionType(vendorId: string, subscriptionType: string) {
+    async updateSubscriptionType(vendorId: string, input: { subscription_type?: string, paid_at?: string }) {
         return this.vendorSubRepo.manager.transaction(async (manager) => {
             const current = await this.vendorSubscriptionService.getCurrent(manager, vendorId);
             if (!current) {
                 // If they don't have one, create a basic one
                 const newSub = this.vendorSubRepo.create({
                     vendor_id: vendorId,
-                    subscription_type: subscriptionType as any,
+                    subscription_type: (input.subscription_type as any) || SubscriptionType.MONTHLY,
                     status: ListingSubscriptionStatus.PENDING,
                 });
+                if (input.paid_at) {
+                    const newPaidAt = new Date(input.paid_at);
+                    newSub.paid_at = newPaidAt;
+                    newSub.started_at = newPaidAt;
+                    const nextDueDate = new Date(newPaidAt);
+                    if (newSub.subscription_type === SubscriptionType.MONTHLY) {
+                        nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+                    } else {
+                        nextDueDate.setDate(nextDueDate.getDate() + 30);
+                    }
+                    newSub.next_due_date = nextDueDate;
+                    newSub.expires_at = nextDueDate;
+                    newSub.is_paid = true;
+                    newSub.status = ListingSubscriptionStatus.ACTIVE;
+                }
                 await manager.save(newSub);
                 return newSub;
             }
 
-            current.subscription_type = subscriptionType as any;
+            if (input.subscription_type) {
+                current.subscription_type = input.subscription_type as any;
+            }
+            if (input.paid_at) {
+                const newPaidAt = new Date(input.paid_at);
+                current.paid_at = newPaidAt;
+                current.started_at = current.started_at || newPaidAt;
+                const nextDueDate = new Date(newPaidAt);
+                if (current.subscription_type === SubscriptionType.MONTHLY) {
+                    nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+                } else {
+                    nextDueDate.setDate(nextDueDate.getDate() + 30);
+                }
+                current.next_due_date = nextDueDate;
+                current.expires_at = nextDueDate;
+                current.is_paid = true;
+                current.status = ListingSubscriptionStatus.ACTIVE;
+            }
+            
             await manager.save(current);
             return current;
         });
