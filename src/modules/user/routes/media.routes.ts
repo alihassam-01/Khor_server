@@ -23,4 +23,11 @@ export const mediaRoutes = async (fastify: FastifyInstance) => {
         },
         mediaController.uploadImages.bind(mediaController)
     );
+    fastify.get(
+        "/media/library",
+        {
+            preHandler: authenticate,
+        },
+        mediaController.getLibrary.bind(mediaController)
+    );
 };
