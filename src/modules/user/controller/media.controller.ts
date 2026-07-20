@@ -88,4 +88,35 @@ export class MediaController {
             });
         }
     }
+
+    /**
+     * Get a paginated list of all uploaded images from the library
+     */
+    async getLibrary(req: FastifyRequest, reply: FastifyReply) {
+        try {
+            const query = req.query as { page?: string, limit?: string };
+            const page = parseInt(query.page || '1', 10);
+            const limit = parseInt(query.limit || '50', 10);
+
+            const { images, total } = await this.r2ClientService.getAllImages(page, limit);
+
+            return reply.send({
+                status: "success",
+                data: {
+                    images,
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit)
+                }
+            });
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error("[MediaController] getLibrary error:", err);
+            return reply.status(500).send({
+                status: "error",
+                error: "Failed to fetch media library"
+            });
+        }
+    }
 }
