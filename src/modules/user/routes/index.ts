@@ -31,6 +31,7 @@ import publicPolicyRoutes from "./public-policy.routes";
 import { realtimeRoutes } from "./realtime.routes";
 import { adminVendorPaymentsRoutes } from "./admin-vendor-payments.routes";
 import { adminPlatformSettingsRoutes } from "./admin-platform-settings.routes";
+import { seoRoutes } from "./seo.routes";
 
 // Core routes - always enabled
 const routes = [
@@ -61,6 +62,7 @@ const routes = [
   flightsRoutes, // Google Flights price scraper
   adminVendorPaymentsRoutes,
   adminPlatformSettingsRoutes,
+  seoRoutes,
 ];
 
 
