@@ -376,7 +376,7 @@ export class LocationService {
     const params: number[] = [];
     categoryIds.forEach((catId) => params.push(locationId, catId));
     await this.categoryMappingRepository.query(
-      `INSERT INTO "location_category_mappings" ("location_id", "category_id")
+      `INSERT INTO "location_category_mapping" ("location_id", "category_id")
        VALUES ${values}
        ON CONFLICT DO NOTHING`,
       params
