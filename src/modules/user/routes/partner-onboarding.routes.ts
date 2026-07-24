@@ -26,7 +26,7 @@ export default async function partnerOnboardingRoutes(fastify: FastifyInstance) 
         { preHandler: [authenticate] },
         controller.submitForReview.bind(controller),
     );
-    fastify.get("/partner/policies/current", { preHandler: [authenticate] }, controller.getCurrentPolicy.bind(controller));
+    fastify.get("/partner/policies/current", controller.getCurrentPolicy.bind(controller));
     fastify.post<{ Body: IAcceptCurrentPolicyDto }>(
         "/partner/policies/accept",
         { preHandler: [authenticate] },
