@@ -72,6 +72,10 @@ Questions? Email us at info@gokhor.com.`,
         "Terms & Conditions",
         `By using Khor, creating an account, browsing listings, making a booking, or using related support features, you agree to these Terms & Conditions.
 
+Company Information
+
+This platform is owned and operated by Khor. Our registered office and principal place of business is located at [Insert Your Registered Business/Shop Address Here].
+
 Using the platform
 
 - You may use Khor to discover destinations, view hotel and restaurant information, make bookings, manage bookings, and contact support.
@@ -106,6 +110,10 @@ Prohibited conduct
 Changes, suspension, and liability
 
 We may update features, content, workflows, or policies from time to time. We may also suspend accounts or restrict access where needed for security, misuse prevention, operational reasons, or policy enforcement. To the extent allowed by law, Khor is not responsible for indirect losses arising from use of the platform or from inability to use it.
+
+Governing Law and Jurisdiction
+
+Our Terms and Conditions are governed by the laws of the Islamic Republic of Pakistan and you agree that the courts of [Insert City Name, e.g., Islamabad] (including any consumer court) will have exclusive jurisdiction in any dispute that you have with us.
 
 Contact us
 

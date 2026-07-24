@@ -147,6 +147,22 @@ export class BookingController {
         reply.code(201).send(booking);
     }
 
+    async createAdminBooking(
+        req: FastifyRequest<{ Body: ICreateHotelBookingDTO }>,
+        reply: FastifyReply,
+    ) {
+        const booking = await this.bookingService.createAdminBooking(this.getActor(req), req.body);
+        reply.code(201).send(booking);
+    }
+
+    async confirmAdminBooking(
+        req: FastifyRequest<{ Params: IBookingIdParams }>,
+        reply: FastifyReply,
+    ) {
+        const booking = await this.bookingService.confirmAdminBooking(req.params.id, this.getActor(req));
+        reply.code(200).send(booking);
+    }
+
     async listVendorBookings(
         req: FastifyRequest<{ Querystring: IBookingListQuery }>,
         reply: FastifyReply,
