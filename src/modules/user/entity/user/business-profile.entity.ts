@@ -55,6 +55,9 @@ export class BusinessProfile {
     @Column({ type: "text", nullable: true })
     google_maps_url?: string | null;
 
+    @Column({ type: "varchar", length: 100, nullable: true })
+    dts_license_number?: string | null;
+
     @Index("idx_business_profiles_status")
     @Column({
         type: "enum",

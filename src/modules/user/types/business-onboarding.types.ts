@@ -13,6 +13,7 @@ export interface IBusinessProfileUpsertDto {
     cityId?: number | null;
     businessAddress?: string;
     googleMapsUrl?: string;
+    dtsLicenseNumber?: string;
     requestedCapabilities?: BusinessCapabilityType[];
 }
 
@@ -38,6 +39,7 @@ export interface IBusinessProfileResponseDto {
     cityId?: number | null;
     businessAddress?: string | null;
     googleMapsUrl?: string | null;
+    dtsLicenseNumber?: string | null;
     onboardingStatus: BusinessOnboardingStatus;
     submittedAt?: string | null;
     reviewedAt?: string | null;
