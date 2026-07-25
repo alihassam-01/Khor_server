@@ -222,6 +222,12 @@ export const bookingRoutes = async (fastify: FastifyInstance) => {
         bookingController.markVendorBookingBillPaid.bind(bookingController),
     );
 
+    fastify.post<{ Body: ICreateHotelBookingDTO }>(
+        "/admin/bookings",
+        { preHandler: [authenticate, authorizeAdmin] },
+        bookingController.createAdminBooking.bind(bookingController),
+    );
+
     fastify.get<{ Querystring: IBookingListQuery }>(
         "/admin/bookings",
         { preHandler: [authenticate, authorizeAdmin] },
@@ -256,6 +262,12 @@ export const bookingRoutes = async (fastify: FastifyInstance) => {
         "/admin/bookings/:id/complete",
         { preHandler: [authenticate, authorizeAdmin] },
         bookingController.completeAdminBooking.bind(bookingController),
+    );
+
+    fastify.patch<{ Params: IBookingIdParams }>(
+        "/admin/bookings/:id/confirm",
+        { preHandler: [authenticate, authorizeAdmin] },
+        bookingController.confirmAdminBooking.bind(bookingController),
     );
 
     fastify.get<{ Querystring: IRefundListQuery }>(

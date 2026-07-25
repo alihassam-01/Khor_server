@@ -3,6 +3,7 @@ import { UserProfile } from "@modules/user/entity/user/user-profile.entity";
 import { RefreshToken } from "@modules/user/entity/user/refresh-token.entity";
 import { BusinessCapability } from "@modules/user/entity/user/business-capability.entity";
 import { BusinessProfile } from "@modules/user/entity/user/business-profile.entity";
+import { PolicyAcceptance } from "@modules/user/entity/user/policy-acceptance.entity";
 import { Location } from "@modules/user/entity/location";
 import { HotelDetails, Listing, ListingContact } from "@modules/user/entity/listing";
 import { HotelBooking } from "@modules/user/entity/booking/hotel-booking.entity";
@@ -68,10 +69,12 @@ import {
 import { AuditLogService } from "./audit-log.service";
 import { PROFILE_IMAGES } from "@modules/user/constant/user.constant";
 import { VendorSubscriptionService } from "./listing/vendor-subscription.service";
+import { VendorPolicyService } from "./vendor-policy.service";
 
 export class AuthService {
     private auditLogService = new AuditLogService();
     private vendorSubscriptionService = new VendorSubscriptionService();
+    private vendorPolicyService = new VendorPolicyService();
 
     constructor(
         private userRepository: Repository<User>,
@@ -309,7 +312,7 @@ export class AuthService {
         businessName: string,
         phone: string,
         cityId: number,
-    ): Promise<void> {
+    ): Promise<BusinessProfile> {
         const businessProfileRepo = em.getRepository(BusinessProfile);
         let businessProfile = await businessProfileRepo.findOne({
             where: { user_id: user.id },
@@ -331,7 +334,7 @@ export class AuthService {
         businessProfile.reviewed_at = null;
         businessProfile.review_note = "Partner access auto-approved during hotel owner registration. Complete onboarding documents and policy next.";
 
-        await businessProfileRepo.save(businessProfile);
+        return businessProfileRepo.save(businessProfile);
     }
 
     private async ensureApprovedVendorCapability(
@@ -394,6 +397,10 @@ export class AuthService {
                 expiresAt: otpExpiresAt.toISOString(),
             });
 
+            if (process.env.NODE_ENV !== "production") {
+                console.log(`[DEV] Registration OTP for ${email}: ${otp}`);
+            }
+
             const success = await sendEmail({
                 to: email,
                 subject: EMAIL_SUBJECTS.REGISTRATION_OTP,
@@ -433,7 +440,7 @@ export class AuthService {
                 if (!cityId) {
                     throw new AppError("City is required for hotel owner registration.", 400, ErrorCodes.VALIDATION_ERROR);
                 }
-                await this.createOrUpdateVendorBusinessProfile(
+                const businessProfile = await this.createOrUpdateVendorBusinessProfile(
                     em,
                     savedUser,
                     ownerName,
@@ -441,6 +448,20 @@ export class AuthService {
                     normalizedPhone!,
                     cityId,
                 );
+
+                const currentPolicy = await this.vendorPolicyService.getCurrentPolicy();
+                const acceptanceRepo = em.getRepository(PolicyAcceptance);
+                await acceptanceRepo.save(
+                    acceptanceRepo.create({
+                        user_id: savedUser.id,
+                        business_profile_id: businessProfile.id,
+                        policy_type: currentPolicy.policyType,
+                        policy_version: currentPolicy.policyVersion,
+                        content_hash: currentPolicy.contentHash,
+                        accepted_at: new Date(),
+                    })
+                );
+
                 await this.ensureApprovedVendorCapability(em, savedUser);
                 await this.createDraftHotelForVendor(em, savedUser, businessName, normalizedPhone!, cityId);
             }
@@ -522,6 +543,12 @@ export class AuthService {
             email,
             expiresAt: otpExpiresAt.toISOString(),
         });
+
+        if (process.env.NODE_ENV !== "production") {
+            console.log(`\n================================`);
+            console.log(`🔑 DEV RESEND OTP FOR ${email}: ${otp}`);
+            console.log(`================================\n`);
+        }
 
         user.verificationToken = hashedOtp;
         user.otpExpiresAt = otpExpiresAt;
@@ -861,8 +888,6 @@ export class AuthService {
         let partnerAccessStatus: PartnerAccessStatus;
         if (user.userType === UserRole.ADMIN) {
             partnerAccessStatus = PartnerAccessStatus.ADMIN;
-        } else if (approvedCapabilities.length > 0 && user.isActive) {
-            partnerAccessStatus = PartnerAccessStatus.APPROVED;
         } else if (businessProfile) {
             const profileStatusMap: Record<BusinessOnboardingStatus, PartnerAccessStatus> = {
                 [BusinessOnboardingStatus.DRAFT]: PartnerAccessStatus.DRAFT,
@@ -873,8 +898,10 @@ export class AuthService {
                 [BusinessOnboardingStatus.SUSPENDED]: PartnerAccessStatus.SUSPENDED,
             };
             partnerAccessStatus = profileStatusMap[businessProfile.onboarding_status];
-        } else if (user.userType === UserRole.VENDOR && user.isActive) {
-            partnerAccessStatus = PartnerAccessStatus.LEGACY_VENDOR;
+        } else if (approvedCapabilities.length > 0 && user.isActive) {
+            partnerAccessStatus = PartnerAccessStatus.APPROVED;
+        } else if (user.userType === UserRole.VENDOR) {
+            partnerAccessStatus = PartnerAccessStatus.DRAFT;
         } else {
             partnerAccessStatus = PartnerAccessStatus.CUSTOMER;
         }

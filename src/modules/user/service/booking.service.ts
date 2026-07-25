@@ -13,6 +13,7 @@ import {
     HotelBookingStatus,
 } from "@common/enums/booking.enums";
 import { UserRole } from "@common/enums/user.enums";
+
 import { ListingType } from "@common/enums/listing.enums";
 import {
     BookingAuditLog,
@@ -63,6 +64,10 @@ const ACTIVE_BOOKING_STATUSES = [
     HotelBookingStatus.CONFIRMED,
     HotelBookingStatus.CHECKED_IN,
 ] as const;
+
+/** How long (ms) a deferred PayFast booking can sit unpaid before it auto-expires.
+ *  Applies to bookings where the customer never even initiated the PayFast redirect. */
+const DEFERRED_PAYMENT_NEVER_INITIATED_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 type AuthActor = {
     userId: string;
@@ -570,6 +575,11 @@ export class BookingService {
     }
 
     private async expireStalePendingPayments(manager: EntityManager = AppDataSource.manager): Promise<number> {
+        const neverInitiatedCutoff = new Date(Date.now() - DEFERRED_PAYMENT_NEVER_INITIATED_TTL_MS);
+
+        // Two cases to catch:
+        // 1. Customer initiated PayFast redirect but the checkout window elapsed (expires_at IS set)
+        // 2. Customer created booking but never clicked pay at all (expires_at is NULL, created_at is old)
         const stalePayments = await manager.getRepository(BookingPayment)
             .createQueryBuilder("payment")
             .innerJoinAndSelect("payment.booking", "booking")
@@ -578,9 +588,16 @@ export class BookingService {
                 provider: "payfast",
                 redirectProvider: "payfast_redirect",
             })
-            .andWhere("payment.metadata ->> 'checkout_mode' = :checkoutMode", { checkoutMode: "payfast_redirect" })
-            .andWhere("(payment.metadata ->> 'expires_at') IS NOT NULL")
-            .andWhere("((payment.metadata ->> 'expires_at')::timestamptz) <= NOW()")
+            .andWhere(
+                "(" +
+                // Case 1: has an expires_at and it has passed
+                "(payment.metadata ->> 'checkout_mode' = :checkoutMode AND (payment.metadata ->> 'expires_at') IS NOT NULL AND ((payment.metadata ->> 'expires_at')::timestamptz) <= NOW())" +
+                " OR " +
+                // Case 2: no expires_at set (never initiated), but booking is older than TTL
+                "(payment.metadata ->> 'checkout_mode' = :checkoutMode AND (payment.metadata ->> 'expires_at') IS NULL AND payment.created_at <= :neverInitiatedCutoff)" +
+                ")",
+                { checkoutMode: "payfast_redirect", neverInitiatedCutoff },
+            )
             .getMany();
 
         if (stalePayments.length === 0) {
@@ -1032,8 +1049,8 @@ export class BookingService {
     ): Promise<IHotelBookingDTO> {
         this.validateCreateInput(dto);
 
-        if (source === BookingSource.CUSTOMER_WEB && actor.userType !== UserRole.CUSTOMER) {
-            throw new AppError("Only customers can create web bookings", 403, ErrorCodes.FORBIDDEN);
+        if (source === BookingSource.CUSTOMER_WEB && ![UserRole.CUSTOMER, UserRole.ADMIN].includes(actor.userType)) {
+            throw new AppError("Only customers or admins can create web bookings", 403, ErrorCodes.FORBIDDEN);
         }
 
         if (source === BookingSource.PARTNER_MANUAL && actor.userType !== UserRole.VENDOR) {
@@ -1107,35 +1124,37 @@ export class BookingService {
 
             if (source === BookingSource.CUSTOMER_WEB) {
                 if (holdIds.length === 0) {
-                    throw new AppError(
-                        "A valid room hold is required before completing checkout",
-                        409,
-                        ErrorCodes.CONFLICT,
-                    );
-                }
+                    if (actor.userType !== UserRole.ADMIN) {
+                        throw new AppError(
+                            "A valid room hold is required before completing checkout",
+                            409,
+                            ErrorCodes.CONFLICT,
+                        );
+                    }
+                } else {
+                    for (const holdId of holdIds) {
+                        const hold = await this.loadLockedActiveHold(manager, holdId, actor.userId);
+                        holds.push(hold);
+                        holdsByRoomTypeId.set(hold.room_type_id, [...(holdsByRoomTypeId.get(hold.room_type_id) ?? []), hold]);
+                    }
 
-                for (const holdId of holdIds) {
-                    const hold = await this.loadLockedActiveHold(manager, holdId, actor.userId);
-                    holds.push(hold);
-                    holdsByRoomTypeId.set(hold.room_type_id, [...(holdsByRoomTypeId.get(hold.room_type_id) ?? []), hold]);
-                }
+                    const allHoldsMatch = allocations.every((allocation) => {
+                        const allocationHolds = holdsByRoomTypeId.get(allocation.room_type_id) ?? [];
+                        const heldRoomsCount = allocationHolds.reduce((sum, hold) => sum + hold.rooms_count, 0);
+                        return allocationHolds.length > 0
+                            && heldRoomsCount === allocation.rooms_count
+                            && allocationHolds.every((hold) => hold.listing_id === dto.listing_id
+                                && hold.check_in_date === dto.check_in_date
+                                && hold.check_out_date === dto.check_out_date);
+                    });
 
-                const allHoldsMatch = allocations.every((allocation) => {
-                    const allocationHolds = holdsByRoomTypeId.get(allocation.room_type_id) ?? [];
-                    const heldRoomsCount = allocationHolds.reduce((sum, hold) => sum + hold.rooms_count, 0);
-                    return allocationHolds.length > 0
-                        && heldRoomsCount === allocation.rooms_count
-                        && allocationHolds.every((hold) => hold.listing_id === dto.listing_id
-                            && hold.check_in_date === dto.check_in_date
-                            && hold.check_out_date === dto.check_out_date);
-                });
-
-                if (!allHoldsMatch) {
-                    throw new AppError(
-                        "The booking details do not match the active room hold",
-                        409,
-                        ErrorCodes.CONFLICT,
-                    );
+                    if (!allHoldsMatch) {
+                        throw new AppError(
+                            "The booking details do not match the active room hold",
+                            409,
+                            ErrorCodes.CONFLICT,
+                        );
+                    }
                 }
             }
 
@@ -2437,6 +2456,29 @@ export class BookingService {
 
     async createVendorBooking(actor: AuthActor, dto: ICreateHotelBookingDTO): Promise<IHotelBookingDTO> {
         return this.createBooking(dto, actor, BookingSource.PARTNER_MANUAL);
+    }
+
+    async createAdminBooking(actor: AuthActor, dto: ICreateHotelBookingDTO): Promise<IHotelBookingDTO> {
+        if (actor.userType !== UserRole.ADMIN) {
+            throw new AppError("Admin access required", 403, ErrorCodes.FORBIDDEN);
+        }
+        
+        const bookingDto = await this.createBooking(dto, actor, BookingSource.CUSTOMER_WEB);
+        return bookingDto;
+    }
+
+    async confirmAdminBooking(bookingId: string, actor: AuthActor): Promise<IHotelBookingDTO> {
+        if (actor.userType !== UserRole.ADMIN) {
+            throw new AppError("Admin access required", 403, ErrorCodes.FORBIDDEN);
+        }
+
+        return this.updateBookingStatus(
+            bookingId,
+            actor,
+            "admin",
+            HotelBookingStatus.CONFIRMED,
+            "booking_confirmed_by_admin",
+        );
     }
 
     async getBookingById(
