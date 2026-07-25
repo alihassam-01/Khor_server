@@ -67,7 +67,7 @@ const ACTIVE_BOOKING_STATUSES = [
 
 /** How long (ms) a deferred PayFast booking can sit unpaid before it auto-expires.
  *  Applies to bookings where the customer never even initiated the PayFast redirect. */
-const DEFERRED_PAYMENT_NEVER_INITIATED_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const DEFERRED_PAYMENT_NEVER_INITIATED_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 type AuthActor = {
     userId: string;
