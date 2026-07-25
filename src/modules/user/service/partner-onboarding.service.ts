@@ -364,9 +364,6 @@ export class PartnerOnboardingService {
             if (!this.normalizeOptional(profile.business_address)) {
                 throw new AppError("Business address is required.", 400, ErrorCodes.VALIDATION_ERROR);
             }
-            if (!this.validateGoogleMapsUrl(profile.google_maps_url)) {
-                throw new AppError("Google Maps link is required.", 400, ErrorCodes.VALIDATION_ERROR);
-            }
             if (!profile.capabilities || profile.capabilities.length === 0) {
                 throw new AppError("Select at least one business type before submitting.", 400, ErrorCodes.VALIDATION_ERROR);
             }
