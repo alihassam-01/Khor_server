@@ -900,8 +900,8 @@ export class AuthService {
                 [BusinessOnboardingStatus.SUSPENDED]: PartnerAccessStatus.SUSPENDED,
             };
             partnerAccessStatus = profileStatusMap[businessProfile.onboarding_status];
-        } else if (user.userType === UserRole.VENDOR && user.isActive) {
-            partnerAccessStatus = PartnerAccessStatus.LEGACY_VENDOR;
+        } else if (user.userType === UserRole.VENDOR) {
+            partnerAccessStatus = PartnerAccessStatus.DRAFT;
         } else {
             partnerAccessStatus = PartnerAccessStatus.CUSTOMER;
         }
