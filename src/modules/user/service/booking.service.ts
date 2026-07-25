@@ -65,6 +65,10 @@ const ACTIVE_BOOKING_STATUSES = [
     HotelBookingStatus.CHECKED_IN,
 ] as const;
 
+/** How long (ms) a deferred PayFast booking can sit unpaid before it auto-expires.
+ *  Applies to bookings where the customer never even initiated the PayFast redirect. */
+const DEFERRED_PAYMENT_NEVER_INITIATED_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 type AuthActor = {
     userId: string;
     userType: UserRole;
@@ -571,6 +575,11 @@ export class BookingService {
     }
 
     private async expireStalePendingPayments(manager: EntityManager = AppDataSource.manager): Promise<number> {
+        const neverInitiatedCutoff = new Date(Date.now() - DEFERRED_PAYMENT_NEVER_INITIATED_TTL_MS);
+
+        // Two cases to catch:
+        // 1. Customer initiated PayFast redirect but the checkout window elapsed (expires_at IS set)
+        // 2. Customer created booking but never clicked pay at all (expires_at is NULL, created_at is old)
         const stalePayments = await manager.getRepository(BookingPayment)
             .createQueryBuilder("payment")
             .innerJoinAndSelect("payment.booking", "booking")
@@ -579,9 +588,16 @@ export class BookingService {
                 provider: "payfast",
                 redirectProvider: "payfast_redirect",
             })
-            .andWhere("payment.metadata ->> 'checkout_mode' = :checkoutMode", { checkoutMode: "payfast_redirect" })
-            .andWhere("(payment.metadata ->> 'expires_at') IS NOT NULL")
-            .andWhere("((payment.metadata ->> 'expires_at')::timestamptz) <= NOW()")
+            .andWhere(
+                "(" +
+                // Case 1: has an expires_at and it has passed
+                "(payment.metadata ->> 'checkout_mode' = :checkoutMode AND (payment.metadata ->> 'expires_at') IS NOT NULL AND ((payment.metadata ->> 'expires_at')::timestamptz) <= NOW())" +
+                " OR " +
+                // Case 2: no expires_at set (never initiated), but booking is older than TTL
+                "(payment.metadata ->> 'checkout_mode' = :checkoutMode AND (payment.metadata ->> 'expires_at') IS NULL AND payment.created_at <= :neverInitiatedCutoff)" +
+                ")",
+                { checkoutMode: "payfast_redirect", neverInitiatedCutoff },
+            )
             .getMany();
 
         if (stalePayments.length === 0) {
