@@ -12,11 +12,12 @@ export const globalErrorHandler = (error: FastifyError | AppError | Error, _requ
         details: undefined as any,
     };
 
-    if (error instanceof AppError) {
-        logError(error, `AppError: ${error.errorCode}`);
-        response.code = error.errorCode;
-        response.message = error.message;
-        return reply.status(error.statusCode).send(response);
+    if (error instanceof AppError || ('errorCode' in error && 'statusCode' in error)) {
+        const appError = error as AppError;
+        logError(error, `AppError: ${appError.errorCode}`);
+        response.code = appError.errorCode;
+        response.message = appError.message;
+        return reply.status(appError.statusCode).send(response);
     }
 
     if ((error as FastifyError).validation) {

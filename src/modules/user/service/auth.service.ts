@@ -397,6 +397,10 @@ export class AuthService {
                 expiresAt: otpExpiresAt.toISOString(),
             });
 
+            if (process.env.NODE_ENV !== "production") {
+                console.log(`[DEV] Registration OTP for ${email}: ${otp}`);
+            }
+
             const success = await sendEmail({
                 to: email,
                 subject: EMAIL_SUBJECTS.REGISTRATION_OTP,
@@ -539,6 +543,12 @@ export class AuthService {
             email,
             expiresAt: otpExpiresAt.toISOString(),
         });
+
+        if (process.env.NODE_ENV !== "production") {
+            console.log(`\n================================`);
+            console.log(`🔑 DEV RESEND OTP FOR ${email}: ${otp}`);
+            console.log(`================================\n`);
+        }
 
         user.verificationToken = hashedOtp;
         user.otpExpiresAt = otpExpiresAt;
@@ -878,8 +888,6 @@ export class AuthService {
         let partnerAccessStatus: PartnerAccessStatus;
         if (user.userType === UserRole.ADMIN) {
             partnerAccessStatus = PartnerAccessStatus.ADMIN;
-        } else if (approvedCapabilities.length > 0 && user.isActive) {
-            partnerAccessStatus = PartnerAccessStatus.APPROVED;
         } else if (businessProfile) {
             const profileStatusMap: Record<BusinessOnboardingStatus, PartnerAccessStatus> = {
                 [BusinessOnboardingStatus.DRAFT]: PartnerAccessStatus.DRAFT,
@@ -890,8 +898,10 @@ export class AuthService {
                 [BusinessOnboardingStatus.SUSPENDED]: PartnerAccessStatus.SUSPENDED,
             };
             partnerAccessStatus = profileStatusMap[businessProfile.onboarding_status];
-        } else if (user.userType === UserRole.VENDOR && user.isActive) {
-            partnerAccessStatus = PartnerAccessStatus.LEGACY_VENDOR;
+        } else if (approvedCapabilities.length > 0 && user.isActive) {
+            partnerAccessStatus = PartnerAccessStatus.APPROVED;
+        } else if (user.userType === UserRole.VENDOR) {
+            partnerAccessStatus = PartnerAccessStatus.DRAFT;
         } else {
             partnerAccessStatus = PartnerAccessStatus.CUSTOMER;
         }
