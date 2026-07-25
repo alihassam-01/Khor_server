@@ -397,6 +397,10 @@ export class AuthService {
                 expiresAt: otpExpiresAt.toISOString(),
             });
 
+            if (process.env.NODE_ENV !== "production") {
+                console.log(`[DEV] Registration OTP for ${email}: ${otp}`);
+            }
+
             const success = await sendEmail({
                 to: email,
                 subject: EMAIL_SUBJECTS.REGISTRATION_OTP,
@@ -539,6 +543,12 @@ export class AuthService {
             email,
             expiresAt: otpExpiresAt.toISOString(),
         });
+
+        if (process.env.NODE_ENV !== "production") {
+            console.log(`\n================================`);
+            console.log(`🔑 DEV RESEND OTP FOR ${email}: ${otp}`);
+            console.log(`================================\n`);
+        }
 
         user.verificationToken = hashedOtp;
         user.otpExpiresAt = otpExpiresAt;
