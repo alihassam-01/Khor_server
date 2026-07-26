@@ -53,8 +53,10 @@ export class ArticleService {
       excerpt: article.excerpt,
       content: article.content,
       published_at: article.published_at,
-      seo_title: article.seo_title || "",
-      seo_keywords: article.seo_keywords || "",
+      createdAt: article.created_at,
+      updatedAt: article.updated_at,
+      seo_title: article.seo_title || undefined,
+      seo_keywords: article.seo_keywords || undefined,
       seo_description: article.seo_description || "",
       image_urls: Array.isArray(article.image_urls) ? article.image_urls : [],
       locations: (article.locations || []).map(loc => ({
