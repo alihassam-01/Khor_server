@@ -99,7 +99,7 @@ export const CONFIG = {
     whatsappBookingLifecycleEnabled: process.env.WHATSAPP_BOOKING_LIFECYCLE_ENABLED === "true",
     whatsappOwnerCheckInDigestEnabled: process.env.WHATSAPP_OWNER_CHECKIN_DIGEST_ENABLED === "true",
     whatsappAdapterUrl: process.env.WHATSAPP_ADAPTER_URL || "http://127.0.0.1:3000",
-    whatsappAdapterToken: process.env.WHATSAPP_ADAPTER_TOKEN || "",
+    whatsappAdapterToken: process.env.WHATSAPP_ADAPTER_TOKEN || "dev-secret-token",
     whatsappTimeoutMs: Number(process.env.WHATSAPP_ADAPTER_TIMEOUT_MS) || 15_000,
     workerBatchSize: Number(process.env.NOTIFICATION_WORKER_BATCH_SIZE) || 20,
     workerMaxAttempts: Number(process.env.NOTIFICATION_WORKER_MAX_ATTEMPTS) || 5,

@@ -58,6 +58,9 @@ export class BusinessProfile {
     @Column({ type: "varchar", length: 100, nullable: true })
     dts_license_number?: string | null;
 
+    @Column({ type: "boolean", default: false })
+    whatsapp_booking_enabled!: boolean;
+
     @Index("idx_business_profiles_status")
     @Column({
         type: "enum",

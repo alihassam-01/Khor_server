@@ -167,6 +167,7 @@ export class PartnerOnboardingService {
             businessAddress: profile.business_address ?? null,
             googleMapsUrl: profile.google_maps_url ?? null,
             dtsLicenseNumber: profile.dts_license_number ?? null,
+            whatsappBookingEnabled: profile.whatsapp_booking_enabled,
             onboardingStatus: profile.onboarding_status,
             submittedAt: profile.submitted_at?.toISOString() ?? null,
             reviewedAt: profile.reviewed_at?.toISOString() ?? null,
@@ -242,6 +243,7 @@ export class PartnerOnboardingService {
             if (payload.businessAddress !== undefined) profile.business_address = this.normalizeOptional(payload.businessAddress);
             if (payload.googleMapsUrl !== undefined) profile.google_maps_url = googleMapsUrl;
             if (payload.dtsLicenseNumber !== undefined) profile.dts_license_number = this.normalizeOptional(payload.dtsLicenseNumber);
+            if (payload.whatsappBookingEnabled !== undefined) profile.whatsapp_booking_enabled = payload.whatsappBookingEnabled;
 
             if (profile.onboarding_status === BusinessOnboardingStatus.SUBMITTED) {
                 profile.onboarding_status = BusinessOnboardingStatus.DRAFT;
