@@ -5,6 +5,8 @@ export interface IArticleDTO {
     excerpt: string;
     content: string;
     published_at: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
     seo_title?: string;
     seo_keywords?: string;
     seo_description?: string;
