@@ -26,7 +26,7 @@ export class AddVendorIdToRestaurantOrder1785063673333 implements MigrationInter
         } catch (err: any) {
             await queryRunner.query(`ROLLBACK TO SAVEPOINT ${sp}`);
             const code = err?.driverError?.code || err?.code;
-            const ignorable = ['42704', '42703', '42P01', '42P07', '42710', '42701'];
+            const ignorable = ['42704', '42703', '42P01', '42P07', '42710', '42701', '2BP01'];
             if (ignorable.includes(code)) {
                 // Object doesn't exist or already exists — safe to skip
                 return;
