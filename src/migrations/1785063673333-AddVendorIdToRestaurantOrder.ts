@@ -4,18 +4,27 @@ export class AddVendorIdToRestaurantOrder1785063673333 implements MigrationInter
     name = 'AddVendorIdToRestaurantOrder1785063673333'
 
     /**
-     * Safely execute a query, ignoring "does not exist" errors.
-     * PostgreSQL error codes:
+     * Safely execute a query using SAVEPOINTs to prevent transaction poisoning.
+     * PostgreSQL aborts the entire transaction when a query fails. By wrapping
+     * each risky query in a SAVEPOINT, we can rollback just that statement
+     * and continue the transaction.
+     *
+     * Ignorable PostgreSQL error codes:
      *   42704 = undefined_object (constraint, type, etc.)
      *   42703 = undefined_column
      *   42P01 = undefined_table
      *   42P07 = duplicate_table (for CREATE TYPE that already exists)
      *   42710 = duplicate_object
      */
+    private static spCounter = 0;
     private async safeQuery(queryRunner: QueryRunner, sql: string): Promise<void> {
+        const sp = `sp_${++AddVendorIdToRestaurantOrder1785063673333.spCounter}`;
+        await queryRunner.query(`SAVEPOINT ${sp}`);
         try {
             await queryRunner.query(sql);
+            await queryRunner.query(`RELEASE SAVEPOINT ${sp}`);
         } catch (err: any) {
+            await queryRunner.query(`ROLLBACK TO SAVEPOINT ${sp}`);
             const code = err?.driverError?.code || err?.code;
             const ignorable = ['42704', '42703', '42P01', '42P07', '42710'];
             if (ignorable.includes(code)) {
