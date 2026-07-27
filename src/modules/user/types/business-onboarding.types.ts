@@ -14,6 +14,7 @@ export interface IBusinessProfileUpsertDto {
     businessAddress?: string;
     googleMapsUrl?: string;
     dtsLicenseNumber?: string;
+    whatsappBookingEnabled?: boolean;
     requestedCapabilities?: BusinessCapabilityType[];
 }
 
@@ -40,6 +41,7 @@ export interface IBusinessProfileResponseDto {
     businessAddress?: string | null;
     googleMapsUrl?: string | null;
     dtsLicenseNumber?: string | null;
+    whatsappBookingEnabled: boolean;
     onboardingStatus: BusinessOnboardingStatus;
     submittedAt?: string | null;
     reviewedAt?: string | null;

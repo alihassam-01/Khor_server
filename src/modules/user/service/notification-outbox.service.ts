@@ -7,7 +7,7 @@ import {
 import { BookingPaymentStatus, BookingSource } from "@common/enums/booking.enums";
 import { normalizePhoneToE164 } from "@common/utils/phone.util";
 import { HotelBooking } from "@modules/user/entity/booking";
-import { NotificationOutbox } from "@modules/user/entity/user";
+import { NotificationOutbox, BusinessProfile } from "@modules/user/entity/user";
 
 type LifecycleConfig = {
     eventType: string;
@@ -185,8 +185,18 @@ export class NotificationOutboxService {
             });
         }
 
+        let vendorWhatsapp: string | null = null;
+        if (booking.listing.vendor_id) {
+            const bpRepo = manager.getRepository(BusinessProfile);
+            const bp = await bpRepo.findOne({ where: { user_id: booking.listing.vendor_id } });
+            if (bp && bp.whatsapp_number) {
+                vendorWhatsapp = bp.whatsapp_number;
+            }
+        }
+
         const ownerPhone = normalizePhoneToE164(
-            booking.listing.vendor?.profile?.phone_number
+            vendorWhatsapp
+            ?? booking.listing.vendor?.profile?.phone_number
             ?? booking.listing.contact?.whatsapp
             ?? booking.listing.contact?.phone,
         );

@@ -32,6 +32,8 @@ import { realtimeRoutes } from "./realtime.routes";
 import { adminVendorPaymentsRoutes } from "./admin-vendor-payments.routes";
 import { adminPlatformSettingsRoutes } from "./admin-platform-settings.routes";
 import { seoRoutes } from "./seo.routes";
+import whatsappToolsRoutes from "./whatsapp-tools.routes";
+import whatsappInboundRoutes from "./whatsapp-inbound.routes";
 
 // Core routes - always enabled
 const routes = [
@@ -63,6 +65,8 @@ const routes = [
   adminVendorPaymentsRoutes,
   adminPlatformSettingsRoutes,
   seoRoutes,
+  whatsappToolsRoutes,
+  whatsappInboundRoutes,
 ];
 
 
