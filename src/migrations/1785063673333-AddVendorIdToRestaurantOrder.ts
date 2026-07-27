@@ -86,7 +86,7 @@ export class AddVendorIdToRestaurantOrder1785063673333 implements MigrationInter
         await queryRunner.query(`ALTER TABLE "booking_payouts" DROP CONSTRAINT "CHK_booking_payouts_status"`);
         await queryRunner.query(`ALTER TABLE "booking_payouts" DROP CONSTRAINT "chk_booking_payouts_amounts_valid"`);
         await queryRunner.query(`ALTER TABLE "vendor_subscriptions" DROP COLUMN "plan_id"`);
-        await queryRunner.query(`ALTER TABLE "restaurant_orders" DROP COLUMN "requested_time"`);
+        await queryRunner.query(`ALTER TABLE "restaurant_orders" DROP COLUMN IF EXISTS "requested_time"`);
         await queryRunner.query(`ALTER TABLE "restaurant_orders" DROP COLUMN "price_amount"`);
         await queryRunner.query(`ALTER TABLE "restaurant_orders" DROP CONSTRAINT "REL_restaurant_orders_bill_item"`);
         await queryRunner.query(`ALTER TABLE "restaurant_orders" DROP COLUMN "bill_item_id"`);
