@@ -14,6 +14,9 @@ export interface IBusinessProfileUpsertDto {
     businessAddress?: string;
     googleMapsUrl?: string;
     dtsLicenseNumber?: string;
+    bankName?: string;
+    bankAccountIban?: string;
+    bankAccountTitle?: string;
     whatsappBookingEnabled?: boolean;
     requestedCapabilities?: BusinessCapabilityType[];
 }
@@ -41,6 +44,9 @@ export interface IBusinessProfileResponseDto {
     businessAddress?: string | null;
     googleMapsUrl?: string | null;
     dtsLicenseNumber?: string | null;
+    bankName?: string | null;
+    bankAccountIban?: string | null;
+    bankAccountTitle?: string | null;
     whatsappBookingEnabled: boolean;
     onboardingStatus: BusinessOnboardingStatus;
     submittedAt?: string | null;

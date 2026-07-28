@@ -58,6 +58,15 @@ export class BusinessProfile {
     @Column({ type: "varchar", length: 100, nullable: true })
     dts_license_number?: string | null;
 
+    @Column({ type: "varchar", length: 150, nullable: true })
+    bank_name?: string | null;
+
+    @Column({ type: "varchar", length: 50, nullable: true })
+    bank_account_iban?: string | null;
+
+    @Column({ type: "varchar", length: 150, nullable: true })
+    bank_account_title?: string | null;
+
     @Column({ type: "boolean", default: false })
     whatsapp_booking_enabled!: boolean;
 
