@@ -106,7 +106,9 @@ export class VendorPolicyService {
         }
 
         const current = await this.getCurrentPolicy();
-        const policyVersion = this.makeAutoVersion();
+        const policyVersion = payload.preserveVersion 
+            ? current.policyVersion 
+            : this.makeAutoVersion();
 
         let setting = await this.platformSettingRepository.findOne({
             where: { setting_key: this.settingKey },

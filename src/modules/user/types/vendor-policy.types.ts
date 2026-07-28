@@ -9,4 +9,5 @@ export interface ICurrentVendorPolicyDto {
 export interface IUpdateVendorPolicyDto {
     title: string;
     content: string;
+    preserveVersion?: boolean;
 }
