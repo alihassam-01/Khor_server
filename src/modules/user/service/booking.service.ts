@@ -3509,7 +3509,9 @@ export class BookingService {
                 payment_issue: paymentIssue,
             });
             await manager.getRepository(BookingPayment).save(payment);
-            await manager.getRepository(HotelBooking).save(booking);
+            await manager.getRepository(HotelBooking).update(booking.id, {
+                payment_status: booking.payment_status,
+            });
 
             if (previousPaymentStatus !== booking.payment_status) {
                 await this.statusHistoryService.record({
@@ -3596,7 +3598,11 @@ export class BookingService {
             ? HotelBookingStatus.CONFIRMED
             : HotelBookingStatus.CONFIRMED;
         booking.confirmed_at = booking.confirmed_at ?? new Date();
-        await manager.getRepository(HotelBooking).save(booking);
+        await manager.getRepository(HotelBooking).update(booking.id, {
+            payment_status: booking.payment_status,
+            booking_status: booking.booking_status,
+            confirmed_at: booking.confirmed_at,
+        });
 
         await this.statusHistoryService.record({
             booking_id: booking.id,
@@ -3672,7 +3678,9 @@ export class BookingService {
         await manager.getRepository(BookingPayment).save(payment);
 
         booking.payment_status = payment.payment_status;
-        await manager.getRepository(HotelBooking).save(booking);
+        await manager.getRepository(HotelBooking).update(booking.id, {
+            payment_status: booking.payment_status,
+        });
 
         if (previousPaymentStatus !== booking.payment_status) {
             await this.statusHistoryService.record({
