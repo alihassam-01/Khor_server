@@ -118,9 +118,19 @@ export class SafepayService {
 
         const response = normalizeResponse(await this.client().reporter.payments.fetch(trackerToken));
         const tracker = response?.tracker ?? response?.data?.tracker ?? {};
-        const state = String(tracker.state ?? "").toUpperCase();
+        const state = String(
+            tracker.state
+            ?? response?.state
+            ?? response?.data?.state
+            ?? "",
+        ).toUpperCase();
         const action = response?.action ?? response?.data?.action ?? {};
-        const transactionId = action?.token ?? response?.transaction_id ?? null;
+        const charge = response?.charge ?? response?.data?.charge ?? {};
+        const transactionId = action?.token
+            ?? response?.transaction_id
+            ?? response?.data?.transaction_id
+            ?? charge?.token
+            ?? null;
 
         if (state === "TRACKER_ENDED") return { state: "paid", transactionId, trackerToken };
         if (state === "TRACKER_CANCELLED") return { state: "cancelled", transactionId, trackerToken };
