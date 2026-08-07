@@ -5,6 +5,7 @@ import routes from './modules/user/routes';
 import { CONFIG, validateProductionConfig } from './config/config';
 import fastifyMultipart from "@fastify/multipart";
 import fastifyCookie from "@fastify/cookie";
+import fastifyRawBody from "fastify-raw-body";
 import { globalErrorHandler } from './common/errors/global-error-handler';
 import { logError, logInfo } from './lib/logger';
 import securityPlugin from "./app/plugins/security";
@@ -48,6 +49,12 @@ async function startServer() {
   });
   await app.register(import('@fastify/formbody'));
   await app.register(fastifyCookie);
+  await app.register(fastifyRawBody, {
+    field: "rawBody",
+    global: false,
+    encoding: "utf8",
+    runFirst: true,
+  });
   await app.register(import('@fastify/rate-limit'), {
     global: true,
     hook: "preHandler",
@@ -132,4 +139,3 @@ startServer().catch((err) => {
   logError(err, "startServer function");
   process.exit(1);
 });
-

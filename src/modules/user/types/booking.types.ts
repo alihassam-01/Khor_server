@@ -50,6 +50,7 @@ export interface IBookingPaymentStatusParams {
     id: string;
 }
 
-export interface IPayFastReturnParams {
+export interface ISafepayReturnParams {
     result: string;
+    bookingId?: string;
 }
