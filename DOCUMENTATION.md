@@ -260,7 +260,7 @@ Booking routes (`booking.routes.ts`) expose operations for three actors:
 - auto-confirm logic from hotel configuration
 - audit + status history writes
 - notification and outbox enqueueing
-- PayFast integration touchpoints
+- Safepay integration touchpoints
 
 ### 9.3 Realtime booking stream
 
@@ -346,7 +346,7 @@ Major config groups:
 - JWT (`JWT_SECRET`, `JWT_RESET_SECRET`, expiries)
 - SMTP/Resend provider details
 - domain allowlist (`WEB_DOMAIN`, `ADMIN_DOMAIN`, `PARTNER_DOMAIN`)
-- PayFast credentials and endpoints
+- Safepay credentials, hosted checkout, and webhook endpoint
 - R2 credentials and limits
 - OCR/OpenRouter keys/models/daily limits
 - notification worker/whatsapp settings
@@ -502,4 +502,3 @@ Avoid:
 - `DEVELOPMENT_GUIDELINES.md`
 
 Use those for endpoint-level or domain-specific operational detail; use this document as the complete architecture-level and e2e operational map.
-

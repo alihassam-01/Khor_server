@@ -56,7 +56,7 @@ import { SendEmail } from "./email/sendEmail";
 import { pickBestPromotion } from "./listing/hotel-promotion.util";
 import { NotificationService, type NotificationPayload } from "./notification.service";
 import { NotificationOutboxService } from "./notification-outbox.service";
-import { PayFastService } from "./payfast.service";
+import { SafepayService } from "./safepay.service";
 import { generateDetachBookingToken, verifyDetachBookingToken } from "./detach-booking-token.util";
 
 const ACTIVE_BOOKING_STATUSES = [
@@ -65,8 +65,8 @@ const ACTIVE_BOOKING_STATUSES = [
     HotelBookingStatus.CHECKED_IN,
 ] as const;
 
-/** How long (ms) a deferred PayFast booking can sit unpaid before it auto-expires.
- *  Applies to bookings where the customer never even initiated the PayFast redirect. */
+/** How long (ms) a deferred Safepay booking can sit unpaid before it auto-expires.
+ *  Applies to bookings where the customer never even initiated the Safepay redirect. */
 const DEFERRED_PAYMENT_NEVER_INITIATED_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 type AuthActor = {
@@ -114,7 +114,7 @@ export class BookingService {
     private readonly emailService = new SendEmail();
     private readonly notificationService = new NotificationService();
     private readonly notificationOutboxService = new NotificationOutboxService();
-    private readonly payFastService = new PayFastService();
+    private readonly safePayService = new SafepayService();
     private readonly holdDurationMs = 10 * 60 * 1000;
 
     private isDevelopmentEnv(): boolean {
@@ -327,11 +327,11 @@ export class BookingService {
         }
     }
 
-    private isDeferredPayFastCheckout(
+    private isDeferredSafepayCheckout(
         dto: ICreateHotelBookingDTO,
         source: BookingSource,
     ): boolean {
-        return source === BookingSource.CUSTOMER_WEB && dto.payment_provider === "payfast_redirect";
+        return source === BookingSource.CUSTOMER_WEB && dto.payment_provider === "safepay_redirect";
     }
 
     private validateHoldInput(dto: ICreateHotelBookingHoldDTO): void {
@@ -578,15 +578,15 @@ export class BookingService {
         const neverInitiatedCutoff = new Date(Date.now() - DEFERRED_PAYMENT_NEVER_INITIATED_TTL_MS);
 
         // Two cases to catch:
-        // 1. Customer initiated PayFast redirect but the checkout window elapsed (expires_at IS set)
+        // 1. Customer initiated Safepay redirect but the checkout window elapsed (expires_at IS set)
         // 2. Customer created booking but never clicked pay at all (expires_at is NULL, created_at is old)
         const stalePayments = await manager.getRepository(BookingPayment)
             .createQueryBuilder("payment")
             .innerJoinAndSelect("payment.booking", "booking")
             .where("payment.payment_status = :status", { status: BookingPaymentStatus.PENDING })
             .andWhere("(payment.provider = :provider OR payment.provider = :redirectProvider)", {
-                provider: "payfast",
-                redirectProvider: "payfast_redirect",
+                provider: "safepay",
+                redirectProvider: "safepay_redirect",
             })
             .andWhere(
                 "(" +
@@ -596,7 +596,7 @@ export class BookingService {
                 // Case 2: no expires_at set (never initiated), but booking is older than TTL
                 "(payment.metadata ->> 'checkout_mode' = :checkoutMode AND (payment.metadata ->> 'expires_at') IS NULL AND payment.created_at <= :neverInitiatedCutoff)" +
                 ")",
-                { checkoutMode: "payfast_redirect", neverInitiatedCutoff },
+                { checkoutMode: "safepay_redirect", neverInitiatedCutoff },
             )
             .getMany();
 
@@ -623,7 +623,7 @@ export class BookingService {
                     to_status: BookingPaymentStatus.EXPIRED,
                     changed_by_user_id: null,
                     metadata: {
-                        provider: "payfast",
+                        provider: "safepay",
                         reason: "checkout_expired",
                     },
                 }, manager);
@@ -633,13 +633,13 @@ export class BookingService {
                 booking_id: payment.booking.id,
                 event_type: "booking_payment_expired",
                 actor_role: BookingAuditActorRole.SYSTEM,
-                source: "payfast",
+                source: "safepay",
                 after_state: {
                     booking_status: payment.booking.booking_status,
                     payment_status: BookingPaymentStatus.EXPIRED,
                 },
                 metadata: {
-                    provider: "payfast",
+                    provider: "safepay",
                     payment_id: payment.id,
                 },
             }, manager);
@@ -1155,6 +1155,43 @@ export class BookingService {
                             ErrorCodes.CONFLICT,
                         );
                     }
+
+                    const holdMatchClauses = holdIds.map((_, index) =>
+                        `(payment.metadata ->> 'hold_id' = :duplicateHoldId${index} OR payment.metadata -> 'hold_ids' @> :duplicateHoldArray${index}::jsonb)`,
+                    );
+                    const duplicateHoldQuery = manager.getRepository(HotelBooking)
+                        .createQueryBuilder("existingBooking")
+                        .innerJoin("existingBooking.payments", "payment")
+                        .where("existingBooking.customer_user_id = :customerUserId", { customerUserId: actor.userId })
+                        .andWhere("existingBooking.booking_status = :pendingBookingStatus", {
+                            pendingBookingStatus: HotelBookingStatus.PENDING,
+                        })
+                        .andWhere("existingBooking.payment_status = :pendingBookingPaymentStatus", {
+                            pendingBookingPaymentStatus: BookingPaymentStatus.PENDING,
+                        })
+                        .andWhere("payment.payment_status = :pendingPaymentStatus", {
+                            pendingPaymentStatus: BookingPaymentStatus.PENDING,
+                        })
+                        .andWhere("payment.provider IN (:...safepayProviders)", {
+                            safepayProviders: ["safepay", "safepay_redirect"],
+                        })
+                        .andWhere(`(${holdMatchClauses.join(" OR ")})`)
+                        .setParameters(
+                            Object.fromEntries(holdIds.flatMap((holdId, index) => [
+                                [`duplicateHoldId${index}`, holdId],
+                                [`duplicateHoldArray${index}`, JSON.stringify([holdId])],
+                            ])),
+                        )
+                        .select("existingBooking.id", "id")
+                        .limit(1);
+                    const duplicateCheckout = await duplicateHoldQuery.getRawOne<{ id: string }>();
+                    if (duplicateCheckout?.id) {
+                        throw new AppError(
+                            "A Safepay checkout is already in progress for this room hold",
+                            409,
+                            ErrorCodes.CONFLICT,
+                        );
+                    }
                 }
             }
 
@@ -1215,21 +1252,21 @@ export class BookingService {
             const initialPaymentAmount = requestedDevelopmentDirectCheckout
                 ? totalAmount
                 : this.roundAmount(dto.payment_amount ?? 0);
-            const isDeferredPayFastCheckout = this.isDeferredPayFastCheckout(dto, source);
+            const isDeferredSafepayCheckout = this.isDeferredSafepayCheckout(dto, source);
             const isDevelopmentDirectCheckout = source === BookingSource.CUSTOMER_WEB
                 && requestedDevelopmentDirectCheckout
-                && !isDeferredPayFastCheckout
+                && !isDeferredSafepayCheckout
                 && totalAmount > 0;
 
-            if (isDeferredPayFastCheckout && initialPaymentAmount !== 0) {
+            if (isDeferredSafepayCheckout && initialPaymentAmount !== 0) {
                 throw new AppError(
-                    "PayFast checkout sessions must start without a captured payment amount.",
+                    "Safepay checkout sessions must start without a captured payment amount.",
                     400,
                     ErrorCodes.VALIDATION_ERROR,
                 );
             }
 
-            if (source === BookingSource.CUSTOMER_WEB && !isDeferredPayFastCheckout && !isDevelopmentDirectCheckout) {
+            if (source === BookingSource.CUSTOMER_WEB && !isDeferredSafepayCheckout && !isDevelopmentDirectCheckout) {
                 throw new AppError(
                     "Online bookings must be paid through a verified checkout session.",
                     400,
@@ -1245,7 +1282,7 @@ export class BookingService {
                 );
             }
 
-            const initialBookingPaymentStatus = isDeferredPayFastCheckout
+            const initialBookingPaymentStatus = isDeferredSafepayCheckout
                 ? BookingPaymentStatus.PENDING
                 : initialPaymentAmount <= 0
                 ? BookingPaymentStatus.PENDING
@@ -1253,7 +1290,7 @@ export class BookingService {
                     ? BookingPaymentStatus.PARTIALLY_PAID
                     : BookingPaymentStatus.PAID;
             const shouldAutoConfirmCustomerBooking = source === BookingSource.CUSTOMER_WEB
-                && !isDeferredPayFastCheckout
+                && !isDeferredSafepayCheckout
                 && initialBookingPaymentStatus === BookingPaymentStatus.PAID
                 && (
                     isDevelopmentDirectCheckout
@@ -1310,7 +1347,7 @@ export class BookingService {
             });
 
             const savedBooking = await manager.getRepository(HotelBooking).save(booking);
-            if (!isDeferredPayFastCheckout) {
+            if (!isDeferredSafepayCheckout) {
                 const bookingAllocations = allocations.map((allocation) => manager.getRepository(HotelBookingAllocation).create({
                     booking_id: savedBooking.id,
                     listing_id: dto.listing_id,
@@ -1347,7 +1384,7 @@ export class BookingService {
                         : undefined,
                     created_by_user_id: actor.userId,
                 });
-            } else if (isDeferredPayFastCheckout) {
+            } else if (isDeferredSafepayCheckout) {
                 await this.insertBookingPayment(manager, {
                     booking_id: savedBooking.id,
                     payment_method: null,
@@ -1356,10 +1393,10 @@ export class BookingService {
                     amount: totalAmount,
                     captured_amount: 0,
                     refunded_amount: 0,
-                    provider: "payfast_redirect",
-                    notes: dto.payment_notes?.trim() || "Pending PayFast checkout",
+                    provider: "safepay_redirect",
+                    notes: dto.payment_notes?.trim() || "Pending Safepay checkout",
                     metadata: {
-                        checkout_mode: "payfast_redirect",
+                        checkout_mode: "safepay_redirect",
                         hold_id: holdIds[0] ?? null,
                         hold_ids: holdIds,
                         room_allocations: allocations,
@@ -1379,7 +1416,7 @@ export class BookingService {
             );
             await manager.getRepository(HotelBooking).save(savedBooking);
 
-            if (holds.length > 0 && !isDeferredPayFastCheckout) {
+            if (holds.length > 0 && !isDeferredSafepayCheckout) {
                 for (const hold of holds) {
                 hold.status = BookingHoldStatus.CONSUMED;
                 hold.consumed_at = new Date();
@@ -1432,8 +1469,8 @@ export class BookingService {
                     room_allocations: allocations,
                     guest_count: dto.guest_count,
                     payment_amount: initialPaymentAmount,
-                    payment_mode: isDeferredPayFastCheckout
-                        ? "payfast_redirect"
+                    payment_mode: isDeferredSafepayCheckout
+                        ? "safepay_redirect"
                         : isDevelopmentDirectCheckout
                             ? "development_direct_bypass"
                             : "direct_capture",
@@ -1552,32 +1589,34 @@ export class BookingService {
         return booking;
     }
 
-    private getLatestPayFastPayment(booking: HotelBooking): BookingPayment | null {
+    private getLatestSafepayPayment(booking: HotelBooking): BookingPayment | null {
         const payments = [...(booking.payments ?? [])]
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
         return payments.find((payment) => {
             const provider = String(payment.provider ?? "").toLowerCase();
             const mode = String((payment.metadata as Record<string, unknown> | null)?.checkout_mode ?? "").toLowerCase();
-            return provider === "payfast" || provider === "payfast_redirect" || mode === "payfast_redirect";
+            return provider === "safepay" || provider === "safepay_redirect" || mode === "safepay_redirect";
         }) ?? null;
     }
 
-    private buildPayFastReturnUrl(result: "success" | "failure", bookingId: string): string {
-        const apiBase = this.isDevelopmentEnv()
-            ? `http://${CONFIG.server.host || "127.0.0.1"}:${CONFIG.server.port || 3008}`
-            : (
-                CONFIG.api_domain.url ||
-                `http://${CONFIG.server.host || "127.0.0.1"}:${CONFIG.server.port || 3008}`
-            );
-        const base = `${apiBase}/api/payments/payfast/return/${result}`;
-        return `${base}?booking_id=${encodeURIComponent(bookingId)}`;
+    private buildSafepayReturnUrl(result: "success" | "failure", bookingId: string): string {
+        // SERVER_HOST may be 0.0.0.0 for binding, but it is not reachable from
+        // a browser or Safepay. Prefer the public/tunnel URL in every environment.
+        const configuredApiBase = CONFIG.api_domain.url?.trim().replace(/\/+$/, "");
+        const browserHost = CONFIG.server.host === "0.0.0.0"
+            ? "localhost"
+            : (CONFIG.server.host || "127.0.0.1");
+        const apiBase = configuredApiBase
+            || `http://${browserHost}:${CONFIG.server.port || 3008}`;
+        // Safepay appends its own query parameters to redirect_url. Keep the
+        // booking ID in the path so the resulting URL cannot contain a second
+        // '?' (for example, '?booking_id=...?...').
+        return `${apiBase}/api/payments/safepay/return/${result}/${encodeURIComponent(bookingId)}`;
     }
 
-    private buildPayFastFrontendStatusUrl(bookingId: string, status?: string): string {
-        const webBase = this.isDevelopmentEnv()
-            ? (CONFIG.web_domain.url || "http://localhost:9002")
-            : (CONFIG.web_domain.url || "http://localhost:9002");
+    private buildSafepayFrontendStatusUrl(bookingId: string, status?: string): string {
+        const webBase = (CONFIG.web_domain.url || "http://localhost:9002").trim().replace(/\/+$/, "");
         const base = `${webBase}/payment/result`;
         const params = new URLSearchParams({ bookingId });
         if (status) params.set("status", status);
@@ -1602,19 +1641,19 @@ export class BookingService {
         return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
 
-    private isDeferredPayFastPayment(payment?: BookingPayment | null): boolean {
+    private isDeferredSafepayPayment(payment?: BookingPayment | null): boolean {
         if (!payment) return false;
         const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
         const provider = String(payment.provider ?? "").toLowerCase();
         const checkoutMode = String(metadata.checkout_mode ?? "").toLowerCase();
 
-        return provider === "payfast" || provider === "payfast_redirect" || checkoutMode === "payfast_redirect";
+        return provider === "safepay" || provider === "safepay_redirect" || checkoutMode === "safepay_redirect";
     }
 
     private isCheckoutExpiredForBooking(booking: HotelBooking, payment?: BookingPayment | null): boolean {
         if (booking.booking_status !== HotelBookingStatus.PENDING) return false;
         if (![BookingPaymentStatus.PENDING, BookingPaymentStatus.EXPIRED].includes(booking.payment_status)) return false;
-        if (!this.isDeferredPayFastPayment(payment)) return false;
+        if (!this.isDeferredSafepayPayment(payment)) return false;
 
         if (booking.payment_status === BookingPaymentStatus.EXPIRED || payment?.payment_status === BookingPaymentStatus.EXPIRED) {
             return true;
@@ -1627,7 +1666,7 @@ export class BookingService {
     private canResumePaymentForBooking(booking: HotelBooking, payment?: BookingPayment | null): boolean {
         if (booking.booking_status !== HotelBookingStatus.PENDING) return false;
         if (booking.payment_status !== BookingPaymentStatus.PENDING) return false;
-        if (!this.isDeferredPayFastPayment(payment)) return false;
+        if (!this.isDeferredSafepayPayment(payment)) return false;
 
         return !this.isCheckoutExpiredForBooking(booking, payment);
     }
@@ -1650,9 +1689,9 @@ export class BookingService {
     }
 
     private toDTO(booking: HotelBooking): IHotelBookingDTO {
-        const latestPayFastPayment = this.getLatestPayFastPayment(booking);
-        const paymentExpiresAt = this.getPaymentCheckoutExpiry(latestPayFastPayment);
-        const isExpired = this.isCheckoutExpiredForBooking(booking, latestPayFastPayment);
+        const latestSafepayPayment = this.getLatestSafepayPayment(booking);
+        const paymentExpiresAt = this.getPaymentCheckoutExpiry(latestSafepayPayment);
+        const isExpired = this.isCheckoutExpiredForBooking(booking, latestSafepayPayment);
         const roomAllocations = (booking.allocations?.length ? booking.allocations : [{
             room_type: booking.room_type,
             quantity_reserved: booking.rooms_count,
@@ -1734,10 +1773,10 @@ export class BookingService {
             booking_status: booking.booking_status,
             display_status: isExpired ? "expired" : booking.booking_status,
             payment_status: booking.payment_status,
-            can_resume_payment: this.canResumePaymentForBooking(booking, latestPayFastPayment),
+            can_resume_payment: this.canResumePaymentForBooking(booking, latestSafepayPayment),
             payment_expires_at: paymentExpiresAt,
-            requires_manual_review: this.requiresManualReview(booking, latestPayFastPayment),
-            payment_issue: this.getPaymentIssue(booking, latestPayFastPayment),
+            requires_manual_review: this.requiresManualReview(booking, latestSafepayPayment),
+            payment_issue: this.getPaymentIssue(booking, latestSafepayPayment),
             cancellation_status: booking.cancellation_status,
             refund_status: booking.refund_status,
             cancellation_policy_snapshot: booking.cancellation_policy_snapshot ?? null,
@@ -1883,7 +1922,7 @@ export class BookingService {
         manager: EntityManager,
         booking: HotelBooking,
     ): Promise<void> {
-        const payment = this.getLatestPayFastPayment(booking);
+        const payment = this.getLatestSafepayPayment(booking);
         const metadata = (payment?.metadata as Record<string, unknown> | null) ?? {};
         const holdIds = Array.isArray(metadata.hold_ids)
             ? (metadata.hold_ids as unknown[]).map((value) => String(value)).filter((value) => isValidUuid(value))
@@ -2245,40 +2284,21 @@ export class BookingService {
         dto: ICreateHotelBookingDTO,
         customerIp: string,
     ): Promise<IHotelBookingCheckoutResponseDTO> {
-        if (this.isDevelopmentEnv()) {
-            const booking = await this.createBooking({
-                ...dto,
-                payment_amount: Number.MAX_SAFE_INTEGER,
-                payment_method: dto.payment_method,
-                payment_notes: dto.payment_notes?.trim() || "Development checkout bypass",
-                payment_provider: "development_direct",
-                transaction_id: dto.transaction_id ?? undefined,
-            }, actor, BookingSource.CUSTOMER_WEB);
-
-            return {
-                booking_id: booking.id,
-                booking_number: booking.booking_number,
-                checkout_url: this.buildPayFastFrontendStatusUrl(booking.id, "success"),
-                form_fields: {},
-                expires_at: new Date(),
-            };
-        }
-
         const booking = await this.createBooking({
             ...dto,
             payment_amount: 0,
             payment_method: undefined,
-            payment_notes: "Pending PayFast checkout",
-            payment_provider: "payfast_redirect",
+            payment_notes: "Pending Safepay checkout",
+            payment_provider: "safepay_redirect",
             transaction_id: undefined,
         }, actor, BookingSource.CUSTOMER_WEB);
 
         const session = await AppDataSource.transaction(async (manager) => {
             const bookingEntity = await this.loadBookingForGateway(booking.id, manager);
-            const payment = this.getLatestPayFastPayment(bookingEntity);
+            const payment = this.getLatestSafepayPayment(bookingEntity);
             if (!payment) {
                 throw new AppError(
-                    "Pending PayFast booking payment was not created.",
+                    "Pending Safepay booking payment was not created.",
                     500,
                     ErrorCodes.INTERNAL_SERVER_ERROR,
                 );
@@ -2305,21 +2325,22 @@ export class BookingService {
                 );
             }
 
-            const checkout = await this.payFastService.createCheckoutSession({
+            const checkout = await this.safePayService.createCheckoutSession({
                 basketId: bookingEntity.booking_number,
                 amount: Number(bookingEntity.total_amount),
                 customerEmail: bookingEntity.guest_email,
                 customerMobile: bookingEntity.guest_phone,
                 customerIp,
                 description: `Hotel booking ${bookingEntity.booking_number}`,
-                successUrl: this.buildPayFastReturnUrl("success", bookingEntity.id),
-                failureUrl: this.buildPayFastReturnUrl("failure", bookingEntity.id),
-                checkoutUrl: this.buildPayFastFrontendStatusUrl(bookingEntity.id, "processing"),
+                successUrl: this.buildSafepayReturnUrl("success", bookingEntity.id),
+                failureUrl: this.buildSafepayReturnUrl("failure", bookingEntity.id),
+                checkoutUrl: this.buildSafepayFrontendStatusUrl(bookingEntity.id, "processing"),
             });
 
-            payment.provider = "payfast";
+            payment.provider = "safepay";
             payment.metadata = this.mergePaymentMetadata(payment, {
-                checkout_mode: "payfast_redirect",
+                checkout_mode: "safepay_redirect",
+                tracker_token: checkout.trackerToken,
                 basket_id: bookingEntity.booking_number,
                 access_token_issued: true,
                 checkout_url: checkout.checkoutUrl,
@@ -2339,7 +2360,7 @@ export class BookingService {
                     payment_status: bookingEntity.payment_status,
                 },
                 metadata: {
-                    provider: "payfast",
+                    provider: "safepay",
                     basket_id: bookingEntity.booking_number,
                     expires_at: expiresAt.toISOString(),
                 },
@@ -2368,10 +2389,10 @@ export class BookingService {
 
         return AppDataSource.transaction(async (manager) => {
             const booking = await this.loadBookingForActor(bookingId, actor, "customer", manager);
-            const payment = this.getLatestPayFastPayment(booking);
+            const payment = this.getLatestSafepayPayment(booking);
 
-            if (!payment || !this.isDeferredPayFastPayment(payment)) {
-                throw new AppError("This booking does not have a resumable PayFast checkout.", 409, ErrorCodes.CONFLICT);
+            if (!payment || !this.isDeferredSafepayPayment(payment)) {
+                throw new AppError("This booking does not have a resumable Safepay checkout.", 409, ErrorCodes.CONFLICT);
             }
 
             if (booking.booking_status !== HotelBookingStatus.PENDING || booking.payment_status !== BookingPaymentStatus.PENDING) {
@@ -2404,21 +2425,22 @@ export class BookingService {
                 holds[0].expires_at,
             );
 
-            const checkout = await this.payFastService.createCheckoutSession({
+            const checkout = await this.safePayService.createCheckoutSession({
                 basketId: booking.booking_number,
                 amount: Number(booking.total_amount),
                 customerEmail: booking.guest_email,
                 customerMobile: booking.guest_phone,
                 customerIp,
                 description: `Hotel booking ${booking.booking_number}`,
-                successUrl: this.buildPayFastReturnUrl("success", booking.id),
-                failureUrl: this.buildPayFastReturnUrl("failure", booking.id),
-                checkoutUrl: this.buildPayFastFrontendStatusUrl(booking.id, "processing"),
+                successUrl: this.buildSafepayReturnUrl("success", booking.id),
+                failureUrl: this.buildSafepayReturnUrl("failure", booking.id),
+                checkoutUrl: this.buildSafepayFrontendStatusUrl(booking.id, "processing"),
             });
 
-            payment.provider = "payfast";
+            payment.provider = "safepay";
             payment.metadata = this.mergePaymentMetadata(payment, {
-                checkout_mode: "payfast_redirect",
+                checkout_mode: "safepay_redirect",
+                tracker_token: checkout.trackerToken,
                 basket_id: booking.booking_number,
                 access_token_issued: true,
                 checkout_url: checkout.checkoutUrl,
@@ -2438,7 +2460,7 @@ export class BookingService {
                     payment_status: booking.payment_status,
                 },
                 metadata: {
-                    provider: "payfast",
+                    provider: "safepay",
                     basket_id: booking.booking_number,
                     expires_at: expiresAt.toISOString(),
                 },
@@ -3441,7 +3463,11 @@ export class BookingService {
             return map;
         }, new Map<string, string[]>());
 
-        let inventoryUnavailable = false;
+        // Khor's checkout deadline is authoritative for inventory. A provider
+        // webhook can arrive after that deadline; record the money as paid but
+        // keep the booking out of automatic fulfillment for manual review.
+        let inventoryUnavailable = payment.payment_status === BookingPaymentStatus.EXPIRED
+            || booking.payment_status === BookingPaymentStatus.EXPIRED;
         for (const allocation of allocations) {
             const roomType = await this.loadLockedRoomType(manager, allocation.room_type_id);
             const reservedRooms = await this.getReservedRoomCount(
@@ -3466,16 +3492,21 @@ export class BookingService {
 
         if (inventoryUnavailable) {
             const previousPaymentStatus = booking.payment_status;
+            const wasExpired = previousPaymentStatus === BookingPaymentStatus.EXPIRED
+                || payment.payment_status === BookingPaymentStatus.EXPIRED;
             booking.payment_status = BookingPaymentStatus.PAID;
             payment.payment_status = BookingPaymentStatus.PAID;
             payment.captured_amount = Number(booking.total_amount);
             payment.transaction_id = transactionId ?? payment.transaction_id ?? null;
             payment.provider_payment_id = transactionId ?? payment.provider_payment_id ?? null;
+            const paymentIssue = wasExpired
+                ? "payment_completed_after_checkout_expiry"
+                : "inventory_unavailable_after_payment";
             payment.metadata = this.mergePaymentMetadata(payment, {
                 checkout_status: "verified_success_manual_review",
                 verified_at: new Date().toISOString(),
                 manual_review_required: true,
-                payment_issue: "inventory_unavailable_after_payment",
+                payment_issue: paymentIssue,
             });
             await manager.getRepository(BookingPayment).save(payment);
             await manager.getRepository(HotelBooking).save(booking);
@@ -3488,7 +3519,7 @@ export class BookingService {
                     to_status: booking.payment_status,
                     changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
                     metadata: {
-                        provider: "payfast",
+                        provider: "safepay",
                         transaction_id: payment.transaction_id ?? null,
                         manual_review_required: true,
                     },
@@ -3500,7 +3531,7 @@ export class BookingService {
                 event_type: "booking_payment_captured_manual_review_required",
                 actor_user_id: null,
                 actor_role: BookingAuditActorRole.SYSTEM,
-                source: "payfast",
+                source: "safepay",
                 before_state: {
                     booking_status: booking.booking_status,
                     payment_status: previousPaymentStatus,
@@ -3510,7 +3541,7 @@ export class BookingService {
                     payment_status: booking.payment_status,
                 },
                 metadata: {
-                    provider: "payfast",
+                    provider: "safepay",
                     transaction_id: payment.transaction_id ?? null,
                     payment_issue: "inventory_unavailable_after_payment",
                 },
@@ -3574,7 +3605,7 @@ export class BookingService {
             to_status: booking.payment_status,
             changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
             metadata: {
-                provider: "payfast",
+                provider: "safepay",
                 transaction_id: payment.transaction_id ?? null,
             },
         }, manager);
@@ -3587,7 +3618,7 @@ export class BookingService {
                 to_status: booking.booking_status,
                 changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
                 metadata: {
-                    provider: "payfast",
+                    provider: "safepay",
                     auto_confirm_paid_bookings: true,
                 },
             }, manager);
@@ -3598,7 +3629,7 @@ export class BookingService {
             event_type: "booking_payment_verified_by_gateway",
             actor_user_id: null,
             actor_role: BookingAuditActorRole.SYSTEM,
-            source: "payfast",
+            source: "safepay",
             before_state: {
                 booking_status: previousBookingStatus,
                 payment_status: previousPaymentStatus,
@@ -3608,7 +3639,7 @@ export class BookingService {
                 payment_status: booking.payment_status,
             },
             metadata: {
-                provider: "payfast",
+                provider: "safepay",
                 transaction_id: payment.transaction_id ?? null,
             },
         }, manager);
@@ -3651,7 +3682,7 @@ export class BookingService {
                 to_status: booking.payment_status,
                 changed_by_user_id: booking.customer_user_id ?? booking.created_by_user_id ?? null,
                 metadata: {
-                    provider: "payfast",
+                    provider: "safepay",
                     transaction_id: payment.transaction_id ?? null,
                     gateway_state: state,
                 },
@@ -3666,7 +3697,7 @@ export class BookingService {
                     ? "booking_payment_failed_by_gateway"
                     : "booking_payment_pending_gateway_review",
             actor_role: BookingAuditActorRole.SYSTEM,
-            source: "payfast",
+            source: "safepay",
             before_state: {
                 payment_status: previousPaymentStatus,
             },
@@ -3674,26 +3705,27 @@ export class BookingService {
                 payment_status: booking.payment_status,
             },
             metadata: {
-                provider: "payfast",
+                provider: "safepay",
                 transaction_id: payment.transaction_id ?? null,
                 gateway_message: message ?? null,
             },
         }, manager);
     }
 
-    private async verifyPayFastBookingInternal(
+    private async verifySafepayBookingInternal(
         bookingId: string,
         manager: EntityManager = AppDataSource.manager,
     ): Promise<HotelBooking> {
         const booking = await this.loadBookingForGateway(bookingId, manager);
-        const payment = this.getLatestPayFastPayment(booking);
+        const payment = this.getLatestSafepayPayment(booking);
         if (!payment) {
             return booking;
         }
 
         const metadata = (payment.metadata as Record<string, unknown> | null) ?? {};
         const basketId = String(metadata.basket_id ?? booking.booking_number ?? "");
-        const statusResult = await this.payFastService.getTransactionStatus({
+        const statusResult = await this.safePayService.getTransactionStatus({
+            trackerToken: String((payment.metadata as Record<string, unknown> | null)?.tracker_token ?? "") || null,
             transactionId: payment.transaction_id ?? payment.provider_payment_id ?? null,
             basketId,
         });
@@ -3719,13 +3751,13 @@ export class BookingService {
         return this.loadBookingForGateway(bookingId, manager);
     }
 
-    async verifyCustomerPayFastBooking(bookingId: string, actor: AuthActor): Promise<IHotelBookingDTO> {
+    async verifyCustomerSafepayBooking(bookingId: string, actor: AuthActor): Promise<IHotelBookingDTO> {
         if (actor.userType !== UserRole.CUSTOMER) {
             throw new AppError("Only customers can verify web booking payments", 403, ErrorCodes.FORBIDDEN);
         }
 
         const ownedBooking = await this.loadBookingForActor(bookingId, actor, "customer");
-        const verified = await AppDataSource.transaction((manager) => this.verifyPayFastBookingInternal(ownedBooking.id, manager));
+        const verified = await AppDataSource.transaction((manager) => this.verifySafepayBookingInternal(ownedBooking.id, manager));
         if (ownedBooking.payment_status !== BookingPaymentStatus.PAID
             && verified.payment_status === BookingPaymentStatus.PAID) {
             await this.notifyBookingLifecycle(verified.id, "confirmed");
@@ -3733,20 +3765,20 @@ export class BookingService {
         return this.toDTO(verified);
     }
 
-    async handlePayFastReturn(
+    async handleSafepayReturn(
         bookingId: string,
         result: string,
         payload: Record<string, unknown>,
     ): Promise<string> {
         if (!bookingId || !isValidUuid(bookingId)) {
-            return this.buildPayFastFrontendStatusUrl("", "failed");
+            return this.buildSafepayFrontendStatusUrl("", "failed");
         }
 
         try {
             const previousBooking = await this.loadBookingForGateway(bookingId);
             const booking = await AppDataSource.transaction(async (manager) => {
                 const booking = await this.loadBookingForGateway(bookingId, manager);
-                const payment = this.getLatestPayFastPayment(booking);
+                const payment = this.getLatestSafepayPayment(booking);
                 if (!payment) {
                     return booking;
                 }
@@ -3761,13 +3793,13 @@ export class BookingService {
                     ?? "",
                 );
                 const validationHash = payload.validation_hash ?? payload.validationHash ?? null;
-                const isValidHash = this.payFastService.validateReturnHash({
+                const isValidHash = this.safePayService.validateReturnHash({
                     basketId,
                     errCode: errCode ? String(errCode) : null,
                     validationHash: validationHash ? String(validationHash) : null,
                 });
 
-                logInfo("PayFast return callback received", {
+                logInfo("Safepay return callback received", {
                     bookingId: booking.id,
                     result,
                     basketId,
@@ -3788,7 +3820,7 @@ export class BookingService {
                 await manager.getRepository(BookingPayment).save(payment);
 
                 if (!isValidHash) {
-                    logWarn("PayFast return callback hash validation failed", {
+                    logWarn("Safepay return callback hash validation failed", {
                         bookingId: booking.id,
                         result,
                         basketId,
@@ -3805,7 +3837,7 @@ export class BookingService {
                             payment_status: booking.payment_status,
                         },
                         metadata: {
-                            provider: "payfast",
+                            provider: "safepay",
                             basket_id: basketId,
                             err_code: errCode ?? null,
                         },
@@ -3814,7 +3846,10 @@ export class BookingService {
                     return booking;
                 }
 
-                return this.verifyPayFastBookingInternal(bookingId, manager);
+                // Do not block the provider's browser redirect on a second
+                // tracker API request. The frontend status endpoint and the
+                // webhook perform the authoritative payment verification.
+                return booking;
             });
 
             if (previousBooking.payment_status !== BookingPaymentStatus.PAID
@@ -3826,10 +3861,100 @@ export class BookingService {
                 : booking.payment_status === BookingPaymentStatus.FAILED
                     ? "failed"
                     : "pending";
-            return this.buildPayFastFrontendStatusUrl(booking.id, status);
+            return this.buildSafepayFrontendStatusUrl(booking.id, status);
         } catch {
-            return this.buildPayFastFrontendStatusUrl(bookingId, result === "success" ? "pending" : "failed");
+            return this.buildSafepayFrontendStatusUrl(bookingId, result === "success" ? "pending" : "failed");
         }
+    }
+
+    async processSafepayWebhook(event: unknown): Promise<void> {
+        const payload = event as {
+            type?: string;
+            token?: string;
+            data?: {
+                tracker?: string;
+                state?: string;
+                success?: boolean;
+                amount?: number;
+                currency?: string;
+                transaction_id?: string;
+                message?: string;
+            };
+        };
+        const trackerToken = payload.data?.tracker ? String(payload.data.tracker) : "";
+        if (!trackerToken) return;
+
+        const payment = await AppDataSource.getRepository(BookingPayment)
+            .createQueryBuilder("payment")
+            .where("payment.metadata ->> 'tracker_token' = :trackerToken", { trackerToken })
+            .orderBy("payment.created_at", "DESC")
+            .getOne();
+        if (!payment) {
+            logWarn("Safepay webhook did not match a booking", { trackerToken, eventType: payload.type });
+            return;
+        }
+
+        const eventToken = payload.token ? String(payload.token) : null;
+        await AppDataSource.transaction(async (manager) => {
+            const booking = await this.loadBookingForGateway(payment.booking_id, manager);
+            const currentPayment = await manager.getRepository(BookingPayment).findOne({ where: { id: payment.id } });
+            if (!currentPayment) return;
+
+            const metadata = (currentPayment.metadata as Record<string, unknown> | null) ?? {};
+            const handledEvents = Array.isArray(metadata.safepay_webhook_events)
+                ? metadata.safepay_webhook_events.map((value) => String(value))
+                : [];
+            if (eventToken && handledEvents.includes(eventToken)) return;
+
+            currentPayment.metadata = this.mergePaymentMetadata(currentPayment, {
+                safepay_webhook_events: eventToken
+                    ? [...handledEvents.slice(-19), eventToken]
+                    : handledEvents,
+                last_webhook_type: payload.type ?? null,
+            });
+            await manager.getRepository(BookingPayment).save(currentPayment);
+
+            if (payload.type === "payment.succeeded") {
+                const expectedTracker = String(metadata.tracker_token ?? "");
+                const expectedAmountInMinorUnits = Math.round(Number(booking.total_amount) * 100);
+                const webhookAmount = Number(payload.data?.amount);
+                const webhookCurrency = String(payload.data?.currency ?? "").toUpperCase();
+                const webhookIsValid = this.safePayService.isSuccessfulWebhook(payload)
+                    && payload.data?.tracker === expectedTracker
+                    && Number.isFinite(webhookAmount)
+                    && webhookAmount === expectedAmountInMinorUnits
+                    && webhookCurrency === booking.currency.toUpperCase();
+
+                if (!webhookIsValid) {
+                    logWarn("Safepay success webhook failed semantic validation", {
+                        bookingId: booking.id,
+                        eventType: payload.type,
+                        trackerMatches: payload.data?.tracker === expectedTracker,
+                        state: payload.data?.state ?? null,
+                        success: payload.data?.success ?? null,
+                        amountMatches: webhookAmount === expectedAmountInMinorUnits,
+                        currencyMatches: webhookCurrency === booking.currency.toUpperCase(),
+                    });
+                    return;
+                }
+
+                await this.finalizeGatewayPaidBooking(
+                    manager,
+                    booking,
+                    currentPayment,
+                    payload.data?.transaction_id ?? null,
+                );
+            } else if (payload.type === "payment.failed") {
+                await this.markGatewayPaymentFailed(
+                    manager,
+                    booking,
+                    currentPayment,
+                    "failed",
+                    payload.data?.transaction_id ?? null,
+                    payload.data?.message ?? "Safepay payment failed.",
+                );
+            }
+        });
     }
 
     async getAvailability(

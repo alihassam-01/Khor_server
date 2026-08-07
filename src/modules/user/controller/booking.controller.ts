@@ -4,6 +4,7 @@ import { AppError } from "@common/errors/AppError";
 import { ErrorCodes } from "@common/errors/error-codes";
 import { BookingBillService } from "@modules/user/service/booking-bill.service";
 import { BookingService } from "@modules/user/service/booking.service";
+import { SafepayService } from "@modules/user/service/safepay.service";
 import {
     ICreateBookingBillItemDTO,
     ICreateHotelBookingHoldDTO,
@@ -23,7 +24,7 @@ import {
     IRefundListQuery,
     IRefundProcessBody,
     IHotelAvailabilityParams,
-    IPayFastReturnParams,
+    ISafepayReturnParams,
     IRoomTypeBookingParams,
 } from "@modules/user/types";
 
@@ -36,6 +37,7 @@ type AuthUser = {
 export class BookingController {
     private readonly bookingService = new BookingService();
     private readonly bookingBillService = new BookingBillService();
+    private readonly safepayService = new SafepayService();
 
     private getActor(req: FastifyRequest): { userId: string; userType: UserRole } {
         const user = (req.user ?? {}) as AuthUser;
@@ -440,23 +442,28 @@ export class BookingController {
         req: FastifyRequest<{ Params: IBookingPaymentStatusParams }>,
         reply: FastifyReply,
     ) {
-        const booking = await this.bookingService.verifyCustomerPayFastBooking(
+        const booking = await this.bookingService.verifyCustomerSafepayBooking(
             req.params.id,
             this.getActor(req),
         );
         reply.send(booking);
     }
 
-    async handlePayFastReturn(
-        req: FastifyRequest<{ Params: IPayFastReturnParams; Body: Record<string, unknown>; Querystring: Record<string, unknown> }>,
+    async handleSafepayReturn(
+        req: FastifyRequest<{ Params: ISafepayReturnParams; Body: Record<string, unknown>; Querystring: Record<string, unknown> }>,
         reply: FastifyReply,
     ) {
         const payload = {
             ...(req.query || {}),
             ...(req.body || {}),
         };
-        const bookingId = String(payload.booking_id ?? payload.bookingId ?? "");
-        const redirectUrl = await this.bookingService.handlePayFastReturn(
+        const bookingId = String(
+            req.params.bookingId
+            ?? payload.booking_id
+            ?? payload.bookingId
+            ?? "",
+        );
+        const redirectUrl = await this.bookingService.handleSafepayReturn(
             bookingId,
             req.params.result,
             payload,
@@ -478,6 +485,17 @@ export class BookingController {
     <script>window.location.replace(${JSON.stringify(redirectUrl)});</script>
   </body>
 </html>`);
+    }
+
+    async handleSafepayWebhook(req: FastifyRequest, reply: FastifyReply) {
+        const rawBody = (req as FastifyRequest & { rawBody?: Buffer }).rawBody;
+        const signature = req.headers["x-sfpy-signature"];
+        const event = this.safepayService.verifyWebhook(
+            rawBody ?? Buffer.from(JSON.stringify(req.body ?? {})),
+            Array.isArray(signature) ? signature[0] : signature,
+        );
+        await this.bookingService.processSafepayWebhook(event);
+        reply.code(200).send({ received: true });
     }
 
     async getAvailability(

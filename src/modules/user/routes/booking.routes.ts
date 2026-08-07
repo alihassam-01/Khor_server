@@ -307,13 +307,29 @@ export const bookingRoutes = async (fastify: FastifyInstance) => {
     );
 
     fastify.get(
-        "/payments/payfast/return/:result",
-        bookingController.handlePayFastReturn.bind(bookingController),
+        "/payments/safepay/return/:result",
+        bookingController.handleSafepayReturn.bind(bookingController),
+    );
+
+    fastify.get(
+        "/payments/safepay/return/:result/:bookingId",
+        bookingController.handleSafepayReturn.bind(bookingController),
     );
 
     fastify.post(
-        "/payments/payfast/return/:result",
-        bookingController.handlePayFastReturn.bind(bookingController),
+        "/payments/safepay/return/:result",
+        bookingController.handleSafepayReturn.bind(bookingController),
+    );
+
+    fastify.post(
+        "/payments/safepay/return/:result/:bookingId",
+        bookingController.handleSafepayReturn.bind(bookingController),
+    );
+
+    fastify.post(
+        "/payments/safepay/webhook",
+        { config: { rawBody: true } },
+        bookingController.handleSafepayWebhook.bind(bookingController),
     );
 
     fastify.get<{ Params: IHotelAvailabilityParams; Querystring: IAvailabilityQuery }>(
