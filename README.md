@@ -4,9 +4,9 @@ Backend for the Travel Baltistan platform: users, listings (hotels,
 restaurants, future tours/vehicles), reviews, subscriptions, payments,
 articles, and locations. TypeScript on Fastify + TypeORM + PostgreSQL.
 
-> 📚 **Full documentation lives in [`docs/`](./docs/README.md)**.
-> Start with [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) if you're
-> new to the codebase.
+> 📚 **API documentation:** [`docs/API_DOC.md`](./docs/API_DOC.md).
+> For architecture and implementation details, see the documentation index
+> below and [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ---
 
