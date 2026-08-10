@@ -93,9 +93,7 @@ async function startServer() {
   });
 
   try {
-    if (CONFIG.env !== "production") {
-      await app.register(swaggerPlugin);
-    }
+    await app.register(swaggerPlugin);
     await app.register(typeormPlugin, { timeout: 120000 });
 
     // Log enabled features
