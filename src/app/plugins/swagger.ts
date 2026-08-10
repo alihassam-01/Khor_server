@@ -177,6 +177,165 @@ const exampleForPath = (method: string, path: string): unknown => {
   return { message: "Request completed successfully." };
 };
 
+type SwaggerParameter = {
+  name: string;
+  in: "query" | "path";
+  required?: boolean;
+  description: string;
+  schema: Record<string, unknown>;
+};
+
+const queryParameter = (
+  name: string,
+  type: string,
+  description: string,
+  options: Record<string, unknown> = {},
+): SwaggerParameter => {
+  const { required, ...schemaOptions } = options;
+  return {
+    name,
+    in: "query",
+    ...(required !== undefined ? { required: required as boolean } : {}),
+    description,
+    schema: { type, ...schemaOptions },
+  };
+};
+
+const listingQueryParameters = (): SwaggerParameter[] => [
+  queryParameter("page", "integer", "Page number.", { default: 1, minimum: 1 }),
+  queryParameter("limit", "integer", "Number of records per page.", { default: 10, minimum: 1 }),
+  queryParameter("searchQuery", "string", "Search by listing name and searchable text."),
+  queryParameter("location_id", "string", "Integer location ID; comma-separated IDs are accepted."),
+  queryParameter("rating", "number", "Minimum rating.", { minimum: 0, maximum: 5 }),
+  queryParameter("priceMax", "number", "Maximum listing price."),
+  queryParameter("isFeatured", "string", "Featured filter.", { enum: ["true", "false", "1", "0"] }),
+];
+
+const parametersForPath = (path: string): SwaggerParameter[] => {
+  if (path === "/hotels" || path === "/restaurants") return listingQueryParameters();
+  if (path === "/ads/hotel-restaurant") {
+    return [
+      ...listingQueryParameters(),
+      queryParameter("type", "string", "Listing type.", { enum: ["hotel", "restaurant", "all"], default: "all" }),
+    ];
+  }
+  if (path === "/promoted-listings") {
+    return [
+      ...listingQueryParameters(),
+      queryParameter("type", "string", "Promoted listing type.", { enum: ["restaurant", "tour", "all"], default: "all" }),
+    ];
+  }
+  if (path === "/articles" || path === "/articles/slug/{slug}" || path === "/articles/{id}") {
+    return [
+      queryParameter("all", "string", "Include all publication states when supported.", { enum: ["true", "false"] }),
+      queryParameter("categoryId", "string", "Filter by article category ID."),
+      queryParameter("publishedAfter", "string", "Return articles published after this ISO timestamp.", { format: "date-time" }),
+      queryParameter("updatedAfter", "string", "Return articles updated after this ISO timestamp.", { format: "date-time" }),
+    ];
+  }
+  if (path === "/articles/list") {
+    return [
+      queryParameter("page", "integer", "Page number.", { default: 1, minimum: 1 }),
+      queryParameter("limit", "integer", "Number of records per page.", { default: 10, minimum: 1 }),
+      queryParameter("status", "string", "Filter by publication status."),
+      queryParameter("placeId", "string", "Filter by place ID."),
+      queryParameter("categoryId", "string", "Filter by category ID."),
+      queryParameter("tag", "string", "Filter by tag."),
+      queryParameter("publishedAfter", "string", "Published-after ISO timestamp.", { format: "date-time" }),
+      queryParameter("updatedAfter", "string", "Updated-after ISO timestamp.", { format: "date-time" }),
+    ];
+  }
+  if (path === "/articles/search") {
+    return [
+      queryParameter("term", "string", "Search text.", { required: true }),
+      queryParameter("all", "string", "Include all publication states when supported.", { enum: ["true", "false"] }),
+      queryParameter("publishedAfter", "string", "Published-after ISO timestamp.", { format: "date-time" }),
+      queryParameter("updatedAfter", "string", "Updated-after ISO timestamp.", { format: "date-time" }),
+    ];
+  }
+  if (path === "/bookings/me" || path === "/vendor/bookings" || path === "/admin/bookings") {
+    return [
+      queryParameter("page", "integer", "Page number.", { default: 1, minimum: 1 }),
+      queryParameter("limit", "integer", "Number of records per page.", { default: 10, minimum: 1 }),
+      queryParameter("booking_status", "string", "Filter by booking status."),
+      queryParameter("listing_id", "string", "Filter by listing UUID."),
+    ];
+  }
+  if (path === "/admin/bookings/offline-analytics") {
+    return [
+      queryParameter("month", "string", "Analytics month."),
+      queryParameter("year", "string", "Analytics year."),
+      queryParameter("listingId", "string", "Optional listing UUID."),
+    ];
+  }
+  if (path === "/admin/refunds") {
+    return [
+      queryParameter("page", "integer", "Page number.", { default: 1, minimum: 1 }),
+      queryParameter("limit", "integer", "Number of records per page.", { default: 10, minimum: 1 }),
+      queryParameter("status", "string", "Filter by refund status."),
+    ];
+  }
+  if (path === "/reviews/{targetType}/{targetId}") {
+    return [
+      queryParameter("status", "string", "Filter by review status."),
+      queryParameter("minRating", "number", "Minimum review rating.", { minimum: 1, maximum: 5 }),
+      queryParameter("page", "integer", "Page number.", { default: 1, minimum: 1 }),
+      queryParameter("limit", "integer", "Number of records per page.", { default: 10, minimum: 1 }),
+    ];
+  }
+  if (path === "/analytics/vendor/{vendorId}") {
+    return [
+      queryParameter("startDate", "string", "Analytics start date.", { format: "date-time" }),
+      queryParameter("endDate", "string", "Analytics end date.", { format: "date-time" }),
+      queryParameter("listingType", "string", "Optional listing type.", { enum: ["hotel", "restaurant"] }),
+    ];
+  }
+  if (path === "/hotels/{id}/room-types/{roomTypeId}/availability") {
+    return [
+      queryParameter("check_in_date", "string", "Check-in date.", { required: true, format: "date" }),
+      queryParameter("check_out_date", "string", "Check-out date.", { required: true, format: "date" }),
+    ];
+  }
+  if (path === "/seo/render" || path === "/seo/meta") {
+    return [queryParameter("path", "string", "Frontend path to render or describe.", { required: true })];
+  }
+  if (path.endsWith("/events/stream") || path.endsWith("/booking-events/stream") || path.endsWith("/support/tickets/stream")) {
+    return [queryParameter("ticket", "string", "One-time realtime ticket.", { required: true })];
+  }
+  return [];
+};
+
+const enrichPathParameters = (path: string, parameters: any[]): any[] => parameters.map((parameter) => {
+  if (parameter.in !== "path") return parameter;
+
+  const name = parameter.name as string;
+  const isLocation = name === "locationId"
+    || name === "location_id"
+    || (path.startsWith("/locations/") && name === "id");
+  const isTargetType = name === "targetType";
+  const isUuid = !isLocation
+    && !isTargetType
+    && !["slug", "type", "result", "categoryname", "capabilityType"].includes(name);
+  const description = isLocation
+    ? "Integer location ID."
+    : isTargetType
+      ? "Reviewable target type, such as hotel or restaurant."
+    : name === "id"
+      ? "Resource UUID."
+      : name + " path parameter.";
+
+  return {
+    ...parameter,
+    description: parameter.description ?? description,
+    schema: {
+      ...parameter.schema,
+      type: isLocation ? "integer" : parameter.schema?.type ?? "string",
+      ...(isTargetType ? { enum: ["hotel", "restaurant"] } : {}),
+      ...(isUuid ? { format: "uuid" } : {}),
+    },
+  };
+});
+
 const responseDescriptionForPath = (method: string, path: string): string => {
   const normalizedUrl = path.replace(/\{([^}]+)\}/g, (value) => ":" + value.slice(1, -1));
   return operationDetails[method.toUpperCase() + " " + normalizedUrl]?.response
@@ -239,6 +398,19 @@ export default fp(async function swaggerPlugin(fastify: FastifyInstance) {
       for (const [path, pathItem] of Object.entries(document.paths ?? {})) {
         for (const [method, operation] of Object.entries(pathItem)) {
           if (!["get", "post", "put", "patch", "delete"].includes(method)) continue;
+
+          const parameters = operation.parameters ?? [];
+          const existingQueryNames = new Set(
+            parameters
+              .filter((parameter: any) => parameter.in === "query")
+              .map((parameter: any) => parameter.name),
+          );
+          const additionalQueryParameters = parametersForPath(path)
+            .filter((parameter) => !existingQueryNames.has(parameter.name));
+          operation.parameters = enrichPathParameters(path, [
+            ...parameters,
+            ...additionalQueryParameters,
+          ]);
 
           const response = operation.responses?.["200"] ?? { description: "Successful response" };
           if (response.description === "Default Response") {
