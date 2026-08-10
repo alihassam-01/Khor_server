@@ -28,6 +28,10 @@ https://api.gokhor.com/api
   `https://api.gokhor.com/details/api/swagger_2026_08_v1/json`.
 - The Swagger route is public; use the UI's `Authorize` button for JWT
   protected endpoints.
+- Swagger operations also include concise summaries, purpose and return
+  descriptions, common error responses, and illustrative JSON examples.
+  Routes with explicit Fastify schemas expose validated request and response
+  fields; examples for legacy routes without schemas are illustrative.
 
 ## Health
 
