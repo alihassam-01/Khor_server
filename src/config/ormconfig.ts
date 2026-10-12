@@ -38,16 +38,32 @@ const migrations = isProduction
   ? [join(projectRoot, "dist/migrations/*.js")]
   : [join(projectRoot, "src/migrations/**/*.ts")];
 
+const subscribers = isProduction
+  ? [join(projectRoot, "dist/modules/user/service/booking-realtime-transaction.subscriber.js")]
+  : [join(projectRoot, "src/modules/user/service/booking-realtime-transaction.subscriber.ts")];
+
 const shouldSynchronize = process.env.DB_SYNCHRONIZE === "true";
+
+const isLocalDb = Boolean(
+  CONFIG.db.url?.includes("localhost") ||
+  CONFIG.db.url?.includes("127.0.0.1") ||
+  CONFIG.db.host === "localhost" ||
+  CONFIG.db.host === "127.0.0.1"
+);
+const useSsl = process.env.DB_SSL === "true" || (isProduction && !isLocalDb);
+const sslConfig = useSsl ? { rejectUnauthorized: false } : false;
 
 export const AppDataSource = new DataSource(
   CONFIG.db.url
     ? {
       type: "postgres",
       url: CONFIG.db.url,
+      ssl: sslConfig,
+      extra: useSsl ? { ssl: { rejectUnauthorized: false } } : undefined,
       entities: entities,
       synchronize: shouldSynchronize,
       migrations: migrations,
+      subscribers,
       logging: false,
       invalidWhereValuesBehavior: {
         null: "throw",
@@ -61,9 +77,12 @@ export const AppDataSource = new DataSource(
       username: CONFIG.db.username,
       password: CONFIG.db.password,
       database: CONFIG.db.database,
+      ssl: sslConfig,
+      extra: useSsl ? { ssl: { rejectUnauthorized: false } } : undefined,
       entities: entities,
       synchronize: shouldSynchronize,
       migrations: migrations,
+      subscribers,
       logging: false,
       invalidWhereValuesBehavior: {
         null: "throw",
